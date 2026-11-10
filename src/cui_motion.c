@@ -5,10 +5,6 @@
 
 static bool cui__still(cui_ctx *ui) { return ui->theme.motion <= 0.0f; }
 
-static cui_color cui__mo_accent(cui_ctx *ui) {
-    return cui__emphasis(ui);
-}
-
 static int cui__fx_text_node(cui_ctx *ui, const char *text, const cui_text_fx_opts *o, cui_color c) {
     float size = o->size > 0 ? o->size : ui->theme.text_body;
     int i = cui__text_node(ui, text, -1, o->font, cui__fs(ui, size), c, !o->nowrap);
@@ -109,7 +105,7 @@ bool cui_typewriter_ex(cui_ctx *ui, const char *id_str, const char *text, const 
         memset(p, 0, sizeof *p);
         p->visible = st->bytes; p->caret = o->caret; p->len = len;
         p->size = ui->nodes[i].font_size; p->font = ui->nodes[i].font;
-        p->caret_c = cui__mo_accent(ui);
+        p->caret_c = cui__emphasis(ui);
         ui->nodes[i].text_fx = cui__fx_typewriter;
         ui->nodes[i].text_fx_data = p;
     }
@@ -216,7 +212,7 @@ void cui_word_rotate_ex(cui_ctx *ui, const char *id_str, const char *const *word
     cui__wr_paint *p = cui__frame_alloc(ui, sizeof *p);
     p->cur = cur; p->prev = st->prev >= 0 && st->prev < count ? words[st->prev] : NULL;
     p->t = st->t.x; p->font = font; p->size = size; p->lh = lh;
-    p->c = cui__color_set(o->color) ? cui_color_of(ui, o->color) : cui__mo_accent(ui);
+    p->c = cui__color_set(o->color) ? cui_color_of(ui, o->color) : cui__emphasis(ui);
     ui->nodes[n].paint = cui__paint_word_rotate;
     ui->nodes[n].paint_data = p;
     ui->last_id = id;
@@ -400,7 +396,7 @@ void cui_gradient_text_ex(cui_ctx *ui, const char *text, const cui_gradient_text
     int i = cui__fx_text_node(ui, text, &to, CUI_C(ui, FOREGROUND));
     cui__grad_fx *p = cui__frame_alloc(ui, sizeof *p);
     p->node = i;
-    p->a = cui__color_set(o->from) ? cui_color_of(ui, o->from) : cui__mo_accent(ui);
+    p->a = cui__color_set(o->from) ? cui_color_of(ui, o->from) : cui__emphasis(ui);
     /* by default a tonal blend within the accent, not a second hue */
     p->b = cui__color_set(o->to) ? cui_color_of(ui, o->to) : cui_mix(p->a, CUI_C(ui, FOREGROUND), 0.6f);
     p->shift = 0;
@@ -775,7 +771,7 @@ bool cui_tab_bar_ex(cui_ctx *ui, const char *id_str, const cui_tab_bar_item *ite
         cui__mark_interactive(ui, it, CUI_IF_FOCUSABLE);
         if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
         cui__open(ui, it);
-        cui_color fg = cui_mix(cui_mix(CUI_C(ui, TEXT_MUTED), CUI_C(ui, TEXT_SECONDARY), hv[1]), cui__mo_accent(ui), hv[0]);
+        cui_color fg = cui_mix(cui_mix(CUI_C(ui, TEXT_MUTED), CUI_C(ui, TEXT_SECONDARY), hv[1]), cui__emphasis(ui), hv[0]);
         int ic = cui__node_new(ui, 0);
         ui->nodes[ic].dir = CUI_STACK; ui->nodes[ic].w = CUI_PX(22); ui->nodes[ic].h = CUI_PX(22);
         ui->nodes[ic].align = CUI_ALIGN_CENTER; ui->nodes[ic].justify = CUI_JUSTIFY_CENTER;
@@ -953,7 +949,7 @@ bool cui_waveform_ex(cui_ctx *ui, const char *id_str, const float *peaks, int co
     p->count = count; p->bar = o->bar > 0 ? o->bar : 3; p->gap = o->gap > 0 ? o->gap : 2;
     p->has_progress = progress != NULL; p->progress = progress ? cui__clampf(*progress, 0, 1) : 0;
     p->hover_x = (progress && r.hovered && !st->dragging) ? ui->mx : -1;
-    p->played = cui__color_set(o->color) ? cui_color_of(ui, o->color) : cui__mo_accent(ui);
+    p->played = cui__color_set(o->color) ? cui_color_of(ui, o->color) : cui__emphasis(ui);
     p->rest = progress ? CUI_C(ui, BORDER_STRONG) : (cui__color_set(o->color) ? cui_color_of(ui, o->color) : CUI_C(ui, TEXT_MUTED));
     p->ghost = cui_mix(p->rest, p->played, 0.45f);
     p->intro = st->intro.x;

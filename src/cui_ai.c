@@ -4,10 +4,6 @@
 #include "cui_internal.h"
 
 
-static cui_color cui__ai_accent(cui_ctx *ui) {
-    return cui__emphasis(ui);
-}
-
 /* A row that opens a body below it with a height spring (shared by the
  * reasoning block and tool calls). */
 typedef struct { cui_spring t; float hover, content_h; bool init; } cui__fold_state;
@@ -165,7 +161,7 @@ static void cui__status_node(cui_ctx *ui, cui_task_status s, float size) {
     int n = cui__leaf(ui, 0, CUI_PX(size), CUI_PX(size));
     cui__st_paint *p = cui__frame_alloc(ui, sizeof *p);
     p->s = s; p->t = (float)fmod(ui->time, 1000.0);
-    p->c = s == CUI_TASK_DONE ? (ui->accent == CUI_ACCENT_NEUTRAL ? CUI_C(ui, SUCCESS) : CUI_C(ui, ACCENT)) : cui__ai_accent(ui);
+    p->c = s == CUI_TASK_DONE ? (ui->accent == CUI_ACCENT_NEUTRAL ? CUI_C(ui, SUCCESS) : CUI_C(ui, ACCENT)) : cui__emphasis(ui);
     p->ring = CUI_C(ui, BORDER_STRONG);
     ui->nodes[n].paint = cui__paint_status;
     ui->nodes[n].paint_data = p;
@@ -390,7 +386,7 @@ void cui_agent_status_ex(cui_ctx *ui, const char *text, const cui_agent_status_o
     if (o->status == CUI_TASK_RUNNING) {
         cui_loader_opts lo;
         memset(&lo, 0, sizeof lo);
-        lo.style = CUI_LOADER_DOTS; lo.size = 18; lo.color = cui__ai_accent(ui);
+        lo.style = CUI_LOADER_DOTS; lo.size = 18; lo.color = cui__emphasis(ui);
         cui_loader_ex(ui, &lo);
     } else if (o->icon) cui__icon_node(ui, o->icon, 14, CUI_C(ui, TEXT_SECONDARY));
     else cui__status_node(ui, o->status, 15);
@@ -512,7 +508,7 @@ bool cui_citation(cui_ctx *ui, int number, const cui_source *s) {
     nd->dir = CUI_ROW; nd->align = CUI_ALIGN_CENTER; nd->gap = 4;
     nd->pad[0] = nd->pad[2] = 1; nd->pad[1] = nd->pad[3] = 7;
     nd->radius = CUI_CORNERS(9);
-    nd->bg = cui_mix(ui->mode == CUI_THEME_DARK ? cui_mix(CUI_C(ui, SURFACE), CUI_C(ui, FOREGROUND), 0.1f) : CUI_C(ui, SURFACE_MUTED), cui__ai_accent(ui), 0.16f * *hv);
+    nd->bg = cui_mix(ui->mode == CUI_THEME_DARK ? cui_mix(CUI_C(ui, SURFACE), CUI_C(ui, FOREGROUND), 0.1f) : CUI_C(ui, SURFACE_MUTED), cui__emphasis(ui), 0.16f * *hv);
     nd->self_align = CUI_ALIGN_CENTER;
     cui__mark_interactive(ui, n, CUI_IF_FOCUSABLE);
     if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
@@ -579,7 +575,7 @@ void cui_context_meter_ex(cui_ctx *ui, const char *id_str, float used, float lim
     int ring = cui__leaf(ui, 0, CUI_PX(16), CUI_PX(16));
     cui__cm_paint *p = cui__frame_alloc(ui, sizeof *p);
     p->frac = *anim;
-    p->c = frac >= 0.95f ? CUI_C(ui, DANGER) : frac >= 0.8f ? CUI_C(ui, WARNING) : cui__ai_accent(ui);
+    p->c = frac >= 0.95f ? CUI_C(ui, DANGER) : frac >= 0.8f ? CUI_C(ui, WARNING) : cui__emphasis(ui);
     p->track = CUI_C(ui, CONTROL_TRACK);
     ui->nodes[ring].paint = cui__paint_context_ring;
     ui->nodes[ring].paint_data = p;
@@ -657,10 +653,10 @@ int cui_response_actions_ex(cui_ctx *ui, const char *id_str, const cui_response_
     if (!o->no_regenerate) { bo.tooltip = "Regenerate"; if (cui_icon_button_ex(ui, CUI_ICON_REFRESH_CW, &bo)) result |= CUI_RESPONSE_REGENERATE; }
     int vote = o->vote ? *o->vote : 0;
     bo.tooltip = "Good response"; bo.selected = vote > 0;
-    bo.color = vote > 0 ? cui__ai_accent(ui) : cui__rgba(0, 0, 0, 0);
+    bo.color = vote > 0 ? cui__emphasis(ui) : cui__rgba(0, 0, 0, 0);
     if (cui_icon_button_ex(ui, CUI_ICON_THUMBS_UP, &bo)) { result |= CUI_RESPONSE_UP; if (o->vote) *o->vote = vote > 0 ? 0 : 1; }
     bo.tooltip = "Bad response"; bo.selected = vote < 0;
-    bo.color = vote < 0 ? cui__ai_accent(ui) : cui__rgba(0, 0, 0, 0);
+    bo.color = vote < 0 ? cui__emphasis(ui) : cui__rgba(0, 0, 0, 0);
     if (cui_icon_button_ex(ui, CUI_ICON_THUMBS_DOWN, &bo)) { result |= CUI_RESPONSE_DOWN; if (o->vote) *o->vote = vote < 0 ? 0 : -1; }
     bo.selected = false; bo.color = cui__rgba(0, 0, 0, 0);
     if (!o->no_share) { bo.tooltip = "Share"; if (cui_icon_button_ex(ui, CUI_ICON_SHARE_2, &bo)) result |= CUI_RESPONSE_SHARE; }
