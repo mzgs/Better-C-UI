@@ -246,7 +246,7 @@ bool cui_menu_item_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *
     n->pad[1] = 10; n->pad[3] = 10;
     n->w = CUI_FILL;
     n->self_align = CUI_ALIGN_STRETCH;
-    n->radius = CUI_CORNERS(CUI_MAX(6.0f, ui->theme.radius_panel - 6.0f));
+    n->radius = CUI_CORNERS(CUI__R_ITEM(ui));
     cui_color hover_bg = o->danger ? cui_alpha(CUI_C(ui, DANGER), 0.1f) : CUI_C(ui, ACTIVE);
     n->bg = cui_alpha(hover_bg, st->hover);
     n->opacity = disabled ? CUI__DISABLED : 1.0f;
@@ -1296,11 +1296,11 @@ static int cui__fuzzy(const char *text, const char *q) {
     int score = 0, run = 0;
     const char *t = text;
     for (const char *c = q; *c; c++) {
-        char qc = (*c >= 'A' && *c <= 'Z') ? *c + 32 : *c;
+        char qc = (char)cui__ascii_lower(*c);
         if (qc == ' ') continue;
         bool found = false;
         while (*t) {
-            char tc = (*t >= 'A' && *t <= 'Z') ? *t + 32 : *t;
+            char tc = (char)cui__ascii_lower(*t);
             bool word_start = t == text || t[-1] == ' ';
             t++;
             if (tc == qc) { found = true; run++; score += 1 + run + (word_start ? 3 : 0); break; }

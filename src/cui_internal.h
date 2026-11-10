@@ -107,6 +107,12 @@ int cui__utf8_prev(const char *s, int pos);
 int cui__utf8_next(const char *s, int len, int pos);
 int cui__display_len(const char *label);                      /* length before "##" */
 static inline int cui__ascii_lower(int c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
+static inline int cui__hex_digit(int c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
 bool cui__contains_ci(const char *hay, const char *needle);   /* ASCII case-insensitive substring; an empty needle matches */
 
 /* ---- hashing ---- */

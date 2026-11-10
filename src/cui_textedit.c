@@ -137,23 +137,23 @@ static void cui__paint_edit(cui_ctx *ui, cui_node *n, void *data) {
 
 /* ---- editing primitives ---- */
 
-static bool cui__is_word(unsigned char c) { return c >= 128 || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+bool cui__edit_is_word(unsigned char c) { return c >= 128 || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
 
-static int cui__word_left(const char *s, int pos) {
-    while (pos > 0 && !cui__is_word((unsigned char)s[pos - 1])) pos--;
-    while (pos > 0 && cui__is_word((unsigned char)s[pos - 1])) pos--;
+int cui__edit_word_left(const char *s, int pos) {
+    while (pos > 0 && !cui__edit_is_word((unsigned char)s[pos - 1])) pos--;
+    while (pos > 0 && cui__edit_is_word((unsigned char)s[pos - 1])) pos--;
     return pos;
 }
 
-static int cui__word_right(const char *s, int len, int pos) {
-    while (pos < len && !cui__is_word((unsigned char)s[pos])) pos++;
-    while (pos < len && cui__is_word((unsigned char)s[pos])) pos++;
+int cui__edit_word_right(const char *s, int len, int pos) {
+    while (pos < len && !cui__edit_is_word((unsigned char)s[pos])) pos++;
+    while (pos < len && cui__edit_is_word((unsigned char)s[pos])) pos++;
     return pos;
 }
 
 /* kind: 1 insert, 2 delete, 3 other. Consecutive edits of the same kind at
  * the caret within a short time merge into one undo step. */
-static void cui__undo_push_kind(cui_ctx *ui, cui_edit_state *e, const char *buf, int kind) {
+void cui__edit_undo_push(cui_ctx *ui, cui_edit_state *e, const char *buf, int kind) {
     if (ui->time - e->last_edit < 1.0 && e->undo_pos > 0 && e->undo_pos == e->undo_count && kind == e->last_kind &&
         kind != 3 && e->cursor == e->last_cursor) {
         e->last_edit = ui->time;
@@ -177,7 +177,7 @@ static void cui__undo_push_kind(cui_ctx *ui, cui_edit_state *e, const char *buf,
     e->undo_pos = e->undo_count;
 }
 
-static void cui__undo_push(cui_ctx *ui, cui_edit_state *e, const char *buf) { cui__undo_push_kind(ui, e, buf, 3); }
+static void cui__undo_push(cui_ctx *ui, cui_edit_state *e, const char *buf) { cui__edit_undo_push(ui, e, buf, 3); }
 
 /* One step back (or forward with redo) in the history; false when there is
  * none. The caret lands where it was before the edit that is undone. */
@@ -196,7 +196,7 @@ bool cui__edit_undo_step(cui_ctx *ui, cui_edit_state *e, char *buf, size_t cap, 
     return true;
 }
 
-static void cui__delete_range(char *buf, int *len, int a, int b) {
+void cui__edit_delete(char *buf, int *len, int a, int b) {
     if (b <= a) return;
     memmove(buf + a, buf + b, (size_t)(*len - b + 1));
     *len -= b - a;
@@ -286,7 +286,7 @@ static void cui__edit_move(cui__edit_frame *c, int to) {
 static void cui__edit_replace_selection(cui__edit_frame *c, const char *text, int n, bool newlines) {
     cui_edit_state *e = c->e;
     int s0 = CUI_MIN(e->cursor, e->anchor), s1 = CUI_MAX(e->cursor, e->anchor);
-    cui__delete_range(c->buf, &c->len, s0, s1);
+    cui__edit_delete(c->buf, &c->len, s0, s1);
     e->cursor = e->anchor = s0;
     int m = cui__insert(c->buf, &c->len, c->cap, e->cursor, text, n, newlines);
     e->cursor += m; e->anchor = e->cursor;
@@ -327,9 +327,9 @@ static void cui__edit_pointer(cui__edit_frame *c, cui_interact r) {
     }
     if (ui->mpressed[0]) {
         if (r.double_clicked || ui->click_count >= 2) {
-            e->anchor = cui__word_left(buf, pos);
-            if (pos < len && cui__is_word((unsigned char)buf[pos])) e->anchor = cui__word_left(buf, pos + 1);
-            e->cursor = cui__word_right(buf, len, pos);
+            e->anchor = cui__edit_word_left(buf, pos);
+            if (pos < len && cui__edit_is_word((unsigned char)buf[pos])) e->anchor = cui__edit_word_left(buf, pos + 1);
+            e->cursor = cui__edit_word_right(buf, len, pos);
             if (ui->click_count >= 3) { e->anchor = 0; e->cursor = len; }
         } else {
             e->cursor = pos;
@@ -353,11 +353,11 @@ static void cui__edit_move_keys(cui__edit_frame *c) {
     int s0 = CUI_MIN(e->cursor, e->anchor), s1 = CUI_MAX(e->cursor, e->anchor);
     for (int rep = cui_key_pressed(ui, CUI_KEY_LEFT) ? ui->kpressed[CUI_KEY_LEFT] : 0; rep > 0; rep--) {
         if (!shift && s1 > s0 && !word_mod) { e->cursor = e->anchor = s0; c->moved = true; continue; }
-        cui__edit_move(c, line_mod ? 0 : word_mod ? cui__word_left(buf, e->cursor) : cui__utf8_prev(buf, e->cursor));
+        cui__edit_move(c, line_mod ? 0 : word_mod ? cui__edit_word_left(buf, e->cursor) : cui__utf8_prev(buf, e->cursor));
     }
     for (int rep = cui_key_pressed(ui, CUI_KEY_RIGHT) ? ui->kpressed[CUI_KEY_RIGHT] : 0; rep > 0; rep--) {
         if (!shift && s1 > s0 && !word_mod) { e->cursor = e->anchor = s1; c->moved = true; continue; }
-        cui__edit_move(c, line_mod ? len : word_mod ? cui__word_right(buf, len, e->cursor) : cui__utf8_next(buf, len, e->cursor));
+        cui__edit_move(c, line_mod ? len : word_mod ? cui__edit_word_right(buf, len, e->cursor) : cui__utf8_next(buf, len, e->cursor));
     }
     c->vertical = c->multiline && (cui_key_pressed(ui, CUI_KEY_UP) || cui_key_pressed(ui, CUI_KEY_DOWN));
     if (c->vertical) {
@@ -406,7 +406,7 @@ static void cui__edit_clipboard(cui__edit_frame *c) {
         }
         if (cui_key_pressed(ui, CUI_KEY_X) && !c->read_only) {
             cui__undo_push(ui, e, c->buf);
-            cui__delete_range(c->buf, &c->len, s0, s1);
+            cui__edit_delete(c->buf, &c->len, s0, s1);
             e->cursor = e->anchor = s0;   /* the selection is gone; a paste in the same frame inserts at the caret */
             c->edited = true;
         }
@@ -435,22 +435,22 @@ static void cui__edit_typing(cui__edit_frame *c, cui__edit_result *res) {
     }
     for (int rep = ui->kpressed[CUI_KEY_BACKSPACE]; rep > 0; rep--) {
         s0 = CUI_MIN(e->cursor, e->anchor); s1 = CUI_MAX(e->cursor, e->anchor);
-        cui__undo_push_kind(ui, e, buf, s1 > s0 ? 3 : 2);
-        if (s1 > s0) { cui__delete_range(buf, &c->len, s0, s1); e->cursor = e->anchor = s0; }
+        cui__edit_undo_push(ui, e, buf, s1 > s0 ? 3 : 2);
+        if (s1 > s0) { cui__edit_delete(buf, &c->len, s0, s1); e->cursor = e->anchor = s0; }
         else if (e->cursor > 0) {
-            int to = c->word_mod ? cui__word_left(buf, e->cursor) : c->line_mod ? 0 : cui__utf8_prev(buf, e->cursor);
-            cui__delete_range(buf, &c->len, to, e->cursor);
+            int to = c->word_mod ? cui__edit_word_left(buf, e->cursor) : c->line_mod ? 0 : cui__utf8_prev(buf, e->cursor);
+            cui__edit_delete(buf, &c->len, to, e->cursor);
             e->cursor = e->anchor = to;
         }
         c->edited = true;
     }
     for (int rep = ui->kpressed[CUI_KEY_DELETE]; rep > 0; rep--) {
         s0 = CUI_MIN(e->cursor, e->anchor); s1 = CUI_MAX(e->cursor, e->anchor);
-        cui__undo_push_kind(ui, e, buf, s1 > s0 ? 3 : 2);
-        if (s1 > s0) { cui__delete_range(buf, &c->len, s0, s1); e->cursor = e->anchor = s0; }
+        cui__edit_undo_push(ui, e, buf, s1 > s0 ? 3 : 2);
+        if (s1 > s0) { cui__edit_delete(buf, &c->len, s0, s1); e->cursor = e->anchor = s0; }
         else if (e->cursor < c->len) {
-            int to = c->word_mod ? cui__word_right(buf, c->len, e->cursor) : cui__utf8_next(buf, c->len, e->cursor);
-            cui__delete_range(buf, &c->len, e->cursor, to);
+            int to = c->word_mod ? cui__edit_word_right(buf, c->len, e->cursor) : cui__utf8_next(buf, c->len, e->cursor);
+            cui__edit_delete(buf, &c->len, e->cursor, to);
         }
         c->edited = true;
     }
@@ -461,7 +461,7 @@ static void cui__edit_typing(cui__edit_frame *c, cui__edit_result *res) {
     /* Tab is left to focus navigation, in text areas too */
     if (ui->text_in_len > 0 && !(c->prim && !(ui->mods & CUI_MOD_ALT))) {
         s0 = CUI_MIN(e->cursor, e->anchor); s1 = CUI_MAX(e->cursor, e->anchor);
-        cui__undo_push_kind(ui, e, buf, s1 > s0 ? 3 : 1);
+        cui__edit_undo_push(ui, e, buf, s1 > s0 ? 3 : 1);
         cui__edit_replace_selection(c, ui->text_in, ui->text_in_len, c->multiline);
     }
 }
@@ -882,9 +882,4 @@ void cui__edit_attach(cui_ctx *ui, cui_id id, cui_edit_state *e) {
     e->preferred_x = -1;
     cui__state_set_dtor(ui, id, cui__edit_dtor);
 }
-void cui__edit_undo_push(cui_ctx *ui, cui_edit_state *e, const char *buf, int kind) { cui__undo_push_kind(ui, e, buf, kind); }
 int cui__edit_insert(char *buf, int *len, size_t cap, int pos, const char *s, int n) { return cui__insert(buf, len, cap, pos, s, n, true); }
-void cui__edit_delete(char *buf, int *len, int a, int b) { cui__delete_range(buf, len, a, b); }
-bool cui__edit_is_word(unsigned char c) { return cui__is_word(c); }
-int cui__edit_word_left(const char *s, int pos) { return cui__word_left(s, pos); }
-int cui__edit_word_right(const char *s, int len, int pos) { return cui__word_right(s, len, pos); }

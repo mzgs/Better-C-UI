@@ -517,13 +517,6 @@ static void cui__x11_xdnd_send(cui__x11 *x, Window to, Atom type, long l1, long 
     XFlush(x->dpy);
 }
 
-static int cui__hexv(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
 /* text/uri-list: one URI per line, "file://host/path" with %XX escapes */
 static void cui__x11_xdnd_deliver(cui_app *app, const char *data, size_t len) {
     cui__x11 *x = cui__x(app);
@@ -540,8 +533,8 @@ static void cui__x11_xdnd_deliver(cui_app *app, const char *data, size_t len) {
             if (out) {
                 size_t o = 0;
                 for (size_t k = p; k < e; k++) {
-                    if (data[k] == '%' && k + 2 < e && cui__hexv(data[k + 1]) >= 0 && cui__hexv(data[k + 2]) >= 0) {
-                        out[o++] = (char)(cui__hexv(data[k + 1]) * 16 + cui__hexv(data[k + 2]));
+                    if (data[k] == '%' && k + 2 < e && cui__hex_digit(data[k + 1]) >= 0 && cui__hex_digit(data[k + 2]) >= 0) {
+                        out[o++] = (char)(cui__hex_digit(data[k + 1]) * 16 + cui__hex_digit(data[k + 2]));
                         k += 2;
                     } else out[o++] = data[k];
                 }

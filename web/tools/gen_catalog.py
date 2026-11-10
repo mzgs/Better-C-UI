@@ -178,15 +178,14 @@ GUIDE_IDS = set(GUIDES)
 # each guide's section anchors (as GitHub makes them from the "## " headings), for links within a guide
 def guide_sections():
     out = {}
-    anchor_of = lambda t: re.sub(r"[^\w\- ]", "", t.strip().lower()).replace(" ", "-")
     for gid in GUIDES:
         sec = None
         for ln in open(f"{ROOT}/docs/{gid}.md", encoding="utf-8"):
             if ln.startswith("## "):
-                sec = re.sub(r"^\d+-", "", anchor_of(ln[3:]))
-                out.setdefault(anchor_of(ln[3:]), f"{gid}/{sec}")
+                sec = re.sub(r"^\d+-", "", slug(ln[3:]))
+                out.setdefault(slug(ln[3:]), f"{gid}/{sec}")
             elif ln.startswith("### ") and sec:   # a subsection: the site opens its section
-                out.setdefault(anchor_of(ln[4:]), f"{gid}/{sec}")
+                out.setdefault(slug(ln[4:]), f"{gid}/{sec}")
     return out
 GUIDE_SECTIONS = guide_sections()
 

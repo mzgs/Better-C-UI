@@ -62,7 +62,7 @@ static bool cui__check_item(cui_ctx *ui, const char *label, const char *icon, bo
     n->dir = CUI_ROW; n->align = CUI_ALIGN_CENTER; n->gap = 10;
     n->h = CUI_PX(32); n->pad[1] = 10; n->pad[3] = 10;
     n->w = CUI_FILL; n->self_align = CUI_ALIGN_STRETCH;
-    n->radius = CUI_CORNERS(CUI_MAX(6.0f, ui->theme.radius_panel - 6.0f));
+    n->radius = CUI_CORNERS(CUI__R_ITEM(ui));
     n->bg = cui_alpha(CUI_C(ui, ACTIVE), st[0]);
     cui__mark_interactive(ui, i, 0);
     if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
@@ -80,23 +80,6 @@ static bool cui__check_item(cui_ctx *ui, const char *label, const char *icon, bo
     cui__close(ui);
     bool toggle = r.clicked || (hl && (cui_key_pressed(ui, CUI_KEY_ENTER) || cui_key_pressed(ui, CUI_KEY_SPACE)));
     return toggle;
-}
-
-static bool cui__contains_nocase(const char *hay, const char *needle) {
-    if (!needle || !*needle) return true;
-    size_t nl = strlen(needle);
-    for (const char *h = hay; *h; h++) {
-        size_t k = 0;
-        while (k < nl && h[k]) {
-            char a = h[k], b = needle[k];
-            a = (char)cui__ascii_lower(a);
-            b = (char)cui__ascii_lower(b);
-            if (a != b) break;
-            k++;
-        }
-        if (k == nl) return true;
-    }
-    return false;
 }
 
 bool cui_multi_select_ex(cui_ctx *ui, const char *id_str, const char *const *items, int count, bool *selected, const cui_multi_select_opts *o) {
@@ -208,7 +191,7 @@ bool cui_multi_select_ex(cui_ctx *ui, const char *id_str, const char *const *ite
         ui->nodes[cui__current(ui)].min_h = 0;
         int index = 0, visible = 0;
         for (int k = 0; k < count; k++) {
-            if (o->searchable && !cui__contains_nocase(items[k], st->query)) continue;
+            if (o->searchable && !cui__contains_ci(items[k], st->query)) continue;
             cui_push_id_int(ui, k);
             if (cui__check_item(ui, items[k], o->icons ? o->icons[k] : NULL, selected[k], index, nav)) { selected[k] = !selected[k]; changed = true; }
             cui_pop_id(ui);

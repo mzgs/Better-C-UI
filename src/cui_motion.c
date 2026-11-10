@@ -401,9 +401,6 @@ void cui_gradient_text_ex(cui_ctx *ui, const char *text, const cui_gradient_text
     p->b = cui__color_set(o->to) ? cui_color_of(ui, o->to) : cui_mix(p->a, CUI_C(ui, FOREGROUND), 0.6f);
     p->shift = 0;
     if (o->animate && !cui__still(ui)) { p->shift = (float)fmod(ui->time * 0.12, 1.0); ui->animating = true; }
-    else p->shift = 0;
-    /* without a shift the left edge starts at the first color and the right ends at the second */
-    if (!o->animate) p->shift = 0;
     ui->nodes[i].text_fx = cui__fx_gradient;
     ui->nodes[i].text_fx_data = p;
 }

@@ -608,7 +608,7 @@ bool cui_filter_bar(cui_ctx *ui, const char *id_str, const cui_filter_field *fie
                 cui_node *in = &ui->nodes[it];
                 in->dir = CUI_ROW; in->align = CUI_ALIGN_CENTER; in->gap = 10;
                 in->h = CUI_PX(32); in->pad[1] = in->pad[3] = 10; in->w = CUI_FILL; in->self_align = CUI_ALIGN_STRETCH;
-                in->radius = CUI_CORNERS(CUI_MAX(6.0f, ui->theme.radius_panel - 6.0f));
+                in->radius = CUI_CORNERS(CUI__R_ITEM(ui));
                 in->bg = cui_alpha(CUI_C(ui, ACTIVE), *oh);
                 cui__mark_interactive(ui, it, 0);
                 if (orr.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);

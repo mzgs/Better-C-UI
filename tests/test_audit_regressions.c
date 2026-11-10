@@ -7,6 +7,25 @@
 static int failed, checks;
 #define CHECK(c) do { checks++; if (!(c)) { failed++; fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
+static void test_ascii_helpers(void) {
+    const char *lower = "0123456789abcdef", *upper = "0123456789ABCDEF";
+    for (int c = -128; c <= 256; c++) {
+        int expected = -1;
+        for (int digit = 0; digit < 16; digit++) {
+            if (c == lower[digit] || c == upper[digit]) expected = digit;
+        }
+        CHECK(cui__hex_digit(c) == expected);
+    }
+    CHECK(cui__contains_ci("Mixed CASE", "case"));
+    CHECK(cui__contains_ci("prefix suffix", "fix suf"));
+    CHECK(cui__contains_ci("", ""));
+    CHECK(cui__contains_ci("", NULL));
+    CHECK(!cui__contains_ci("short", "shorter"));
+    CHECK(!cui__contains_ci("", "x"));
+    CHECK(cui__contains_ci("\xc3\xa9" "clair", "\xc3\xa9" "CL"));
+    CHECK(!cui__contains_ci("\xc3\xa9", "\xc3\x89"));
+}
+
 static cui_ctx *context(bool rtl) {
     cui_ctx *ui = cui_create(&(cui_ctx_desc){ .direction = rtl ? CUI_DIRECTION_RTL : CUI_DIRECTION_LTR });
     cui_set_viewport(ui, 800, 600, 1);
@@ -206,6 +225,7 @@ static void test_picker_capacity(void) {
 }
 
 int main(void) {
+    test_ascii_helpers();
     test_shrinking_list(); test_table_controls(); test_horizontal_drag();
     test_parsers(); test_file_names(); test_picker_capacity();
     printf("audit regressions: %d checks, %d failed\n", checks, failed);

@@ -517,14 +517,13 @@ void cui_response_status(cui_ctx *ui, int status, double seconds, double bytes) 
 }
 
 /* percent-decoding and encoding of query parts */
-static int cui__dp_hex(int c) { return c >= '0' && c <= '9' ? c - '0' : (c | 32) >= 'a' && (c | 32) <= 'f' ? (c | 32) - 'a' + 10 : -1; }
 static int cui__url_decode(const char *s, int n, char *out, int cap) {
     int o = 0;
     for (int i = 0; i < n && o < cap - 1; i++) {
         int c = (unsigned char)s[i];
         if (c == '+') c = ' ';
         else if (c == '%' && i + 2 < n) {
-            int h = cui__dp_hex((unsigned char)s[i + 1]), l = cui__dp_hex((unsigned char)s[i + 2]);
+            int h = cui__hex_digit((unsigned char)s[i + 1]), l = cui__hex_digit((unsigned char)s[i + 2]);
             if (h >= 0 && l >= 0) { c = h * 16 + l; i += 2; }
         }
         out[o++] = (char)c;

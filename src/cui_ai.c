@@ -753,7 +753,7 @@ static bool cui__model_item(cui_ctx *ui, const cui_model *m, bool checked) {
     nd->dir = CUI_ROW; nd->align = CUI_ALIGN_CENTER; nd->gap = 10;
     nd->pad[0] = nd->pad[2] = 8; nd->pad[1] = nd->pad[3] = 10;
     nd->w = CUI_FILL; nd->self_align = CUI_ALIGN_STRETCH;
-    nd->radius = CUI_CORNERS(CUI_MAX(6.0f, ui->theme.radius_panel - 6.0f));
+    nd->radius = CUI_CORNERS(CUI__R_ITEM(ui));
     nd->bg = cui_alpha(CUI_C(ui, ACTIVE), *hv);
     cui__mark_interactive(ui, n, 0);
     if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);

@@ -1,6 +1,5 @@
 import json, os, sys
 from PIL import Image, ImageChops
-import sys
 d=sys.argv[1] if len(sys.argv)>1 else 'build/shots'; ref=sys.argv[2] if len(sys.argv)>2 else '../docs/images/components'
 rows=[]
 for r in json.load(open(f'{d}/index.json')):

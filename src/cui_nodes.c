@@ -146,7 +146,6 @@ static cui_color cui__ne_type_color(cui_ctx *ui, int type) {
     if (type <= 0) return CUI_C(ui, TEXT_MUTED);
     return ui->theme.colors[CUI_TOKEN_SERIES_1 + (type - 1) % 6];
 }
-static cui_color cui__ne_accent(cui_ctx *ui) { return CUI_C(ui, ACCENT); }
 
 /* Bezier from an output (a) to an input (d): both ends leave horizontally. */
 static int cui__ne_curve(cui_vec2 a, cui_vec2 d, float z, cui_vec2 *out, int max) {
@@ -240,7 +239,7 @@ static void cui__paint_ne_canvas(cui_ctx *ui, cui_node *n, void *data) {
         const cui__ne_pin *pd = cui__ne_find_pin(b->pins, b->pin_n, l->to);
         if (!pa || !pd) continue;
         bool sel = st->link_selected && st->sel_link == l->id;
-        cui_color c = sel ? cui__ne_accent(ui) : cui_alpha(cui__ne_type_color(ui, pa->type), 0.85f);
+        cui_color c = sel ? CUI_C(ui, ACCENT) : cui_alpha(cui__ne_type_color(ui, pa->type), 0.85f);
         cui__ne_draw_wire(ui, cui__ne_screen(b, pa->x, pa->y), cui__ne_screen(b, pd->x, pd->y), z, sel ? th + 0.5f : th, c);
     }
     cui_pop_clip(ui);
@@ -252,7 +251,7 @@ static void cui__paint_ne_overlay(cui_ctx *ui, cui_node *n, void *data) {
     cui__ne_state *st = b->st;
     float z = b->z;
     cui_rect r = ui->nodes[b->editor_node].rect;
-    cui_color acc = cui__ne_accent(ui);
+    cui_color acc = CUI_C(ui, ACCENT);
     if (st->mode == NE_WIRE) {
         const cui__ne_pin *src = cui__ne_find_pin(b->pins, b->pin_n, st->wire_pin);
         if (src) {
@@ -322,7 +321,7 @@ static void cui__ne_draw_pin(cui_ctx *ui, const cui__ne_build *b, const cui__ne_
     float z = b->z;
     float pr = CUI_MAX(2.5f, CUI__NE_PIN_R * z) * (1.0f + 0.22f * row->hover);
     cui_color tc = cui__ne_type_color(ui, row->type);
-    cui_color acc = cui__ne_accent(ui);
+    cui_color acc = CUI_C(ui, ACCENT);
     bool wiring = st->mode == NE_WIRE;
     const cui__ne_pin *p = cui__ne_find_pin(b->pins, b->pin_n, row->pin);
     bool compat = wiring && p && cui__ne_compatible(st, p);
@@ -355,7 +354,7 @@ static void cui__paint_ne_card(cui_ctx *ui, cui_node *n, void *data) {
     cui_corners rc = CUI_CORNERS(rad);
     bool dark = ui->mode == CUI_THEME_DARK;
     cui_color bg = dark ? CUI_C(ui, SURFACE_RAISED) : CUI_C(ui, SURFACE);
-    cui_color acc = cui__ne_accent(ui);
+    cui_color acc = CUI_C(ui, ACCENT);
     if (cp->lift > 0.01f) cui__draw_elevation(ui, r, rc, CUI_ELEVATION_FLOATING, cp->lift);
     cui_color edge = cp->selected ? acc : cui_mix(CUI_C(ui, BORDER), CUI_C(ui, BORDER_STRONG), cp->hover * 0.7f);
     cui_draw_rect_border(ui, r, rc, bg, edge, 1.0f);

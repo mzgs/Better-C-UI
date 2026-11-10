@@ -78,8 +78,6 @@ static bool cui__rx_class_escape(uint8_t *s, int c) {
     return true;
 }
 
-static int cui__rx_hex(int c) { return c >= '0' && c <= '9' ? c - '0' : (c | 32) >= 'a' && (c | 32) <= 'f' ? (c | 32) - 'a' + 10 : -1; }
-
 /* the byte an escape stands for (\n, \x41, \.), or -1 for a class escape */
 static int cui__rx_escape(cui__rx *R) {
     if (R->p >= R->end) { R->error = "Pattern ends with a backslash"; return -2; }
@@ -92,7 +90,7 @@ static int cui__rx_escape(cui__rx *R) {
     case 'v': return '\v';
     case '0': return 0;
     case 'x': {
-        int h = R->p + 1 < R->end ? cui__rx_hex((unsigned char)R->p[0]) : -1, l = h >= 0 ? cui__rx_hex((unsigned char)R->p[1]) : -1;
+        int h = R->p + 1 < R->end ? cui__hex_digit((unsigned char)R->p[0]) : -1, l = h >= 0 ? cui__hex_digit((unsigned char)R->p[1]) : -1;
         if (h < 0 || l < 0) { R->error = "\\x needs two hex digits"; return -2; }
         R->p += 2;
         return h * 16 + l;

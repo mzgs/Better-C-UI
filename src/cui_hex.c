@@ -285,13 +285,6 @@ void cui_hex_view_goto(cui_ctx *ui, const char *id_str, size_t offset) {
     ui->animating = true;
 }
 
-static int cui__hex_value(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
 static cui_hex_result cui__hex_view_ex_body(cui_ctx *ui, const char *id_str, const uint8_t *data, size_t size, cui_hex_selection *sel, const cui_hex_view_opts *o);
 
 /* left to right in any interface: see cui__keep_ltr */
@@ -402,7 +395,7 @@ static void cui__hxf_type(cui__hxf *f, size_t last) {
     size_t lo = SIZE_MAX, hi = 0;
     if (s->nibble && s->nibble_at != sel->cursor) s->nibble = false;
     for (int i = 0; i < ui->text_in_len; i++) {
-        int v = cui__hex_value(ui->text_in[i]);
+        int v = cui__hex_digit(ui->text_in[i]);
         if (v < 0) continue;
         used = true;
         size_t at = sel->cursor;
