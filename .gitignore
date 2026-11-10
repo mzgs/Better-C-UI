@@ -56,16 +56,6 @@ dkms.conf
 
 build*/
 out/
-*.o
-*.obj
-*.exe
-*.pdb
-*.ilk
-*.a
-*.lib
-*.so
-*.dylib
-*.dll
 .DS_Store
 .vscode/
 .idea/
