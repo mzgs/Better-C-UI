@@ -592,8 +592,11 @@ static void cui__compute_hot(cui_ctx *ui) {
     if (!ui->mouse_inside) return;
     bool found_hot = false, fits = false;
     /* the wheel goes to the innermost scroll area that can move that way, so a
-     * sideways strip (tabs, a board) inside a page does not swallow the page scroll */
-    bool want_x = ui->scroll_dx != 0 || ((ui->mods & CUI_MOD_SHIFT) && ui->scroll_dy != 0), want_y = ui->scroll_dy != 0 && !want_x;
+     * sideways strip (tabs, a board) inside a page does not swallow the page scroll.
+     * Use the dominant axis so small sideways trackpad deltas do not steal vertical scrolling. */
+    bool want_x = (ui->scroll_dx != 0 && fabsf(ui->scroll_dx) > fabsf(ui->scroll_dy)) ||
+                  ((ui->mods & CUI_MOD_SHIFT) && ui->scroll_dy != 0);
+    bool want_y = ui->scroll_dy != 0 && !want_x;
     for (int i = ui->prev_hit_count - 1; i >= 0; i--) {
         cui_hit *h = &ui->prev_hits[i];
         if (!cui__rect_contains(h->rect, ui->mx, ui->my)) continue;

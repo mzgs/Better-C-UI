@@ -38,6 +38,7 @@ What changed in Better-C-UI, newest first. Every component mentioned here runs l
 
 ### Fixed
 
+- Vertical trackpad scrolling over code blocks and other nested horizontal scroll areas no longer stalls when the gesture includes a small sideways delta.
 - Charts no longer hang when large values are close together or an instrument's x-axis requests more ticks than fit on screen.
 - Coverage shows every file in folders with more than 512 children, sorts wide folders efficiently, handles deeply nested paths, and keeps cached paths valid when the caller replaces its strings.
 - Blame can display lines without a commit mapping instead of crashing.

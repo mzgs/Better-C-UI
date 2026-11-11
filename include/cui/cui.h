@@ -468,7 +468,8 @@ typedef struct cui_card_opts {
 CUI_API bool cui_card_begin(cui_ctx *ui, const cui_card_opts *opts);   /* returns true when clicked (hoverable) */
 CUI_API void cui_card_end(cui_ctx *ui);
 
-/* Scroll area with smooth scrolling and overlay scrollbars. */
+/* Scroll area with smooth scrolling and overlay scrollbars. Nested areas route
+ * the wheel by its dominant axis; Shift+wheel requests horizontal scrolling. */
 typedef struct cui_scroll_opts {
     int _;
     const char *id;

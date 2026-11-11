@@ -277,6 +277,47 @@ static void horizontal_frame(cui_ctx *ui) {
     cui_end_frame(ui);
 }
 
+static void code_scroll_frame(cui_ctx *ui, float max_height) {
+    cui_begin_frame(ui, 1.0f / 60);
+    cui_scroll(ui, .id = "page", .width = CUI_PX(300), .height = CUI_PX(240)) {
+        cui_code_block(ui, "code",
+            "int main(void) { return a_long_function_name_with_arguments(123, 456, 789); }\n"
+            "// second line\n// third line\n// fourth line\n",
+            .lang = "c", .max_height = max_height);
+        cui_box(ui, .height = CUI_PX(1000)) {}
+    }
+    cui_end_frame(ui);
+}
+
+static void test_code_scroll_routing(void) {
+    static const struct { float dx, dy; int mods; bool horizontal; } cases[] = {
+        { 0, -1, 0, false }, { -0.01f, -1, 0, false }, { 0.01f, -1, 0, false }, { -1, -1, 0, false },
+        { -1, -0.01f, 0, true }, { -1, 0, 0, true }, { 0, -1, CUI_MOD_SHIFT, true }
+    };
+    for (int rtl = 0; rtl < 2; rtl++) for (int capped = 0; capped < 2; capped++) {
+        for (int k = 0; k < CUI_COUNTOF(cases); k++) {
+            cui_ctx *ui = context(rtl != 0);
+            float height = capped ? 40 : 0;
+            code_scroll_frame(ui, height); code_scroll_frame(ui, height);
+            cui_id page_id = cui_make_id(ui, "page"), code_id = cui_make_id(ui, "code") ^ 0x5C0Du;
+            cui_scroll_state *page = cui_state(ui, page_id, sizeof *page);
+            cui_scroll_state *code = cui_state(ui, code_id, sizeof *code);
+            CHECK(code->content_w > code->view_w && page->content_h > page->view_h);
+            cui_rect r = cui_get_rect(ui, code_id);
+            cui_input_mouse_move(ui, r.x + r.w / 2, r.y + 10);
+            ui->mods = cases[k].mods;
+            cui_input_scroll(ui, cases[k].dx, cases[k].dy);
+            code_scroll_frame(ui, height);
+            bool inner = capped || cases[k].horizontal;
+            CHECK(ui->scroll_target == (inner ? code_id : page_id));
+            CHECK((page->ty > 0) == !inner);
+            CHECK((code->ty > 0.001f) == (capped && cases[k].dy < 0 && !cases[k].mods));
+            CHECK((code->tx > 0) == (inner && (cases[k].dx < 0 || cases[k].mods)));
+            cui_destroy(ui);
+        }
+    }
+}
+
 static void test_horizontal_drag(void) {
     for (int rtl = 0; rtl < 2; rtl++) {
         cui_ctx *ui = context(rtl != 0);
@@ -440,7 +481,7 @@ static void test_picker_capacity(void) {
 
 int main(void) {
     test_ascii_helpers(); test_scopes();
-    test_shrinking_list(); test_table_controls(); test_horizontal_drag();
+    test_shrinking_list(); test_table_controls(); test_horizontal_drag(); test_code_scroll_routing();
     test_parsers(); test_file_names(); test_picker_capacity();
     test_large_row_ranges(); test_json_validation(); test_blame_without_commits();
     test_coverage_scale(); test_texture_bounds();

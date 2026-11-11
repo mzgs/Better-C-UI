@@ -722,7 +722,7 @@ Read-only source code with syntax highlighting, optional line numbers and a copy
 cui_code_block(ui, "counter", source, .lang = "c", .title = "counter.c", .line_numbers = true, .highlight_from = 7);
 ```
 
-Highlighting for C, C++, JavaScript, TypeScript, Python, Rust, Go, JSON and shell, in colors that follow the theme. Long lines scroll sideways, `max_height` makes the block scroll vertically, and the copy button morphs into a check after copying.
+Highlighting for C, C++, JavaScript, TypeScript, Python, Rust, Go, JSON and shell, in colors that follow the theme. Long lines scroll sideways, `max_height` makes the block scroll vertically, and the copy button morphs into a check after copying. Inside a scrolling page, a mostly vertical trackpad gesture scrolls the page when the block has no vertical overflow, even with a small sideways delta. A mostly horizontal gesture or Shift+wheel scrolls long lines sideways.
 
 Returns nothing. `source` is your string, read on every frame, so it can change while it is shown. `lang` takes "c", "cpp", "js", "ts", "python", "rust", "go", "json" or "shell", and "text" for no colors. The title bar shows `title`, or the language when there is no title, and holds the copy button: a block with neither, or with `no_header`, has no copy button. `highlight_from` and `highlight_to` are line numbers from 1, and `highlight_from` alone marks one line. To let people change the code, use the code editor.
 
