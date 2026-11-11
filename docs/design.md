@@ -51,14 +51,22 @@ CUI's look is deliberate. These are the rules every component follows, and they 
 
 | Job | Time |
 |---|---|
-| A row following the pointer or the keys | 100 ms |
-| Hover color, edges, icon color | 140 ms |
-| A focus ring appearing | 140 ms |
-| A check, selection or switch reporting its new state | 180 ms |
-| A disclosure, tree or accordion opening | 320 ms spring, no overshoot |
-| A popover, menu, tooltip or hover card appearing | 280 ms spring from 96% scale, rising 6 pt |
-| A dialog appearing | 340 ms spring |
-| Any floating layer leaving | 160 ms |
+| A row following the pointer or the keys | 60 ms |
+| Hover color, edges, icon color | 100 ms |
+| A focus ring appearing | 100 ms |
+| A selection fill reporting its new state | 120 ms |
+| Press feedback | 160 ms spring |
+| Smooth travel, including switch thumbs | 240 ms spring, no overshoot |
+| A gliding highlight changing shape | 260 ms spring |
+| A disclosure, tree or accordion opening | 200 ms spring, no overshoot |
+| A popover, menu, tooltip or hover card appearing | 180 ms spring from 96% scale, rising 6 pt |
+| A dialog or toast appearing | 220 ms spring |
+| A sheet appearing | 260 ms spring |
+| Any floating layer leaving | 120 ms |
+
+These are the shared presets at normal motion speed. Springs approach the target
+quickly and settle afterward; their duration is not a hard deadline. Tooltip dwell
+delays, toast lifetimes and deliberate holds keep their own clocks.
 
 - Disabled is one opacity everywhere (45%).
 - Exits are faster than entrances. Everything is interruptible because everything is a spring.

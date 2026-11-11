@@ -18,6 +18,59 @@ static cui_ctx *latency_context(void) {
     return ui;
 }
 
+static void test_motion_response(void) {
+    const struct { float duration, bounce, budget; bool tween; } jobs[] = {
+        { CUI__T_HIGHLIGHT, 0, 0.08f, true },
+        { CUI__T_HOVER, 0, 0.10f, true },
+        { CUI__T_FOCUS, 0, 0.10f, true },
+        { CUI__T_STATE, 0, 0.12f, true },
+        { CUI_SPRING_SMOOTH, 0.24f, false },
+        { CUI_SPRING_SNAPPY, 0.16f, false },
+        { CUI_SPRING_MORPH, 0.26f, false },
+        { CUI__SPRING_EXPAND, 0.20f, false },
+        { CUI__SPRING_ENTER, 0.18f, false },
+        { CUI__SPRING_DIALOG, 0.22f, false },
+        { CUI__SPRING_SHEET, 0.26f, false },
+        { CUI__SPRING_EXIT, 0.12f, false }
+    };
+    const int rates[] = { 30, 60, 144 };
+    cui_ctx *ui = latency_context();
+    for (int rate = 0; rate < CUI_COUNTOF(rates); rate++) {
+        float dt = 1.0f / rates[rate];
+        for (int job = 0; job < CUI_COUNTOF(jobs); job++) {
+            cui_spring s = {0};
+            for (int direction = 0; direction < 2; direction++) {
+                float target = direction ? 0 : 1;
+                int frames = (int)ceilf(jobs[job].budget / dt);
+                for (int frame = 0; frame < frames; frame++) {
+                    cui_begin_frame(ui, dt);
+                    if (jobs[job].tween) cui__tween(ui, &s.x, target, jobs[job].duration);
+                    else cui__spring(ui, &s, target, jobs[job].duration, jobs[job].bounce);
+                    CHECK(isfinite(s.x) && isfinite(s.v));
+                    if (!jobs[job].bounce) CHECK(s.x >= 0 && s.x <= 1);
+                    cui_end_frame(ui);
+                }
+                CHECK(fabsf(s.x - target) < 0.05f);
+            }
+            for (int frame = 0; frame < rates[rate] / 2; frame++) {
+                cui_begin_frame(ui, dt);
+                if (jobs[job].tween) cui__tween(ui, &s.x, 0, jobs[job].duration);
+                else cui__spring(ui, &s, 0, jobs[job].duration, jobs[job].bounce);
+                cui_end_frame(ui);
+            }
+            CHECK(s.x == 0 && s.v == 0 && !cui_needs_redraw(ui));
+            cui_set_reduced_motion(ui, true);
+            cui_begin_frame(ui, dt);
+            if (jobs[job].tween) cui__tween(ui, &s.x, 1, jobs[job].duration);
+            else cui__spring(ui, &s, 1, jobs[job].duration, jobs[job].bounce);
+            CHECK(s.x == 1 && s.v == 0);
+            cui_end_frame(ui);
+            cui_set_reduced_motion(ui, false);
+        }
+    }
+    cui_destroy(ui);
+}
+
 static void test_idle_clock(void) {
     cui_ctx *ui = latency_context();
     double before = cui_time(ui);
@@ -28,8 +81,8 @@ static void test_idle_clock(void) {
     cui_spring dialog = {0};
     cui__tween(ui, &hover, 1, CUI__T_HOVER);
     cui__spring(ui, &dialog, 1, CUI__SPRING_DIALOG);
-    CHECK(hover > 0 && hover < 0.5f);
-    CHECK(dialog.x > 0 && dialog.x < 0.1f);
+    CHECK(hover > 0 && hover < 0.75f);
+    CHECK(dialog.x > 0 && dialog.x < 0.5f);
     cui_toast(ui, "Saved", .duration = 4);
     cui_end_frame(ui);
     CHECK(ui->toast_count == 1 && ui->toasts[0].age == 0);
@@ -262,6 +315,7 @@ static void test_native_listing(void) {
 #endif
 
 int main(void) {
+    test_motion_response();
     test_idle_clock(); test_hold_after_idle(); test_clicks_after_idle(); test_long_marks();
     test_long_line_highlights(); test_parallel_repaint(); test_pending_listing();
 #if !defined(_WIN32) && !defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(CUI_NO_FILESYSTEM)

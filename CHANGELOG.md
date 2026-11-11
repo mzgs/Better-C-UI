@@ -23,6 +23,8 @@ What changed in Better-C-UI, newest first. Every component mentioned here runs l
 
 ### Changed
 
+- **Faster UI feedback.** Shorter shared hover, focus, selection and press animations, quicker panel and floating-layer entrances, and faster exits make routine interactions more immediate. Reduced motion, tooltip delays and toast lifetimes are preserved.
+
 - Renamed the shared agent guide to `AGENTS.md` and updated its build, verification and contribution instructions.
 - Renamed the website, documentation headings, release titles and example archives to Better-C-UI; the CUI API and build target names remain compatible.
 - **Every component has a description.** Each section of the component docs now opens with one sentence that says what the component is and what it is for. The site shows it under the page title, on the cards that link to the page and in search results, where it used to show whatever sentence came first ("Weeks start on Monday." for the date picker).

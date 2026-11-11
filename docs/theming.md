@@ -99,6 +99,12 @@ Text is rasterized with subpixel positioning and kerning at the exact pixel size
 
 Animations are springs. Values that report state (a switch thumb, a progress bar, a panel height) land without overshoot. Small feedback (presses, highlights) gets a little life. Exits are faster than entrances.
 
+The shared defaults keep frequent feedback brief: row highlights use 60 ms,
+hover and focus use 100 ms, and selection fills use 120 ms. Panels use 200 ms
+springs, dialogs and toasts 220 ms, and sheets 260 ms; floating exits use 120 ms.
+See the [motion presets](design.md#motion) for the full scale. These do not change
+tooltip dwell delays, toast lifetimes or durations passed to `cui_animate_spring`.
+
 ```c
 cui_set_reduced_motion(ui, true);    /* snap to final states; keep feedback */
 cui_theme_get(ui)->motion = 2.0f;    /* slow motion, handy when designing */

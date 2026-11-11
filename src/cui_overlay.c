@@ -478,7 +478,8 @@ void cui__tooltip_passive(cui_ctx *ui, cui_id anchor, const char *text) {
 static void cui__tooltip_render(cui_ctx *ui) {
     cui__tooltip_state *tt = cui__tooltip_get(ui);
     bool show = tt->visible && (tt->passive || ui->hot == tt->anchor);
-    cui__spring(ui, &tt->t, show ? 1.0f : 0.0f, show ? 0.2f : 0.12f, 0.0f);
+    if (show) cui__spring(ui, &tt->t, 1.0f, CUI__SPRING_ENTER);
+    else cui__spring(ui, &tt->t, 0.0f, CUI__SPRING_EXIT);
     if (show) tt->last_shown = ui->time;
     tt->visible = false;
     if (!show) tt->passive = false;
@@ -563,7 +564,7 @@ static bool cui__modal_begin(cui_ctx *ui, cui_id id, const char *title, bool *op
     float target = is_open ? 1.0f : 0.0f;
     if (is_open) {
         if (kind == 0) cui__spring(ui, &st->t, target, CUI__SPRING_DIALOG);
-        else cui__spring(ui, &st->t, target, 0.42f, 0.0f);   /* sheets travel the height of the screen */
+        else cui__spring(ui, &st->t, target, CUI__SPRING_SHEET);
     } else cui__spring(ui, &st->t, target, CUI__SPRING_EXIT);
     if (!is_open && st->t.x <= 0.01f) { st->t.x = 0; st->t.v = 0; return false; }
     float t = cui__clampf(st->t.x, 0, 1);
@@ -776,7 +777,8 @@ static void cui__toasts_render(cui_ctx *ui) {
             else cui__wakeup_after(ui, t->duration - t->age + 0.01f);
         }
         t->updated = ui->time;
-        cui__spring(ui, &t->enter, t->dismissed ? 0.0f : 1.0f, t->dismissed ? 0.22f : 0.38f, 0.0f);
+        if (t->dismissed) cui__spring(ui, &t->enter, 0.0f, CUI__SPRING_EXIT);
+        else cui__spring(ui, &t->enter, 1.0f, CUI__SPRING_DIALOG);
     }
     for (int i = 0; i < ui->toast_count;) {
         cui_toast_item *rt = &ui->toasts[i];

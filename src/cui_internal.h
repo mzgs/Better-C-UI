@@ -124,20 +124,21 @@ typedef struct cui_spring { float x, v; } cui_spring;
 float cui__animation_dt(cui_ctx *ui);  /* a new transition must not consume time spent idle */
 float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, float bounce);
 float cui__tween(cui_ctx *ui, float *x, float target, float duration);   /* exponential approach */
-#define CUI_SPRING_SMOOTH 0.40f, 0.0f
-#define CUI_SPRING_SNAPPY 0.26f, 0.12f
-#define CUI_SPRING_MORPH  0.42f, 0.16f
+#define CUI_SPRING_SMOOTH 0.24f, 0.0f
+#define CUI_SPRING_SNAPPY 0.16f, 0.12f
+#define CUI_SPRING_MORPH  0.26f, 0.16f
 
 /* Motion and state tokens. One value per job, so every component answers in
  * the same time and the same way. Tween durations are the time to settle. */
-#define CUI__T_HIGHLIGHT 0.10f   /* list and menu rows that follow the pointer or the keys */
-#define CUI__T_HOVER     0.14f   /* hover color, edges, icon color */
-#define CUI__T_FOCUS     0.14f   /* focus rings and focused edges */
-#define CUI__T_STATE     0.18f   /* checked, selected, on: fills that report a state */
-#define CUI__SPRING_EXPAND 0.32f, 0.0f   /* disclosures, trees, accordions open and close */
-#define CUI__SPRING_ENTER  0.28f, 0.0f   /* popovers, menus, tooltips, hover cards */
-#define CUI__SPRING_DIALOG 0.34f, 0.0f   /* dialogs */
-#define CUI__SPRING_EXIT   0.16f, 0.0f   /* every floating layer leaves faster than it came */
+#define CUI__T_HIGHLIGHT 0.06f   /* list and menu rows that follow the pointer or the keys */
+#define CUI__T_HOVER     0.10f   /* hover color, edges, icon color */
+#define CUI__T_FOCUS     0.10f   /* focus rings and focused edges */
+#define CUI__T_STATE     0.12f   /* checked, selected, on: fills that report a state */
+#define CUI__SPRING_EXPAND 0.20f, 0.0f   /* disclosures, trees, accordions open and close */
+#define CUI__SPRING_ENTER  0.18f, 0.0f   /* popovers, menus, tooltips, hover cards */
+#define CUI__SPRING_DIALOG 0.22f, 0.0f   /* dialogs and toasts */
+#define CUI__SPRING_SHEET  0.26f, 0.0f   /* sheets travel the height of the screen */
+#define CUI__SPRING_EXIT   0.12f, 0.0f   /* every floating layer leaves faster than it came */
 #define CUI__ENTER_SCALE 0.96f   /* floating layers grow from here */
 #define CUI__PRESS       0.97f   /* buttons, chips, tiles */
 #define CUI__PRESS_WIDE  0.98f   /* rows and cards: wide targets travel further at the same scale */
