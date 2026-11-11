@@ -260,6 +260,7 @@ typedef enum cui_cursor {
 } cui_cursor;
 
 CUI_API void cui_input_mouse_move(cui_ctx *ui, float x, float y);
+/* Buffered presses are timed at the next frame, including elapsed idle time. */
 CUI_API void cui_input_mouse_button(cui_ctx *ui, cui_mouse_button button, bool down);
 CUI_API void cui_input_mouse_leave(cui_ctx *ui);
 CUI_API void cui_input_scroll(cui_ctx *ui, float dx, float dy);  /* in lines; +dy scrolls up */
@@ -1593,7 +1594,7 @@ typedef struct cui_code_editor_opts {
     bool no_line_numbers;      /* hides the gutter of line numbers */
     bool autofocus;
     const char *placeholder;   /* shown while the text is empty */
-    const cui_text_mark *marks;   /* ranges to highlight (search results, regex matches), sorted by start */
+    const cui_text_mark *marks;   /* byte ranges to highlight, sorted by start; may overlap and span any number of lines */
     int mark_count;            /* number of `marks` */
 } cui_code_editor_opts;
 typedef struct cui_code_editor_result {

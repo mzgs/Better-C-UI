@@ -1161,13 +1161,14 @@ static void cui__edf_build_lines(cui__edf *f, const cui__lang *L, bool json, boo
     if (st->mode == 1 && st->query[0]) { p->query = cui__frame_strdup(ui, st->query, -1); p->qn = (int)strlen(p->query); }
     if (f->o->marks && f->o->mark_count > 0) {   /* the marks that reach the lines in view, copied: the caller owns them */
         const cui_text_mark *mk = f->o->marks;
-        int n = f->o->mark_count, lo = 0, hi = n;
-        while (lo < hi) { int m = lo + (hi - lo) / 2; if (mk[m].start < a - 4096) lo = m + 1; else hi = m; }   /* starts are sorted; marks are short */
-        int k0 = lo, k1 = lo;
-        while (k1 < n && mk[k1].start <= b) k1++;
+        int n = f->o->mark_count, end = 0, count = 0;
+        while (end < n && mk[end].start <= b) {
+            if (mk[end].end >= a) count++;
+            end++;
+        }
         int c = 0;
-        cui_text_mark *keep = cui__frame_alloc(ui, sizeof *keep * (size_t)CUI_MAX(1, k1 - k0));
-        for (int k = k0; k < k1; k++) if (mk[k].end >= a) keep[c++] = mk[k];
+        cui_text_mark *keep = cui__frame_alloc(ui, sizeof *keep * (size_t)CUI_MAX(1, count));
+        for (int k = 0; k < end; k++) if (mk[k].end >= a) keep[c++] = mk[k];
         p->marks = keep; p->nmarks = c;
         for (int k = 0; k < 7; k++) {
             cui_color base = k == 0 ? (ui->accent == CUI_ACCENT_NEUTRAL ? cui_oklch(0.6f, 0.13f, 250, 1) : CUI_C(ui, ACCENT)) : ui->theme.colors[CUI_TOKEN_SERIES_1 + (k - 1)];

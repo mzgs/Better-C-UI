@@ -58,7 +58,7 @@ export class Preview {
     this.canvas.setAttribute('aria-label', `Live preview: ${opts.content}`);
     this.el.append(this.canvas);
     this.dirty = true;
-    this.last = 0;
+    this.last = null;
     this.visible = true;
     this.frames = 0;
     this.stats = { build: 0, paint: 0, tris: 0, fps: 0 };
@@ -239,7 +239,7 @@ export class Preview {
     const x = this.mod.exports;
     const wake = this.wakeAt && now >= this.wakeAt;
     if (!this.dirty && !this.animating && !wake) return false;
-    const dt = this.last ? Math.min((now - this.last) / 1000, 0.25) : 1 / 60;
+    const dt = this.last !== null ? (now - this.last) / 1000 : 1 / 60;
     this.last = now;
     this.dirty = false;
     x.inst_frame(this.inst, dt * settings.speed, this.gl ? 0 : 1);
@@ -255,7 +255,6 @@ export class Preview {
     while (this.fpsWindow.length && now - this.fpsWindow[0] > 1000) this.fpsWindow.shift();
     this.frames++;
     if (this.opts.onStats && (this.frames % 4 === 0 || !this.animating)) this.opts.onStats(this);
-    if (!this.animating) this.last = 0;   // next input starts a fresh dt
     return this.animating;
   }
 
@@ -364,7 +363,8 @@ export class Preview {
     }, { passive: false });
     on('keydown', (e) => {
       if (PASS.has(e.code) || ((e.ctrlKey || e.metaKey) && PASS_CTRL.has(e.code)) || (e.ctrlKey && e.shiftKey && e.code === 'KeyI')) return;
-      const mods = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+      // WASM uses Control as CUI_MOD_PRIMARY on every browser platform.
+      const mods = (e.shiftKey ? 1 : 0) | (e.ctrlKey || e.metaKey ? 2 : 0) | (e.altKey ? 4 : 0);
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') { this.pasteMods = mods; return; }   // paste event follows
       const key = KEYS[e.code];
       if (key) x.inst_key(inst, key, 1, mods);
@@ -375,7 +375,7 @@ export class Preview {
     });
     on('keyup', (e) => {
       const key = KEYS[e.code];
-      const mods = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+      const mods = (e.shiftKey ? 1 : 0) | (e.ctrlKey || e.metaKey ? 2 : 0) | (e.altKey ? 4 : 0);
       if (!key) { if (MODKEYS.has(e.key)) { x.inst_key(inst, 0, 0, mods); this.poke(); } return; }   // releasing Ctrl after a shortcut must register
       x.inst_key(inst, key, 0, mods);
       this.poke();

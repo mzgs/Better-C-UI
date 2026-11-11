@@ -805,6 +805,10 @@ Mouse: click places the caret, Shift+click extends, drag selects (the view scrol
 
 Find and app-provided marks draw only the highlights that reach the visible columns. Find still counts matches throughout the buffer and can navigate to offscreen matches.
 
+`marks` are byte ranges sorted by `start`. They may overlap and span the whole buffer; scrolling past a range's start keeps the rest highlighted until its `end`.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/code-editor-marks-dark.png"><img src="images/components/code-editor-marks.png" alt="A whole-file highlight still visible at line 450"></picture>
+
 ### Diff viewer
 
 Compares two versions of a text line by line.

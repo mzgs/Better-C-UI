@@ -99,8 +99,9 @@ CUI_API bool cui_app_file_dialog(cui_app *app, const cui_file_dialog_opts *opts,
 /* Opens a URL or file with the system's default handler. */
 CUI_API bool cui_app_open_url(const char *url);
 
-/* Renders the current UI into an RGBA buffer (any backend). Handy for
- * screenshots and tests. Returns false when the buffer is too small. */
+/* Renders the current UI into an RGBA buffer (any backend), finishing a pending
+ * frame first. width is the buffer's row stride in pixels. Returns false when
+ * its dimensions cannot hold the completed frame or the stride overflows. */
 CUI_API bool cui_app_screenshot(cui_app *app, void *rgba, int width, int height);
 
 #ifdef __cplusplus

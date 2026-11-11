@@ -44,6 +44,10 @@ software), slow motion down for inspecting animations, force reduced motion
 and set the pixel ratio. Every code block has a wrap toggle, and the choice is
 remembered for the whole site.
 
+Idle wakeups keep the full elapsed time, so timers and toast expiry follow
+the selected speed. Command shortcuts on macOS map to the WebAssembly
+build's primary modifier, including select all, copy, paste and find.
+
 ## How it works
 
 - `shim/`: a small libc (allocator, strings, printf, strtod, time) so plain
@@ -68,6 +72,9 @@ do not share state. A scene first runs the same scripted frames as the
 screenshot tool, so it opens in its documented state, then goes live.
 
 ## Checks
+
+`node web/tools/check_preview.mjs` checks preview timing and keyboard forwarding
+without a browser or WebAssembly build. CTest also runs it when Node is installed.
 
 ```sh
 cd web && node tools/check_shots.mjs && python3 tools/compare_shots.py

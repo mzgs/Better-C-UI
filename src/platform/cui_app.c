@@ -1,6 +1,7 @@
 /* The shared app loop: renderer selection, frame pacing, event driven
  * sleeping and screenshots. Backends supply windows and events. */
 #include "cui_platform.h"
+#include <limits.h>
 
 static cui_app *cui__current_app;
 static void cui__app_set_clip(void *user, const char *utf8);
@@ -286,15 +287,20 @@ int cui_app_run(const cui_app_desc *desc, void (*frame)(cui_ctx *ui, void *user)
 }
 
 bool cui_app_screenshot(cui_app *app, void *rgba, int width, int height) {
-    const cui_draw_data *dd = cui_get_draw_data(app->ui);
-    if (width < dd->width_px || height < dd->height_px || !rgba) return false;
+    if (!rgba || width <= 0 || width > INT_MAX / 4 || height <= 0) return false;
     if (app->in_frame) cui__app_render(app);
-    dd = cui_get_draw_data(app->ui);
+    const cui_draw_data *dd = cui_get_draw_data(app->ui);
     int w = dd->width_px, h = dd->height_px;
+    if (width < w || height < h) return false;
     if (app->gl) {
         /* re-render without swapping so the back buffer holds the frame */
         cui_gl_render(app->gl, dd, true);
         cui_gl_read_pixels(app->gl, w, h, rgba);
+        if (width != w) {
+            unsigned char *p = rgba;
+            for (int y = h - 1; y > 0; y--)
+                memmove(p + (size_t)y * width * 4, p + (size_t)y * w * 4, (size_t)w * 4);
+        }
     } else {
         cui_sw_render(app->sw, dd, rgba, w, h, width * 4, CUI_SW_RGBA);
     }

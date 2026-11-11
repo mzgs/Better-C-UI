@@ -38,6 +38,10 @@ What changed in Better-C-UI, newest first. Every component mentioned here runs l
 
 ### Fixed
 
+- Separate clicks after an idle wait no longer register as a double-click.
+- Browser previews keep elapsed idle time for timers and accept Command shortcuts on macOS.
+- Code editor marks may overlap and span the whole document without disappearing when scrolled past their start.
+- Screenshots validate buffer dimensions against the completed frame after resizing, reject overflowing strides, and honor wider destination rows with OpenGL as well as software rendering.
 - Code editor find and app-provided marks no longer rescan long line prefixes for every highlight, including highlights outside the visible columns.
 - Timers keep time spent idle, so toasts expire on schedule. New transitions after an idle wait keep their entrance, and a hold button does not count time before it was pressed.
 - Large software repaints use the configured workers even when they contain only a few shapes, keeping simple dialog animations from being forced onto one thread.

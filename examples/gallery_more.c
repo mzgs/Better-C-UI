@@ -517,6 +517,10 @@ static void page_code(cui_ctx *ui) {
                            .lang = "shell");
         }
     }
+    section(ui, "Code editor", "Edit the buffer; a highlight can span several lines.");
+    static char code[1024] = "void update_tiles(void) {\n    for (int i = 0; i < 64; i++) {\n        tile_update(cache, i);\n    }\n}\n";
+    cui_text_mark mark = { 0, (int)strlen(code), 0 };
+    cui_code_editor(ui, "editable-code", code, sizeof code, .lang = "c", .height = 180, .marks = &mark, .mark_count = 1);
     section(ui, "JSON viewer", "Collapsible, with counts. Click a brace to fold it.");
     cui_json_view(ui, "json",
         "{\"name\": \"cui\", \"version\": \"1.1.0\", \"private\": false, \"downloads\": 128400,\n"

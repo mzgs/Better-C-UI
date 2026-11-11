@@ -480,18 +480,19 @@ void cui_input_mouse_move(cui_ctx *ui, float x, float y) {
 
 void cui_input_mouse_leave(cui_ctx *ui) { ui->mouse_inside = false; ui->mx = -1e6f; ui->my = -1e6f; cui__poke(ui); }
 
+static void cui__count_click(cui_ctx *ui) {
+    float dx = ui->mx - ui->last_click_x, dy = ui->my - ui->last_click_y;
+    if (ui->click_count && ui->time - ui->last_click_time < 0.4 && dx * dx + dy * dy < 25) ui->click_count++;
+    else ui->click_count = 1;
+    ui->last_click_time = ui->time; ui->last_click_x = ui->mx; ui->last_click_y = ui->my;
+}
+
 void cui_input_mouse_button(cui_ctx *ui, cui_mouse_button b, bool down) {
     if ((int)b < 0 || (int)b > 2) return;
     cui__poke(ui);
     if (down && !ui->mdown[b]) {
         ui->mpressed[b] = true;
-        if (b == CUI_MOUSE_LEFT) {
-            double t = ui->time;
-            float dx = ui->mx - ui->last_click_x, dy = ui->my - ui->last_click_y;
-            if (t - ui->last_click_time < 0.4 && dx * dx + dy * dy < 25) ui->click_count++;
-            else ui->click_count = 1;
-            ui->last_click_time = t; ui->last_click_x = ui->mx; ui->last_click_y = ui->my;
-        }
+        if (b == CUI_MOUSE_LEFT && ui->in_frame) cui__count_click(ui);
     }
     if (!down && ui->mdown[b]) ui->mreleased[b] = true;
     ui->mdown[b] = down;
@@ -740,6 +741,8 @@ void cui_begin_frame(cui_ctx *ui, float dt) {
     ui->in_frame = true;
     ui->dt = dt;
     ui->time += dt;
+    /* Events arrive before the frame advances the clock, including time spent idle. */
+    if (ui->mpressed[CUI_MOUSE_LEFT]) cui__count_click(ui);
     ui->frame++;
     ui->animating = false;
     ui->wakeup = -1;

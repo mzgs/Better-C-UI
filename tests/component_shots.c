@@ -1169,6 +1169,28 @@ static void body_code_editor(cui_ctx *ui) {
         }
     }
 }
+
+static char ed_marks_src[16384];
+static void body_code_editor_marks(cui_ctx *ui) {
+    if (!ed_marks_src[0]) {
+        size_t used = 0;
+        for (int line = 0; line < 600; line++)
+            used += (size_t)snprintf(ed_marks_src + used, sizeof ed_marks_src - used, "tile_update(cache, %d);\n", line);
+    }
+    cui_text_mark mark = { 0, (int)strlen(ed_marks_src), 0 };
+    cui_column(ui, .width = CUI_FILL, .gap = 12) {
+        cui_text(ui, "One highlight across the whole file", .font = CUI_FONT_MEDIUM);
+        cui_code_editor(ui, "marked-code", ed_marks_src, sizeof ed_marks_src, .lang = "c", .height = 236,
+                        .read_only = true, .marks = &mark, .mark_count = 1);
+    }
+}
+static void scene_code_editor_marks(cui_ctx *ui, int f) {
+    if (f < 0) {
+        if (-f - 1 == 3) cui_code_editor_goto(ui, "marked-code", 450, 1);
+        return;
+    }
+    frame_wrap(ui, body_code_editor_marks);
+}
 /* ---- tool panels ---- */
 SCENE(inspector) {
     static float pos[3] = { 12.5f, 0.0f, -4.25f }, rot[3] = { 0, 45, 0 }, scale[3] = { 1, 1, 1 };
@@ -4006,6 +4028,7 @@ int main(int argc, char **argv) {
         { "tree-table", scene_tree_table, 760, 576, true }, { "path-bar", scene_path_bar, 680, 330, true },
         { "json-view", scene_json_view, 560, 330, true }, { "markdown", scene_markdown, 700, 850, true },
         { "code-editor", scene_code_editor, 760, 446, true },
+        { "code-editor-marks", scene_code_editor_marks, 760, 328, true },
         { "file-browser-loading", scene_file_browser_loading, 900, 460, true },
         { "diff-view", scene_diff_view, 900, 480, true },
         { "inspector", scene_inspector, 520, 640, true }, { "log-console", scene_log_console, 820, 440, true }, { "terminal", scene_terminal, 820, 420, true }, { "emoji-picker", scene_emoji_picker, 720, 470, true }, { "chat", scene_chat, 560, 440, true },

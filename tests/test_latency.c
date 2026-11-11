@@ -76,6 +76,60 @@ static void test_hold_after_idle(void) {
     cui_destroy(ui);
 }
 
+static void test_clicks_after_idle(void) {
+    cui_ctx *ui = latency_context();
+    cui_input_mouse_move(ui, 20, 20);
+    for (int click = 0; click < 4; click++) {
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        cui_begin_frame(ui, click == 3 ? 2 : 0.1f);
+        CHECK(ui->click_count == (click == 3 ? 1 : click + 1));
+        cui_end_frame(ui);
+    }
+    cui_input_mouse_move(ui, 100, 100);
+    cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+    cui_begin_frame(ui, 0.1f);
+    CHECK(ui->click_count == 1);
+    cui_end_frame(ui);
+    cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+    cui_begin_frame(ui, 0.1f);
+    cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+    CHECK(ui->click_count == 2);
+    cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+    CHECK(ui->click_count == 2);
+    cui_end_frame(ui);
+    cui_destroy(ui);
+}
+
+static int latency_mark_vertices(cui_theme_mode theme, int start) {
+    char text[10001];
+    for (int i = 0; i < 2000; i++) memcpy(text + i * 5, "aaaa\n", 5);
+    text[10000] = 0;
+    cui_ctx *ui = cui_create(&(cui_ctx_desc){ .theme = theme });
+    cui_set_viewport(ui, 800, 600, 1);
+    cui_set_reduced_motion(ui, true);
+    cui_text_mark marks[] = { { start, 10000, 0 }, { 7000, 7010, 1 } };
+    for (int frame = 0; frame < 4; frame++) {
+        if (frame == 2) cui_code_editor_goto(ui, "code", 1500, 1);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_code_editor(ui, "code", text, sizeof text, .lang = "text", .marks = marks, .mark_count = start < 0 ? 0 : 2);
+        cui_end_frame(ui);
+    }
+    int count = cui_get_draw_data(ui)->vertex_count;
+    cui_destroy(ui);
+    return count;
+}
+
+static void test_long_marks(void) {
+    for (int dark = 0; dark < 2; dark++) {
+        int none = latency_mark_vertices((cui_theme_mode)dark, -1);
+        int whole = latency_mark_vertices((cui_theme_mode)dark, 0);
+        int clipped = latency_mark_vertices((cui_theme_mode)dark, 6000);
+        CHECK(whole > none);
+        CHECK(whole == clipped);
+    }
+}
+
 static void test_long_line_highlights(void) {
     enum { LEN = 20000 };
     char *text = malloc(LEN + 1);
@@ -208,7 +262,8 @@ static void test_native_listing(void) {
 #endif
 
 int main(void) {
-    test_idle_clock(); test_hold_after_idle(); test_long_line_highlights(); test_parallel_repaint(); test_pending_listing();
+    test_idle_clock(); test_hold_after_idle(); test_clicks_after_idle(); test_long_marks();
+    test_long_line_highlights(); test_parallel_repaint(); test_pending_listing();
 #if !defined(_WIN32) && !defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(CUI_NO_FILESYSTEM)
     test_native_listing();
 #endif

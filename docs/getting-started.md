@@ -243,6 +243,11 @@ Any CUI app can save a screenshot and exit, which is handy for docs and visual t
 CUI_SCREENSHOT=out.png CUI_SCREENSHOT_FRAMES=60 ./my_app
 ```
 
+`cui_app_screenshot(app, rgba, width, height)` finishes a pending frame before
+checking its size. Allocate `width * height * 4` bytes; `width` is the destination
+row stride in pixels for both renderers. A buffer too small for the completed
+frame, or a width whose byte stride overflows, returns false.
+
 For unit tests, skip the window entirely: create a context with the software renderer, feed input with `cui_input_*` and render into memory. `tests/test_main.c` shows the pattern.
 
 ## Run in the browser
