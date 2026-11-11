@@ -734,6 +734,7 @@ int cui_toast_ex(cui_ctx *ui, const char *title, const cui_toast_opts *o) {
     t->show_timer = o->show_timer;
     t->duration = o->duration != 0 ? o->duration : (o->show_timer ? 6.0f : 4.0f);
     t->height = 64;
+    t->updated = ui->time;
     ui->animating = true;
     return t->handle;
 }
@@ -770,10 +771,11 @@ static void cui__toasts_render(cui_ctx *ui) {
     for (int i = 0; i < ui->toast_count; i++) {
         cui_toast_item *t = &ui->toasts[i];
         if (!hovered && t->duration > 0 && !t->dismissed) {
-            t->age += ui->dt;
+            t->age += (float)(ui->time - t->updated);
             if (t->age >= t->duration) t->dismissed = true;
             else cui__wakeup_after(ui, t->duration - t->age + 0.01f);
         }
+        t->updated = ui->time;
         cui__spring(ui, &t->enter, t->dismissed ? 0.0f : 1.0f, t->dismissed ? 0.22f : 0.38f, 0.0f);
     }
     for (int i = 0; i < ui->toast_count;) {

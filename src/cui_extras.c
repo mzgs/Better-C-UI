@@ -460,7 +460,7 @@ bool cui_copy_button(cui_ctx *ui, const char *id_str, const char *text) {
     return clicked;
 }
 
-typedef struct { float progress; cui_spring back; bool fired; } cui__hold_state;
+typedef struct { float progress; cui_spring back; bool fired, held; } cui__hold_state;
 typedef struct { float t; cui_color c; } cui__hold_paint;
 
 static void cui__paint_hold(cui_ctx *ui, cui_node *n, void *data) {
@@ -485,7 +485,7 @@ bool cui_hold_button_ex(cui_ctx *ui, const char *label, const cui_hold_opts *o) 
     if (ui->focus == id && ui->focus_visible && (cui_key_down(ui, CUI_KEY_SPACE) || cui_key_down(ui, CUI_KEY_ENTER))) held = true;
     bool fire = false;
     if (held && !st->fired) {
-        st->progress += ui->dt / duration;
+        st->progress += (st->held ? ui->dt : 0) / duration;
         if (st->progress >= 1) { st->progress = 1; st->fired = true; fire = true; }
         ui->animating = true;
         st->back.x = st->progress;
@@ -495,6 +495,7 @@ bool cui_hold_button_ex(cui_ctx *ui, const char *label, const cui_hold_opts *o) 
         cui__spring(ui, &st->back, 0, 0.35f, 0.0f);
         st->progress = st->back.x;
     }
+    st->held = held;
     cui_button_opts bo;
     memset(&bo, 0, sizeof bo);
     bo.variant = o->variant ? o->variant : CUI_BUTTON_DANGER;

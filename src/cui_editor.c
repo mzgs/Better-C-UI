@@ -469,6 +469,9 @@ static void cui__paint_editor(cui_ctx *ui, cui_node *n, void *data) {
         const char *s = p->text;
         float y = r.y + CUI__ED_INSET + (float)((double)line * p->lh - p->sy);
         int als = p->ls[k], ale = p->ls[k + 1] - 1;                    /* in the buffer */
+        int v0 = cui__ed_at_col(s, ls, le, (float)CUI_MAX(0, p->vc0 - 1), p->tab);
+        int v1 = cui__ed_at_col(s, ls, le, (float)(p->vc1 + 2), p->tab);
+        int col0 = cui__ed_col(s, ls, v0, p->tab);
         /* selection */
         if (s1 > s0 && s1 > als && s0 <= ale) {
             int a = CUI_MAX(s0, als) - p->base, b = CUI_MIN(s1, ale) - p->base;
@@ -481,17 +484,25 @@ static void cui__paint_editor(cui_ctx *ui, cui_node *n, void *data) {
             const cui_text_mark *mk = &p->marks[m];
             if (mk->start > ale) break;
             if (mk->end <= als && !(mk->end == mk->start && mk->start == als)) continue;
-            int a = CUI_MAX(mk->start, als) - p->base, b = CUI_MIN(mk->end, ale) - p->base;
-            float xa = (float)cui__ed_col(s, ls, a, p->tab) * p->cw, xb = (float)cui__ed_col(s, ls, b, p->tab) * p->cw;
+            int a = CUI_MAX(mk->start - p->base, v0), b = CUI_MIN(mk->end - p->base, v1);
+            if (a > v1) break;
+            if (b < v0) continue;
+            float xa = (float)cui__ed_adv(s, v0, a, p->tab, col0) * p->cw;
+            float xb = (float)cui__ed_adv(s, v0, b, p->tab, col0) * p->cw;
             if (xb - xa < 2) { xa -= 1; xb = xa + 2; }   /* an empty match shows as a bar */
             cui_draw_rect(ui, (cui_rect){ x0 + xa, y + 1, xb - xa, p->lh - 2 }, CUI_CORNERS(2), p->mark_colors[CUI_CLAMP(mk->color, 0, 6)]);
         }
         /* find matches */
         if (p->qn > 0) {
-            for (int i = ls; i + p->qn <= le; i++) {
-                if (!cui__ed_hit(s, le, i, p->query, p->qn)) continue;
-                float xa = (float)cui__ed_col(s, ls, i, p->tab) * p->cw, xb = (float)cui__ed_col(s, ls, i + p->qn, p->tab) * p->cw;
-                cui_draw_rect_border(ui, (cui_rect){ x0 + xa - 1, y + 1, xb - xa + 2, p->lh - 2 }, CUI_CORNERS(3), p->match, p->match_edge, 1);
+            int from = CUI_MAX(ls, v0 - p->qn + 1);
+            int col = cui__ed_col(s, ls, from, p->tab);
+            for (int i = from; i + p->qn <= le && i <= v1; i++) {
+                if (cui__ed_hit(s, le, i, p->query, p->qn)) {
+                    float xa = (float)CUI_MAX(col, col0) * p->cw;
+                    float xb = (float)cui__ed_adv(s, i, CUI_MIN(i + p->qn, v1), p->tab, col) * p->cw;
+                    cui_draw_rect_border(ui, (cui_rect){ x0 + xa - 1, y + 1, xb - xa + 2, p->lh - 2 }, CUI_CORNERS(3), p->match, p->match_edge, 1);
+                }
+                col = cui__ed_adv(s, i, i + 1, p->tab, col);
             }
         }
         /* the bracket pair */

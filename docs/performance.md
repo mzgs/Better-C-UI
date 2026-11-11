@@ -22,6 +22,10 @@ Other options: `--storm` (a new window size and display scale every 10 frames), 
 
 A 30 second headless run of the Notes example is part of `ctest`.
 
+`cui_bench` reports mean, 95th and 99th percentile, and maximum times, separating frame construction from software rasterization. It covers every gallery page plus long-line find and marks, and dialogs opening and closing with incremental rendering at 2× and 3× scale. Run `./build/tests/cui_bench --interactions` for just those interaction cases; use a Release build and avoid running other benchmarks at the same time. These are headless timings and exclude presentation and input-to-display latency. They are measurements for the current machine, not a guarantee for every device.
+
+`cui_test_latency` checks long-line find and marks, horizontal scrolling, idle wakeups and toast expiry, reduced motion, single-thread versus multi-thread pixels, pending custom listings, and native folder read completion and destruction. Long-line checks run under a test timeout rather than asserting a machine-specific millisecond limit.
+
 ## Results
 
 All numbers come from Linux on a shared cloud machine (x86-64, `-O2`). Times vary with the machine; memory and allocation counts do not.

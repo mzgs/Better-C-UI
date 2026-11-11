@@ -704,7 +704,11 @@ A folder's contents with name, date modified and size, folders first and names i
 
 `cui_file_picker` puts a browser in a dialog with a footer: Open, or with `save` a name field and Save (selecting a file fills in its name), or with `folders` Choose. It returns true once with the chosen path; `*open` turns false then or on Cancel and Esc. It is drawn by CUI like the rest of the window; `cui_app_file_dialog` in `cui_app.h` opens the system's own dialog instead.
 
-A folder is read when you enter it or reload, not every frame, and only the rows in view are built, so a folder of 20,000 files scrolls and filters without slowing down. Reading goes through `list`, which defaults to `cui_fs_list` (POSIX or Windows; nothing in a browser build), so the same browser can show a zip file, a remote bucket or an asset database. A lister returns `CUI_FILE_LIST_NAMES_FULL` (-2) when the name buffer is too small; the browser grows that buffer and retries. Direct callers of `cui_fs_list` should do the same, rather than accepting a partial listing.
+A folder is read when you enter it or reload, and only the rows in view are built. With `list` unset or set to `cui_fs_list`, native directory reads run on a worker; `r.loading` stays true while the read is pending. The list keeps its size and shows “Reading folder...” while navigation and Cancel remain usable. One read runs at a time per browser: if you navigate again, its old results are discarded and the latest destination is read next. Closing the browser does not wait for a filesystem call to finish. Temporary worker buffers use the system allocator; accepted results are copied into context-owned memory on the UI thread.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/file-browser-loading-dark.png"><img src="images/components/file-browser-loading.png" alt="File browser reading a folder while navigation remains available"></picture>
+
+Custom `list` callbacks run on the UI thread. Return cached data promptly, or `CUI_FILE_LIST_PENDING` (-3) while a background task prepares it; the browser polls again while pending. A browser build has no local disk, so use a custom lister there. A lister returns `CUI_FILE_LIST_NAMES_FULL` (-2) when the name buffer is too small; the browser grows that buffer and retries. Direct calls to `cui_fs_list` are synchronous and should also retry with a larger buffer when needed.
 
 File patterns support case-insensitive `*` and `?`, including repeated stars. Matching uses iteration rather than recursively expanding every possible match.
 
@@ -798,6 +802,8 @@ Mouse: click places the caret, Shift+click extends, drag selects (the view scrol
 - Enter starts the new line at this line's indentation, one level deeper after an opening bracket in C-like languages or a colon in Python; between a pair of brackets the closing one moves to a line of its own. A closing brace typed on a blank line steps back a level.
 - Ctrl+F opens the find bar with the selected text: the matches are boxed, Enter and Shift+Enter (or the arrows) go to the next and previous one, wrapping around, and the count shows which one is selected. Case is ignored. Ctrl+G opens go to line (`42` or `42:7`). Esc closes the bar and returns to the code.
 - Esc in the code closes the find bar, or else clears the selection; with neither, it lets the next Tab move focus out of the editor, since Tab otherwise types.
+
+Find and app-provided marks draw only the highlights that reach the visible columns. Find still counts matches throughout the buffer and can navigate to offscreen matches.
 
 ### Diff viewer
 

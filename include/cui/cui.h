@@ -198,7 +198,8 @@ CUI_API void cui_set_viewport(cui_ctx *ui, float width, float height, float scal
 CUI_API cui_vec2 cui_viewport_size(cui_ctx *ui);
 CUI_API float cui_dpi_scale(cui_ctx *ui);
 
-/* dt is the time since the previous frame in seconds. */
+/* dt is the full elapsed time since the previous frame in seconds, including
+ * idle waits. Clocks and timers keep that time; animation steps bound long gaps. */
 CUI_API void cui_begin_frame(cui_ctx *ui, float dt);
 CUI_API void cui_end_frame(cui_ctx *ui);
 
@@ -214,7 +215,7 @@ CUI_API void cui_request_redraw(cui_ctx *ui);
  * while it is needed; an idle app then sleeps until the soonest one instead
  * of redrawing continuously. */
 CUI_API void cui_request_wakeup(cui_ctx *ui, float seconds);
-CUI_API double cui_time(cui_ctx *ui);
+CUI_API double cui_time(cui_ctx *ui);       /* accumulated elapsed seconds, including idle waits */
 CUI_API float cui_delta_time(cui_ctx *ui);   /* seconds since the last frame */
 CUI_API uint64_t cui_frame_count(cui_ctx *ui);
 
@@ -1394,8 +1395,9 @@ CUI_API void cui_path_bar_menu_end(cui_ctx *ui);
  * A folder is read when you enter it (or reload), not every frame, and only
  * the rows in view are built.
  *
- * Listing goes through `list`, by default cui_fs_list (the local disk; none
- * in a browser build), so a dialog can show any tree: a zip, a remote store.
+ * Local disk listings run on a worker while navigation stays usable. Custom
+ * `list` callbacks run on the UI thread and should return cached data promptly.
+ * A browser build has no local disk; a custom lister can show any tree.
  *
  *     static bool open; static char path[512];
  *     if (cui_button(ui, "Open...")) open = true;
@@ -1409,9 +1411,11 @@ typedef struct cui_file_entry {
 } cui_file_entry;
 /* Lists a folder into out (names copied into names). Returns the number of
  * entries, -1 when the folder cannot be read, or CUI_FILE_LIST_NAMES_FULL
- * when names is too small (retry with a larger buffer). Without hidden, names
- * starting with a dot (and hidden files on Windows) are left out. */
-enum { CUI_FILE_LIST_NAMES_FULL = -2 };
+ * when names is too small (retry with a larger buffer). A custom browser lister
+ * can return CUI_FILE_LIST_PENDING while its cache loads; it will be polled again.
+ * Without hidden, names starting with a dot (and hidden files on Windows)
+ * are left out. cui_fs_list itself is synchronous. */
+enum { CUI_FILE_LIST_NAMES_FULL = -2, CUI_FILE_LIST_PENDING = -3 };
 typedef int (*cui_file_list_fn)(void *user, const char *path, cui_file_entry *out, int cap, char *names, size_t names_cap, bool hidden);
 CUI_API int cui_fs_list(void *user, const char *path, cui_file_entry *out, int cap, char *names, size_t names_cap, bool hidden);
 
@@ -1424,7 +1428,7 @@ typedef struct cui_file_browser_opts {
     bool no_places;            /* the sidebar of places */
     const char *const *places; /* full paths for the sidebar, each shown by its last part; at most 6 */
     int place_count;           /* entries in `places`; with `places` NULL the sidebar shows home, desktop, documents, downloads and the root */
-    cui_file_list_fn list;     /* function that lists a folder; set it to browse something other than the local disk */
+    cui_file_list_fn list;     /* UI-thread callback for a custom tree; return cached data promptly. NULL or cui_fs_list reads on a worker */
     void *list_user;           /* passed to `list` as its first argument; `list` defaults to cui_fs_list, the local disk */
     int max_entries;           /* default 20,000 */
 } cui_file_browser_opts;
@@ -1433,6 +1437,7 @@ typedef struct cui_file_browser_result {
     const char *selected;      /* the selected entry as a full path, or NULL; valid this frame */
     bool navigated;            /* the folder in *path changed */
     bool error;                /* the folder could not be read */
+    bool loading;              /* the listing is pending; navigation and Cancel remain usable */
 } cui_file_browser_result;
 /* path: the folder shown, yours; the browser writes it as you move around. */
 CUI_API cui_file_browser_result cui_file_browser_ex(cui_ctx *ui, const char *id, char *path, size_t path_cap, const cui_file_browser_opts *opts);

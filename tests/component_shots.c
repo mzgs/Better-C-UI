@@ -2117,6 +2117,16 @@ SCENE(file_browser) {
         cui_file_picker(ui, "save", &open, picked, sizeof picked, .save = true, .name = "report.pdf", .start = "/Users/maya/Documents", .list = demo_fs);
     }
 }
+static int shot_pending_folder(void *user, const char *path, cui_file_entry *out, int cap, char *names, size_t names_cap, bool hidden) {
+    (void)user; (void)path; (void)out; (void)cap; (void)names; (void)names_cap; (void)hidden;
+    return CUI_FILE_LIST_PENDING;
+}
+SCENE(file_browser_loading) {
+    static char path[512] = "/Users/maya/Projects/fieldnotes";
+    cui_box(ui, UPTO(900)) {
+        cui_file_browser(ui, "files", path, sizeof path, .list = shot_pending_folder, .height = CUI_PX(360));
+    }
+}
 static cui_terminal_buffer g_term;
 static void term_demo_fill(void) {
     static char text[16384];
@@ -3996,6 +4006,7 @@ int main(int argc, char **argv) {
         { "tree-table", scene_tree_table, 760, 576, true }, { "path-bar", scene_path_bar, 680, 330, true },
         { "json-view", scene_json_view, 560, 330, true }, { "markdown", scene_markdown, 700, 850, true },
         { "code-editor", scene_code_editor, 760, 446, true },
+        { "file-browser-loading", scene_file_browser_loading, 900, 460, true },
         { "diff-view", scene_diff_view, 900, 480, true },
         { "inspector", scene_inspector, 520, 640, true }, { "log-console", scene_log_console, 820, 440, true }, { "terminal", scene_terminal, 820, 420, true }, { "emoji-picker", scene_emoji_picker, 720, 470, true }, { "chat", scene_chat, 560, 440, true },
         { "hex-viewer", scene_hex_viewer, 760, 420, true },

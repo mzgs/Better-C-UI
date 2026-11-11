@@ -459,7 +459,7 @@ int t = cui_toast(ui, "Message archived", .action = "Undo");
 if (cui_toast_action_clicked(ui, t)) undo();
 ```
 
-Toasts stack in the bottom right corner. Older toasts tuck behind the newest one; hovering expands the stack and pauses the timers. Drag a toast right to dismiss it: a fling or a long drag carries its speed off the screen, a short one springs back, and dragging left meets rubbery resistance. Options: `description`, `tone`, `duration` (seconds, default 4, negative to keep), `action`. Use toasts for background events; for the result of a button press, change the button instead.
+Toasts stack in the bottom right corner. Older toasts tuck behind the newest one; hovering expands the stack and pauses the timers. Drag a toast right to dismiss it: a fling or a long drag carries its speed off the screen, a short one springs back, and dragging left meets rubbery resistance. Timers count time spent idle from the moment the toast is created. Options: `description`, `tone`, `duration` (seconds, default 4, negative to keep), `action`. Use toasts for background events; for the result of a button press, change the button instead.
 
 Keyboard: a toast's action button takes Tab, and Enter or Space presses it. Toasts never take the focus by themselves.
 
@@ -759,7 +759,7 @@ if (cui_hold_button(ui, "Hold to delete", .icon = CUI_ICON_TRASH_2)) delete_ever
 
 The hold button fills while pressed (or while Space is held with keyboard focus) and fires once when full; let go early and it springs back. Options: `duration` (1.2 s), `icon`, `variant` (danger by default).
 
-`cui_button_group` is a scope that takes no options and returns nothing: each button inside still returns its own click. Buttons in a group are ghost buttons unless they set a `variant`, and share one outline. `cui_copy_button` returns true on the frame it is clicked, after it has put the text on the clipboard; its `id` keeps the check that shows for 1.6 seconds afterwards. `cui_hold_button` returns true once, on the frame the fill completes, and not again until the button is let go. Its label is also its identity, and `duration` is in seconds. Use the hold button where a slip would cost something, and a confirm button where a second click is enough.
+`cui_button_group` is a scope that takes no options and returns nothing: each button inside still returns its own click. Buttons in a group are ghost buttons unless they set a `variant`, and share one outline. `cui_copy_button` returns true on the frame it is clicked, after it has put the text on the clipboard; its `id` keeps the check that shows for 1.6 seconds afterwards. `cui_hold_button` returns true once, on the frame the fill completes, and not again until the button is let go. Its label is also its identity, and `duration` counts seconds held, excluding time before the press. Use the hold button where a slip would cost something, and a confirm button where a second click is enough.
 
 Keyboard: Tab moves through the buttons. Enter or Space presses a button in a group or the copy button, and holding either key fills the hold button.
 

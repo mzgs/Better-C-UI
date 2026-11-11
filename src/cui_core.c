@@ -681,6 +681,10 @@ void cui__mark_interactive(cui_ctx *ui, int node, int flags) {
 /* Animation                                                                */
 /* ------------------------------------------------------------------------ */
 
+float cui__animation_dt(cui_ctx *ui) {
+    return ui->dt > 0.1f ? 1.0f / 60.0f : ui->dt;
+}
+
 float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, float bounce) {
     float motion = ui->theme.motion;
     if (motion <= 0.0f || ui->frame <= 1) { s->x = target; s->v = 0; return target; }
@@ -688,8 +692,7 @@ float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, floa
     float w = 2.0f * CUI_PI / duration;
     float k = w * w;
     float c = 2.0f * (1.0f - bounce) * w;
-    float dt = ui->dt;
-    if (dt > 0.1f) dt = 0.1f;
+    float dt = cui__animation_dt(ui);
     int steps = (int)ceilf(dt / (1.0f / 240.0f));
     if (steps < 1) steps = 1;
     float h = dt / (float)steps;
@@ -708,7 +711,7 @@ float cui__tween(cui_ctx *ui, float *x, float target, float duration) {
     float motion = ui->theme.motion;
     if (motion <= 0.0f || ui->frame <= 1) { *x = target; return target; }
     duration *= motion;
-    float a = 1.0f - expf(-ui->dt * 4.6f / duration);
+    float a = 1.0f - expf(-cui__animation_dt(ui) * 4.6f / duration);
     *x += (target - *x) * a;
     if (fabsf(*x - target) < 0.002f) *x = target;
     else ui->animating = true;
@@ -733,8 +736,7 @@ float cui_animate_spring(cui_ctx *ui, cui_id id, float target, float duration, f
 
 void cui_begin_frame(cui_ctx *ui, float dt) {
     if (ui->in_frame) cui_end_frame(ui);
-    if (dt < 0) dt = 0;
-    if (dt > 0.25f) dt = 0.25f;
+    if (!isfinite(dt) || dt < 0) dt = 0;
     ui->in_frame = true;
     ui->dt = dt;
     ui->time += dt;

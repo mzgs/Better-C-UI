@@ -586,7 +586,7 @@ static void cui__sw_paint_rect(cui_sw_renderer *r, const cui_draw_data *dd, void
     }
     int h = y1 - y0;
     int threads = r->threads;
-    if (h < 64 || dd->index_count < 600 || (size_t)(x1 - x0) * (size_t)h < 200000) threads = 1;
+    if (h < 64 || (size_t)(x1 - x0) * (size_t)h < 200000) threads = 1;
     if (threads > h / 16) threads = CUI_MAX(1, h / 16);
     cui__sw_job jobs[32];
     int band = (h + threads - 1) / threads;

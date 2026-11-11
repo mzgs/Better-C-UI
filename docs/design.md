@@ -63,6 +63,7 @@ CUI's look is deliberate. These are the rules every component follows, and they 
 - Disabled is one opacity everywhere (45%).
 - Exits are faster than entrances. Everything is interruptible because everything is a spring.
 - Every animation has a reduced motion path that keeps the final state and the feedback.
+- A spring or tween resumes with one 60 Hz step after a gap longer than 100 ms, so an interaction after idle keeps its entrance. Clocks and expiry timers still receive the full elapsed time.
 
 ## Responsive
 

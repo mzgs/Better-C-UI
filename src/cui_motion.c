@@ -90,7 +90,7 @@ bool cui_typewriter_ex(cui_ctx *ui, const char *id_str, const char *text, const 
         /* catch up faster when far behind, as with streamed text */
         int behind = len - st->bytes;
         float boost = behind > 120 ? (float)behind / 120.0f : 1.0f;
-        st->chars += ui->dt * speed * boost;
+        st->chars += cui__animation_dt(ui) * speed * boost;
         while (st->chars >= 1 && st->bytes < len) { st->bytes = cui__utf8_next(text, len, st->bytes); st->chars -= 1; }
         ui->animating = true;
     } else if (st->bytes < len) {

@@ -38,6 +38,11 @@ What changed in Better-C-UI, newest first. Every component mentioned here runs l
 
 ### Fixed
 
+- Code editor find and app-provided marks no longer rescan long line prefixes for every highlight, including highlights outside the visible columns.
+- Timers keep time spent idle, so toasts expire on schedule. New transitions after an idle wait keep their entrance, and a hold button does not count time before it was pressed.
+- Large software repaints use the configured workers even when they contain only a few shapes, keeping simple dialog animations from being forced onto one thread.
+- Local file browsers read directories on a worker while navigation and Cancel stay usable, discard stale reads after navigation, and show a loading state. Custom listers can return `CUI_FILE_LIST_PENDING` while cached results are being prepared.
+- The performance benchmark includes long-line highlights and animated dialogs, with percentile and maximum times alongside averages.
 - Vertical trackpad scrolling over code blocks and other nested horizontal scroll areas no longer stalls when the gesture includes a small sideways delta.
 - Charts no longer hang when large values are close together or an instrument's x-axis requests more ticks than fit on screen.
 - Coverage shows every file in folders with more than 512 children, sorts wide folders efficiently, handles deeply nested paths, and keeps cached paths valid when the caller replaces its strings.

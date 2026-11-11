@@ -1147,14 +1147,18 @@ static void page_audio(cui_ctx *ui) {
 
 /* ---- files ---------------------------------------------------------------- */
 
-/* the local disk, or a few made-up files where there is none (the browser build) */
+/* Native browsers use the built-in worker; the web demo has no local disk. */
+#if defined(__wasm__) || defined(__EMSCRIPTEN__)
 static int files_list(void *user, const char *path, cui_file_entry *out, int cap, char *names, size_t names_cap, bool hidden) {
-    int n = cui_fs_list(user, path, out, cap, names, names_cap, hidden);
-    if (n != -1 || strcmp(path, ".")) return n;
+    (void)user; (void)names; (void)names_cap; (void)hidden;
+    if (strcmp(path, ".")) return -1;
     static const char *demo[] = { "assets", "src", "README.md", "notes.txt", "cover.png", "report.pdf" };
     for (int k = 0; k < 6 && k < cap; k++) out[k] = (cui_file_entry){ demo[k], k < 2, (uint64_t)(k * 13100), 1730000000 + k * 86400 };
     return 6;
 }
+#else
+static const cui_file_list_fn files_list = NULL;
+#endif
 
 static void page_files(cui_ctx *ui) {
     static char folder[1024] = ".";

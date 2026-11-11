@@ -121,6 +121,7 @@ uint32_t cui__hash_str(const char *s, uint32_t seed);
 
 /* ---- animation ---- */
 typedef struct cui_spring { float x, v; } cui_spring;
+float cui__animation_dt(cui_ctx *ui);  /* a new transition must not consume time spent idle */
 float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, float bounce);
 float cui__tween(cui_ctx *ui, float *x, float target, float duration);   /* exponential approach */
 #define CUI_SPRING_SMOOTH 0.40f, 0.0f
@@ -427,6 +428,7 @@ typedef struct cui_toast_item {
     char action[48];
     cui_tone tone;
     float duration, age;
+    double updated;           /* last age update; creation does not consume the preceding idle gap */
     bool dismissed, action_clicked, hovered_pause, show_timer;
     cui_spring enter;          /* 0..1 appear */
     cui_spring y;              /* stacked position */

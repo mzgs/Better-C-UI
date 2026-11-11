@@ -13,8 +13,12 @@
 #elif !defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(CUI_NO_FILESYSTEM)
 #include <dirent.h>
 #include <sys/stat.h>
+#include <pthread.h>
 #endif
 
+#if !defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(CUI_NO_FILESYSTEM)
+#define CUI__FB_ASYNC
+#endif
 
 #if defined(_WIN32)
 #define CUI__SEP '\\'
@@ -200,6 +204,88 @@ static const char *cui__file_date(cui_ctx *ui, int64_t t, time_t now) {
 /* Browser                                                                  */
 /* ------------------------------------------------------------------------ */
 
+typedef struct cui__fb_job cui__fb_job;
+#ifdef CUI__FB_ASYNC
+struct cui__fb_job {
+    char path[CUI__FB_PATH];
+    int cap, n;
+    size_t ncap;
+    cui_file_entry *ent;
+    char *names;
+    uint64_t serial;
+    bool hidden, done, abandoned;
+#if defined(_WIN32)
+    SRWLOCK mutex;
+#else
+    pthread_mutex_t mutex;
+#endif
+};
+
+static void cui__fb_job_lock(cui__fb_job *j) {
+#if defined(_WIN32)
+    AcquireSRWLockExclusive(&j->mutex);
+#else
+    pthread_mutex_lock(&j->mutex);
+#endif
+}
+
+static void cui__fb_job_unlock(cui__fb_job *j) {
+#if defined(_WIN32)
+    ReleaseSRWLockExclusive(&j->mutex);
+#else
+    pthread_mutex_unlock(&j->mutex);
+#endif
+}
+
+static void cui__fb_job_free(cui__fb_job *j) {
+#if !defined(_WIN32)
+    pthread_mutex_destroy(&j->mutex);
+#endif
+    free(j->ent); free(j->names); free(j);
+}
+
+#if defined(_WIN32)
+static DWORD WINAPI cui__fb_worker(void *arg) {
+#else
+static void *cui__fb_worker(void *arg) {
+#endif
+    cui__fb_job *j = arg;
+    j->ent = malloc(sizeof *j->ent * (size_t)j->cap);
+    j->names = malloc(j->ncap);
+    j->n = -1;
+    if (j->ent && j->names) {
+        for (;;) {
+            j->n = cui_fs_list(NULL, j->path, j->ent, j->cap, j->names, j->ncap, j->hidden);
+            if (j->n != CUI_FILE_LIST_NAMES_FULL) break;
+            if (j->ncap > SIZE_MAX / 2) { j->n = -1; break; }
+            char *names = realloc(j->names, j->ncap * 2);
+            if (!names) { j->n = -1; break; }
+            j->names = names; j->ncap *= 2;
+        }
+    }
+    cui__fb_job_lock(j);
+    bool abandoned = j->abandoned;
+    j->done = true;
+    cui__fb_job_unlock(j);
+    /* A closed browser leaves cleanup to the worker; no context or caller data is retained. */
+    if (abandoned) cui__fb_job_free(j);
+    return 0;
+}
+#endif
+
+static void cui__fb_job_release(cui__fb_job *j) {
+#ifdef CUI__FB_ASYNC
+    if (!j) return;
+    cui__fb_job_lock(j);
+    bool done = j->done;
+    j->abandoned = true;
+    cui__fb_job_unlock(j);
+    if (done) cui__fb_job_free(j);
+#else
+    (void)j;
+#endif
+}
+
 typedef struct {
     char loaded[CUI__FB_PATH];
     cui_file_entry *ent; int n, cap;
@@ -212,15 +298,63 @@ typedef struct {
     char hist[CUI__FB_HIST][CUI__FB_PATH]; int hn, hpos;
     char typed[32]; int typed_n; double typed_at;
     bool error, init, reload, scroll_to_sel;
+    bool loading;
+    uint64_t serial;
+    cui__fb_job *job;
 } cui__fb_state;
 
 static void cui__fb_dtor(cui_ctx *ui, void *data) {
     cui__fb_state *s = data;
+    cui__fb_job_release(s->job);
     cui__free(ui, s->ent); cui__free(ui, s->names); cui__free(ui, s->order);
     s->ent = NULL; s->names = NULL; s->order = NULL;
 }
 
+static void cui__fb_start(cui__fb_state *s, const cui_file_browser_opts *o) {
+#ifdef CUI__FB_ASYNC
+    cui__fb_job *j = calloc(1, sizeof *j);
+    if (!j) { s->error = true; s->loading = false; return; }
+    snprintf(j->path, sizeof j->path, "%s", s->loaded);
+    j->cap = o->max_entries > 0 ? o->max_entries : 20000;
+    if ((size_t)j->cap > SIZE_MAX / sizeof *j->ent || (size_t)j->cap > SIZE_MAX / 40) {
+        free(j); s->error = true; s->loading = false; return;
+    }
+    j->ncap = (size_t)j->cap * 40;
+    j->hidden = o->hidden; j->serial = s->serial;
+#if defined(_WIN32)
+    InitializeSRWLock(&j->mutex);
+    HANDLE thread = CreateThread(NULL, 0, cui__fb_worker, j, 0, NULL);
+    bool started = thread != NULL;
+    if (thread) CloseHandle(thread);
+#else
+    if (pthread_mutex_init(&j->mutex, NULL) != 0) { free(j); s->error = true; s->loading = false; return; }
+    pthread_attr_t attr;
+    pthread_t thread;
+    bool started = false;
+    if (pthread_attr_init(&attr) == 0) {
+        if (pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED) == 0)
+            started = pthread_create(&thread, &attr, cui__fb_worker, j) == 0;
+        pthread_attr_destroy(&attr);
+    }
+#endif
+    if (started) { s->job = j; s->loading = true; }
+    else { cui__fb_job_free(j); s->error = true; s->loading = false; }
+#else
+    (void)o;
+    s->error = true; s->loading = false;
+#endif
+}
+
 static void cui__fb_load(cui_ctx *ui, cui__fb_state *s, const char *path, const cui_file_browser_opts *o) {
+    snprintf(s->loaded, sizeof s->loaded, "%s", path);
+    s->serial++;
+    s->order_key = 0; s->sel = -1; s->n = 0; s->error = false;
+    if (!o->list || o->list == cui_fs_list) {
+        /* Keep one read in flight; navigation replaces the requested path, not the worker. */
+        if (!s->job) cui__fb_start(s, o);
+        return;
+    }
+    cui__fb_job_release(s->job); s->job = NULL; s->loading = false;
     int cap = o->max_entries > 0 ? o->max_entries : 20000;
     if (s->cap < cap) { cui__free(ui, s->ent); s->ent = cui__alloc(ui, sizeof(cui_file_entry) * (size_t)cap); s->cap = s->ent ? cap : 0; }
     size_t ncap = (size_t)cap * 40;
@@ -232,11 +366,46 @@ static void cui__fb_load(cui_ctx *ui, cui__fb_state *s, const char *path, const 
         s->names = cui__realloc(ui, s->names, s->ncap);
         n = fn(o->list_user, path, s->ent, s->cap, s->names, s->ncap, o->hidden);
     }
-    s->error = n < 0;
+    s->loading = n == CUI_FILE_LIST_PENDING;
+    s->error = n < 0 && !s->loading;
     s->n = n < 0 ? 0 : n;
-    snprintf(s->loaded, sizeof s->loaded, "%s", path);
-    s->order_key = 0;   /* sort again */
-    s->sel = -1;
+}
+
+static void cui__fb_poll(cui_ctx *ui, cui__fb_state *s, const cui_file_browser_opts *o) {
+#ifdef CUI__FB_ASYNC
+    cui__fb_job *j = s->job;
+    if (!j) return;
+    cui__fb_job_lock(j);
+    bool done = j->done;
+    cui__fb_job_unlock(j);
+    if (done) {
+        if (j->serial != s->serial) {
+            cui__fb_job_free(j); s->job = NULL;
+            cui__fb_start(s, o);
+        } else {
+            s->error = j->n < 0;
+            s->n = s->error ? 0 : j->n;
+            if (s->n > 0) {
+                if (s->cap < s->n) {
+                    s->ent = cui__realloc(ui, s->ent, sizeof *s->ent * (size_t)s->n);
+                    s->cap = s->n;
+                }
+                size_t bytes = (size_t)(j->ent[s->n - 1].name - j->names) + strlen(j->ent[s->n - 1].name) + 1;
+                if (s->ncap < bytes) {
+                    s->names = cui__realloc(ui, s->names, bytes);
+                    s->ncap = bytes;
+                }
+                memcpy(s->names, j->names, bytes);
+                memcpy(s->ent, j->ent, sizeof *s->ent * (size_t)s->n);
+                for (int i = 0; i < s->n; i++) s->ent[i].name = s->names + (j->ent[i].name - j->names);
+            }
+            cui__fb_job_free(j); s->job = NULL; s->loading = false; s->order_key = 0;
+        }
+    }
+    if (s->loading) cui__wakeup_after(ui, 1.0f / 60.0f);
+#else
+    (void)ui; (void)s; (void)o;
+#endif
 }
 
 static cui__fb_state *cui__fb_sorting;   /* qsort has no user pointer; sorting is not reentrant */
@@ -543,11 +712,11 @@ static void cui__fb_keys(cui__fb_frame *f) {
 static void cui__fb_build_rows(cui__fb_frame *f) {
     cui_ctx *ui = f->ui;
     cui__fb_state *s = f->s;
-    if (s->error || s->norder == 0) {
+    if (s->loading || s->error || s->norder == 0) {
         int e = cui__node_new(ui, 0);
         ui->nodes[e].w = CUI_FILL; ui->nodes[e].h = CUI_FILL; ui->nodes[e].align = CUI_ALIGN_CENTER; ui->nodes[e].justify = CUI_JUSTIFY_CENTER;
         cui__open(ui, e);
-        const char *msg = s->error ? "This folder could not be read" : s->query[0] ? "Nothing matches the filter" : "This folder is empty";
+        const char *msg = s->loading ? "Reading folder..." : s->error ? "This folder could not be read" : s->query[0] ? "Nothing matches the filter" : "This folder is empty";
         cui__text_node(ui, msg, -1, CUI_FONT_BODY, f->fs, CUI_C(ui, TEXT_MUTED), false);
         cui__close(ui);
         return;
@@ -620,7 +789,7 @@ cui_file_browser_result cui_file_browser_ex(cui_ctx *ui, const char *id_str, cha
     cui_file_browser_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
-    cui_file_browser_result res = { NULL, NULL, false, false };
+    cui_file_browser_result res = {0};
     if (!path || path_cap < 2) return res;
     cui__fb_frame f;
     memset(&f, 0, sizeof f);
@@ -632,7 +801,10 @@ cui_file_browser_result cui_file_browser_ex(cui_ctx *ui, const char *id_str, cha
     if (!s->init) { s->sel = -1; s->init = true; }
     char before[CUI__FB_PATH];
     snprintf(before, sizeof before, "%s", path);
-    if (s->reload || strcmp(s->loaded, path) != 0) { cui__fb_load(ui, s, path, o); s->reload = false; }
+    if (s->reload || strcmp(s->loaded, path) != 0 || (s->loading && !s->job && o->list)) {
+        cui__fb_load(ui, s, path, o); s->reload = false;
+        if (s->loading) cui__wakeup_after(ui, 1.0f / 60.0f);
+    } else cui__fb_poll(ui, s, o);
     cui__fb_order(ui, s, o);
     cui_push_id(ui, id_str ? id_str : "files");
     f.pr = cui__prev_rect(ui, f.id);
@@ -681,6 +853,7 @@ cui_file_browser_result cui_file_browser_ex(cui_ctx *ui, const char *id_str, cha
         res.selected = cui__frame_strdup(ui, target, -1);
     }
     res.error = s->error;
+    res.loading = s->loading;
     ui->last_id = f.lid;
     return res;
 }
@@ -747,9 +920,9 @@ bool cui_file_picker_ex(cui_ctx *ui, const char *id_str, bool *open, char *out, 
         cui_button_opts cb;
         memset(&cb, 0, sizeof cb);
         if (cui_button_ex(ui, "Cancel", &cb)) *open = false;
-        bool can = o->save ? s->name[0] != 0 : o->folders ? true : r.selected != NULL;   /* Open on a folder goes into it */
+        bool can = !r.loading && !r.navigated && !r.error && (o->save ? s->name[0] != 0 : o->folders ? true : r.selected != NULL);
         cb.variant = CUI_BUTTON_PRIMARY; cb.disabled = !can;
-        bool confirm = cui_button_ex(ui, o->save ? "Save" : o->folders ? "Choose" : "Open", &cb) || submit;
+        bool confirm = cui_button_ex(ui, o->save ? "Save" : o->folders ? "Choose" : "Open", &cb) || (submit && can);
         cui__close(ui);
         const char *chosen = NULL;
         char joined[CUI__FB_PATH + sizeof s->name + 1];

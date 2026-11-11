@@ -575,7 +575,7 @@ void cui_ticker_ex(cui_ctx *ui, const char *id_str, const cui_ticker_item *items
     if (sr.w > 0) st->set_w = sr.w;
     float speed = o->speed > 0 ? o->speed : 40;
     if (!r.hovered && st->set_w > 0 && ui->theme.motion > 0) {
-        st->off += ui->dt * speed;
+        st->off += cui__animation_dt(ui) * speed;
         if (st->off >= st->set_w) st->off -= st->set_w;
         ui->animating = true;
     }
