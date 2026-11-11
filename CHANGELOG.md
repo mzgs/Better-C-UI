@@ -23,6 +23,8 @@ What changed in Better-C-UI, newest first. Every component mentioned here runs l
 
 ### Changed
 
+- Added a "Why Better-C-UI?" README section explaining the fork's motion, input and trackpad scrolling changes relative to upstream CUI.
+
 - Restored the README's screenshot-led overview, component and example galleries, installation guide and documentation links, adapted from upstream CUI for Better-C-UI.
 
 - **More immediate interaction feedback.** Hover, press and closing transitions respond quickly from their first frame; dropdowns and tab indicators now take 150 ms. Keyboard focus no longer changes later mouse animation behavior, and the gallery has a Reduce motion switch for comparing feedback.

@@ -36,6 +36,17 @@ Better-C-UI is an immediate-mode UI library written in C99, based on [CUI by yap
 - **Small.** The documented Linux `hello` build is about 250 KB, including the window and fonts. There is no browser or runtime inside.
 - **MIT licensed.**
 
+## Why Better-C-UI?
+
+This fork focuses on how a desktop app responds to everyday input. Compared with [upstream CUI](https://github.com/yappologistic/CUI), checked on 11 November 2026, it adds:
+
+- **Quicker visual feedback.** At the default motion speed, hover feedback takes 120 ms instead of 140 ms, focus feedback takes 100 ms instead of 140 ms, and selection fills take 150 ms instead of 180 ms. These values describe configured animation timings.
+- **More predictable motion.** Routine controls use bounded, interruptible transitions. Buttons, toggles and floating layers settle without bouncing, and changing direction starts from the current visual position. See the [motion rules](docs/design.md#motion).
+- **Direct keyboard and pointer response.** Keyboard navigation and the command palette appear immediately, and dragged slider thumbs follow the pointer directly. Reduced-motion support is preserved: transitions snap to their final state, and the gallery's Reduce motion switch lets you compare the behavior.
+- **More reliable trackpad scrolling.** A small sideways delta no longer prevents vertical scrolling over code blocks and other nested horizontal scroll areas.
+
+The component library, renderers and small C99 foundation come from CUI. This fork keeps the `cui_` API names and `cui::cui` build target. See the [changelog](CHANGELOG.md) for the changes and [Limitations](#limitations) for the constraints that still apply.
+
 ## Try it first
 
 - **In your browser:** the [upstream CUI demo](https://yappologistic.github.io/CUI/) shows the original components and example apps. To preview this repository's version, [run the documentation site locally](web/README.md).
