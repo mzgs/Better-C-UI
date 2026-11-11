@@ -26,6 +26,48 @@ A 30 second headless run of the Notes example is part of `ctest`.
 
 `cui_test_latency` checks long-line find and marks, horizontal scrolling, idle wakeups and toast expiry, reduced motion, single-thread versus multi-thread pixels, pending custom listings, and native folder read completion and destruction. Long-line checks run under a test timeout rather than asserting a machine-specific millisecond limit.
 
+## Interactive stress app
+
+`examples/stress.c` puts four three-series charts (256 points per series), a heatmap, routing switches, budget sliders, highlighted configuration, deployment logs and editable service rows in one window. The default is **3,000 fully built rows**. Offscreen rows still run their component and layout code, so this deliberately exercises the cost of a small edit in a large immediate-mode interface.
+
+Build in Release for useful performance comparisons:
+
+```sh
+cmake -S . -B build-stress -DCMAKE_BUILD_TYPE=Release
+cmake --build build-stress --target stress --parallel
+./build-stress/examples/stress
+```
+
+On Windows with Visual Studio, add `--config Release` and run `build-stress/examples/Release/stress.exe`.
+
+- **Records:** choose 1,000, 3,000, 10,000 or 30,000. The app keeps the full synthetic dataset allocated; the selector controls how many records participate in the interface.
+- **One record:** update only the inspected record every 100 ms; charts remain unchanged. **All records** updates the active records, chart histories and heatmap at the same frequency. **Paused** stops these synthetic updates. All modes continue rendering so their frame rates can be compared.
+- **Virtualize rows:** build only the visible range and a small overscan, using the same row widgets as the full-build path. The footer reports the active renderer and how many rows were actually built. Virtualization does not skip the model updates in All records mode. RSS can stay elevated after switching modes because component state is collected after inactivity and the allocator can retain freed memory.
+- Edit instance names, select checkboxes, inspect a row with its settings button, toggle traffic and drag budgets or the pane divider while watching the counters. The inspector is omitted below 1,000 logical points; the charts stack into two columns.
+
+The top-right counters sample every 0.5 seconds:
+
+| Counter | Meaning |
+|---|---|
+| FPS | Completed frame intervals divided by monotonic wall time, including UI construction, layout, rendering and presentation waits |
+| Frame interval | Mean elapsed milliseconds between frames, including those waits; this is not isolated CPU build time |
+| CPU / one core | Change in total process user + kernel CPU time divided by elapsed wall time; 100% means one fully busy core, and multiple threads can exceed 100% |
+| Process RSS | Current resident memory / working set in MiB, including application data, CUI, allocator and resident driver allocations; excludes separate GPU memory and is not peak RSS |
+
+CPU and memory use native process APIs on Windows and macOS, and `getrusage` plus `/proc/self/statm` on Linux. Unsupported or failed readings show `N/A`; counters show `...` until the first FPS/CPU sample. Continuous rendering and the monitoring itself are part of this workload. FPS is capped by the existing display pacing, so equal FPS at that ceiling does not imply equal spare capacity: compare CPU too. Run the headless `cui_bench` for separate build and software-raster timings.
+
+Compare both renderers at the same window size and scale:
+
+```sh
+CUI_RENDERER=software ./build-stress/examples/stress
+CUI_RENDERER=opengl ./build-stress/examples/stress
+```
+
+On Windows, set `CUI_RENDERER` with your shell's environment syntax before launching. The screenshot commands work the same way as the other examples (`CUI_SCREENSHOT` and `CUI_SCREENSHOT_FRAMES`). `./build/tests/cui_test_stress /tmp/shots` checks metric arithmetic, sparse and bulk updates, editing, full and virtualized row counts, and writes light, dark and narrow screenshots into an existing scratch directory.
+
+![Stress app in dark mode](images/showcase/stress-dark.png)
+![Stress app in light mode](images/showcase/stress-light.png)
+
 ## Results
 
 All numbers come from Linux on a shared cloud machine (x86-64, `-O2`). Times vary with the machine; memory and allocation counts do not.

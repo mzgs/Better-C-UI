@@ -265,6 +265,7 @@ Complete apps in [`examples/`](examples), each a single C file. They also run in
 | [`music`](examples/music.c) | Music player: cover art drawn on a canvas, track list, transport bar |
 | [`finance`](examples/finance.c) | Personal finance: top navigation, charts, painted card, budgets, goals |
 | [`dashboard`](examples/dashboard.c) | Sidebar, top bar, KPIs, charts and a sortable table |
+| [`stress`](examples/stress.c) | A busy operations console with 1,000–30,000 records, a virtualization toggle and live process FPS, CPU and memory; see [how to run it](docs/performance.md#interactive-stress-app) |
 | [`mail`](examples/mail.c) | Three pane inbox, folders, reading pane, compose dialog |
 | [`notes`](examples/notes.c) | Split view, search, context menus, dialogs, shortcuts, file export |
 | [`settings`](examples/settings.c) | Forms, validation, preferences and a danger zone |
