@@ -167,12 +167,14 @@ static void scene_menu(cui_ctx *ui, int f) {
 }
 static void scene_dialog(cui_ctx *ui, int f) {
     if (f < 0) return;
-    (void)f;
+    static bool open;
+    if (f == 0) open = false;
+    if (f == 2) open = true;
     cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .bg = CUI_COLOR_BACKGROUND, .pad = frame_pad(ui), .gap = 10) {
         cui_heading(ui, "Projects", 3);
         cui_skeleton(ui, CUI_PCT(80), 14); cui_skeleton(ui, CUI_PCT(60), 14); cui_skeleton(ui, CUI_PCT(70), 14);
     }
-    cui_dialog(ui, "Delete project?", &open_true, .description = "This removes the project for everyone. You cannot undo this.", .width = 380) {
+    cui_dialog(ui, "Delete project?", &open, .description = "This removes the project for everyone. You cannot undo this.", .width = 380) {
         cui_dialog_footer(ui) { cui_button(ui, "Cancel"); cui_button(ui, "Delete project", .variant = CUI_BUTTON_DANGER); }
     }
 }

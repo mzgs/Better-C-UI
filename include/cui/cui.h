@@ -334,6 +334,8 @@ CUI_API cui_accent cui_get_accent(cui_ctx *ui);
 /* The active theme. Edit it to customize; changes apply next frame. Theme
  * changes through cui_set_theme/cui_set_accent animate smoothly. */
 CUI_API cui_theme *cui_theme_get(cui_ctx *ui);
+/* Reduced motion snaps built-in transitions to their final states. Input,
+ * focus and selection take effect immediately at every motion setting. */
 CUI_API void cui_set_reduced_motion(cui_ctx *ui, bool reduced);
 CUI_API cui_color cui_color_of(cui_ctx *ui, cui_color c);   /* resolves tokens */
 
@@ -2447,7 +2449,7 @@ typedef struct cui_expandable_text_opts {
 } cui_expandable_text_opts;
 CUI_API bool cui_expandable_text_ex(cui_ctx *ui, const char *id, const char *text, const cui_expandable_text_opts *opts);
 
-/* Expandable card: a card whose header opens a body with a height spring. */
+/* Expandable card: a card whose header opens a body with a height transition. */
 typedef struct cui_expandable_card_opts {
     int _;
     const char *description;

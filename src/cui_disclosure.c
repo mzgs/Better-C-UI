@@ -94,7 +94,7 @@ bool cui_confirm_popover_ex(cui_ctx *ui, const char *id, const cui_confirm_popov
 /* Expandable text                                                          */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring h; bool open, init; } cui__et_state;
+typedef struct { cui_transition h; bool open, init; } cui__et_state;
 typedef struct { float fade; float line_h; cui_color c; } cui__fade_paint;
 
 static void cui__paint_text_fade(cui_ctx *ui, cui_node *n, void *data) {
@@ -125,7 +125,7 @@ bool cui_expandable_text_ex(cui_ctx *ui, const char *id_str, const char *text, c
     float clamp_h = lines * lh, full_h = total * lh;
     float target = (st->open || !expandable) ? full_h : clamp_h;
     if (!st->init) { st->h.x = target; st->init = true; }
-    cui__spring(ui, &st->h, target, CUI_SPRING_SMOOTH);
+    cui__transition(ui, &st->h, target, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
     bool toggled = false;
     int col = cui__node_new(ui, id);
     ui->nodes[col].gap = 6;
@@ -150,7 +150,10 @@ bool cui_expandable_text_ex(cui_ctx *ui, const char *id_str, const char *text, c
     cui__close(ui);
     if (expandable) {
         cui_push_id(ui, id_str);
-        if (cui_link(ui, st->open ? "Show less" : "Show more")) { st->open = !st->open; toggled = true; }
+        if (cui_link(ui, st->open ? "Show less" : "Show more")) {
+            st->open = !st->open; toggled = true;
+            if (cui__key_action(ui)) st->h = (cui_transition){ .x = st->open ? full_h : clamp_h };
+        }
         cui_pop_id(ui);
     }
     cui__close(ui);
@@ -162,7 +165,7 @@ bool cui_expandable_text_ex(cui_ctx *ui, const char *id_str, const char *text, c
 /* Expandable card                                                          */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring t; float hover, content_h; bool init; } cui__ec_state;
+typedef struct { cui_transition t; float hover, content_h; bool init; } cui__ec_state;
 
 bool cui_expandable_card_begin(cui_ctx *ui, const char *title, bool *open, const cui_expandable_card_opts *o) {
     cui_expandable_card_opts d;
@@ -173,7 +176,7 @@ bool cui_expandable_card_begin(cui_ctx *ui, const char *title, bool *open, const
     cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE);
     if (r.clicked) *open = !*open;
     if (!st->init) { st->t.x = *open ? 1.0f : 0.0f; st->init = true; }
-    cui__spring(ui, &st->t, *open ? 1.0f : 0.0f, CUI__SPRING_EXPAND);
+    cui__transition(ui, &st->t, *open ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     float t = cui__clampf(st->t.x, 0, 1);
     int wrap = cui__node_new(ui, 0);
@@ -370,7 +373,7 @@ int cui_toc(cui_ctx *ui, const char *scroll_id, const cui_toc_item *items, int c
 /* Banner                                                                   */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring t; float h; bool init; } cui__banner_state;
+typedef struct { cui_transition t; float h; bool init; } cui__banner_state;
 typedef struct { cui_color c; } cui__line_paint;
 static void cui__paint_bottom_line(cui_ctx *ui, cui_node *n, void *data) {
     cui__line_paint *p = data;
@@ -386,7 +389,7 @@ bool cui_banner_ex(cui_ctx *ui, const char *text, bool *open, const cui_banner_o
     cui_id id = cui_make_id(ui, text) ^ 0xBA22u;
     cui__banner_state *st = cui_state(ui, id, sizeof *st);
     if (!st->init) { st->t.x = shown ? 1.0f : 0.0f; st->init = true; }
-    cui__spring(ui, &st->t, shown ? 1.0f : 0.0f, CUI__SPRING_EXPAND);
+    cui__transition(ui, &st->t, shown ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
     float t = cui__clampf(st->t.x, 0, 1);
     if (t <= 0.002f && !shown) return false;
     cui_id inner_id = id ^ 0x1u;
@@ -556,7 +559,7 @@ static void cui__countdown_ex_body(cui_ctx *ui, const char *id_str, double secon
 /* Onboarding checklist                                                     */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring open; float done, hover; bool init; } cui__step_state;
+typedef struct { cui_transition open; float done, hover; bool init; } cui__step_state;
 typedef struct { float done, hover; cui_color on, ring, glyph; } cui__circle_paint;
 
 static void cui__paint_step_circle(cui_ctx *ui, cui_node *n, void *data) {
@@ -609,7 +612,7 @@ int cui_checklist_ex(cui_ctx *ui, const char *id_str, cui_check_step *steps, int
         cui__step_state *st = cui_state(ui, sid, sizeof *st);
         bool expanded = k == current;
         if (!st->init) { st->open.x = expanded ? 1.0f : 0.0f; st->done = s->done ? 1.0f : 0.0f; st->init = true; }
-        cui__spring(ui, &st->open, expanded ? 1.0f : 0.0f, CUI__SPRING_EXPAND);
+        cui__transition(ui, &st->open, expanded ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
         cui__tween(ui, &st->done, s->done ? 1.0f : 0.0f, CUI__T_STATE);
         cui_id circle_id = sid ^ 0xC1u;
         cui_interact cr = cui__interact(ui, circle_id, CUI_IF_FOCUSABLE);

@@ -483,7 +483,7 @@ cui_expandable_card(ui, "Billing", &billing_open, .description = "Pro plan", .ic
 }
 ```
 
-Expandable text clamps to `lines` with a fade (into `fade_to`, the background by default) and a Show more / Show less link; the height springs. The card's body opens with a height spring and its chevron turns; content inside is disabled while it closes.
+Expandable text clamps to `lines` with a fade (into `fade_to`, the background by default) and a Show more / Show less link; the height transitions over 200 ms. The card's body uses the same transition and its chevron turns; keyboard expansion is immediate, and content inside is disabled while it closes.
 
 Keyboard: Tab focuses the "Show more" link or the card's header, and Enter or Space expands or collapses it.
 
@@ -865,7 +865,7 @@ if (cui_inspector_begin(ui, "props")) {
 
 Each row is a label on the left and an editor on the right, built from the library's own fields: number rows (`cui_prop_float`, `cui_prop_int`) are scrub fields, so dragging the field or its label sideways changes the value (Shift for fine steps), a click types a number and the arrow keys step it. `cui_prop_vec2`, `cui_prop_vec3` and `cui_prop_vec4` put compact X, Y, Z and W fields side by side, their letters tinted with the theme's tones. Text rows are text fields, bool rows switches (`.checkbox = true` for a checkbox), enum rows selects and color rows open the color picker. Every row returns true when its value changed. With `.min` and `.max` a number shows where it sits in its range; without them it is unbounded. The label column takes 38% of the width (or `.label_width`); drag the line between the columns to resize it. Below 380 points the labels move above their editors.
 
-Groups fold with a chevron and open and close with the disclosure spring; their rows are built only while open or closing, and groups end at the next group or at `cui_inspector_end`. Tab moves through the group headers and every editor in order; Enter, Space or the left and right arrows fold a focused group.
+Groups fold with a chevron and open and close with the 200 ms disclosure transition; their rows are built only while open or closing, and groups end at the next group or at `cui_inspector_end`. Tab moves through the group headers and every editor in order; Enter, Space or the left and right arrows fold a focused group.
 
 ### Log console
 

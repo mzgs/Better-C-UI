@@ -149,7 +149,7 @@ bool cui_knob_ex(cui_ctx *ui, const char *id_str, float *value, float min, float
     *value = v;
     t = cui__dl_pos(v, min, max, lg);
     if (st->dragging) { st->shown.x = t; st->shown.v = 0; }
-    else cui__spring(ui, &st->shown, t, 0.26f, 0.0f);
+    else cui__spring(ui, &st->shown, t, CUI__T_STATE, 0.0f);
     cui__tween(ui, &st->hover, (r.hovered || r.active) ? 1.0f : 0.0f, CUI__T_HOVER);
     cui__tween(ui, &st->active, r.active ? 1.0f : 0.0f, CUI__T_STATE);
     cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
@@ -397,7 +397,7 @@ bool cui_fader_ex(cui_ctx *ui, const char *id_str, float *value, float min, floa
     *value = v;
     t = cui__dl_norm(v, min, max);
     if (st->dragging) { st->shown.x = t; st->shown.v = 0; }
-    else cui__spring(ui, &st->shown, t, 0.26f, 0.0f);
+    else cui__spring(ui, &st->shown, t, CUI__T_STATE, 0.0f);
     cui__tween(ui, &st->hover, (r.hovered || r.active) ? 1.0f : 0.0f, CUI__T_HOVER);
     cui__tween(ui, &st->active, r.active ? 1.0f : 0.0f, CUI__T_STATE);
     cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);

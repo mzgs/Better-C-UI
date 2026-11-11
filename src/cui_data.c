@@ -7,7 +7,7 @@ void cui__paint_focus_ring_node(cui_ctx *ui, cui_node *n, void *data);
 /* Accordion                                                                */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring t; float hover; float content_h; bool init; } cui__acc_state;
+typedef struct { cui_transition t; float hover; float content_h; bool init; } cui__acc_state;
 
 typedef struct { float angle; cui_color color; float size; const char *icon; } cui__rot_icon;
 
@@ -42,7 +42,7 @@ bool cui_accordion_begin(cui_ctx *ui, const char *title, bool *open) {
     cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE);
     if (r.clicked) *open = !*open;
     if (!st->init) { st->t.x = *open ? 1.0f : 0.0f; st->init = true; }
-    cui__spring(ui, &st->t, *open ? 1.0f : 0.0f, CUI_SPRING_SMOOTH);
+    cui__transition(ui, &st->t, *open ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     float t = cui__clampf(st->t.x, 0, 1);
     bool first = ui->nodes[cui__current(ui)].child_count == 0;
@@ -116,7 +116,7 @@ void cui_accordion_end(cui_ctx *ui) {
 /* Tree                                                                     */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring t; float hover; bool init; } cui__tree_state;
+typedef struct { cui_transition t; float hover; bool init; } cui__tree_state;
 
 bool cui_tree_begin(cui_ctx *ui, const char *label, bool *open, const cui_tree_opts *o) {
     cui_tree_opts d;
@@ -133,7 +133,7 @@ bool cui_tree_begin(cui_ctx *ui, const char *label, bool *open, const cui_tree_o
     }
     ui->tree_clicked = r.clicked;
     if (!st->init) { st->t.x = is_open ? 1.0f : 0.0f; st->init = true; }
-    cui__spring(ui, &st->t, is_open ? 1.0f : 0.0f, CUI__SPRING_EXPAND);
+    cui__transition(ui, &st->t, is_open ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     int row = cui__node_new(ui, id);
     cui_node *n = &ui->nodes[row];

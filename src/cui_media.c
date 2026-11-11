@@ -89,7 +89,7 @@ bool cui_carousel_begin(cui_ctx *ui, const char *id_str, int count, int *index, 
     if (o->loop && b->count > 0) { if (target >= b->count) target = 0; if (target < 0) target = b->count - 1; }
     target = CUI_CLAMP(target, 0, b->count > 0 ? b->count - 1 : 0);
     if (target != *index) { *index = target; st->last_change = ui->time; }
-    if (!st->dragging) cui__spring(ui, &st->pos, (float)*index, 0.5f, 0.02f);
+    if (!st->dragging) cui__spring(ui, &st->pos, (float)*index, CUI__T_PANEL, 0.0f);
     float h = o->height > 0 ? o->height : 220;
     int col = cui__node_new(ui, b->id);
     ui->nodes[col].gap = 12; ui->nodes[col].w = CUI_FILL; ui->nodes[col].align = CUI_ALIGN_CENTER;
@@ -330,7 +330,7 @@ void cui_card_stack_begin(cui_ctx *ui, const char *id_str, int count, const cui_
     }
     if (throw_dir && count > 0) { st->flying = true; st->fly_dir = throw_dir; }
     if (st->flying) {
-        cui__spring(ui, &st->x, st->fly_dir * (b->w * 1.5f + 80), 0.32f, 0.0f);
+        cui__spring(ui, &st->x, st->fly_dir * (b->w * 1.5f + 80), CUI__T_PANEL, 0.0f);
         if (fabsf(st->x.x) > b->w * 1.3f) {
             /* gone: the next card is on top now; let the rest of the deck move up */
             b->result = st->fly_dir;
@@ -342,7 +342,7 @@ void cui_card_stack_begin(cui_ctx *ui, const char *id_str, int count, const cui_
         cui__spring(ui, &st->x, 0, CUI_SPRING_SNAPPY);
         cui__spring(ui, &st->y, 0, CUI_SPRING_SNAPPY);
     }
-    cui__spring(ui, &st->promote, 0, 0.38f, 0.0f);
+    cui__spring(ui, &st->promote, 0, CUI__T_PANEL, 0.0f);
     int box = cui__node_new(ui, b->id);
     cui_node *bn = &ui->nodes[box];
     bn->dir = CUI_STACK;
@@ -495,7 +495,7 @@ static void cui__counter_ex_body(cui_ctx *ui, const char *id_str, double value, 
             float t1 = turns + target;
             if (t1 - cur > 5) t1 -= 10;
             if (cur - t1 > 5) t1 += 10;
-            cui__spring(ui, sp, t1, 0.55f, 0.05f);
+            cui__spring(ui, sp, t1, CUI__T_SIDEBAR, 0.0f);
             int leaf = cui__leaf(ui, 0, CUI_PX(dw), CUI_PX(lh));
             cui__digit_paint *p = cui__frame_alloc(ui, sizeof *p);
             p->value = sp->x; p->size = size; p->lh = lh; p->font = font; p->c = color;

@@ -187,7 +187,7 @@ static void cui__paint_morph(cui_ctx *ui, cui_node *n, void *data) {
     cui_draw_rect(ui, (cui_rect){ r.x, r.y + r.h - 2, r.w * p->remain, 2 }, CUI_CORNERS(1), p->bar);
 }
 
-typedef struct { cui_spring w, press; float hover, focus, t; bool init; int prev_kind; } cui__morph_state;
+typedef struct { cui_spring w; cui_transition press; float hover, focus, t; bool init; int prev_kind; } cui__morph_state;
 
 typedef struct {
     const char *icon;      /* NULL for none; "spin" for a spinner */
@@ -245,7 +245,7 @@ static void cui__morph_button(cui_ctx *ui, cui_id id, cui__morph_state *st, cui_
     float target = width_b ? wb : wa;
     if (!st->init) { st->w.x = target; st->press.x = 1; st->init = true; }
     cui__spring(ui, &st->w, target, CUI_SPRING_MORPH);
-    cui__spring(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI_SPRING_SNAPPY);
+    cui__transition(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
     cui_color bga = cui_mix(a->col.bg, a->col.bg_hover, st->hover), bgb = cui_mix(b->col.bg, b->col.bg_hover, st->hover);
@@ -307,7 +307,7 @@ bool cui_confirm_button_ex(cui_ctx *ui, const char *label, const cui_confirm_opt
         else { st->armed = true; st->armed_at = ui->time; }
     }
     if (!st->m.init) st->arm.x = st->armed ? 1.0f : 0.0f;
-    cui__spring(ui, &st->arm, st->armed ? 1.0f : 0.0f, 0.3f, 0.0f);
+    cui__spring(ui, &st->arm, st->armed ? 1.0f : 0.0f, CUI__T_STATE, 0.0f);
     cui__morph_face a, b;
     a.icon = o->icon; a.label = label;
     a.col = cui__button_colors(ui, o->variant ? o->variant : CUI_BUTTON_SECONDARY, false);
@@ -383,7 +383,7 @@ int cui_reactions(cui_ctx *ui, const char *id_str, cui_reaction *items, int coun
         if (it->count != st->shown) { st->dir = it->count > st->shown ? 1 : -1; st->prev = st->shown; st->shown = it->count; st->t = 0; }
         cui__tween(ui, &st->t, 1.0f, 0.2f);
         cui__tween(ui, &st->on, it->active ? 1.0f : 0.0f, CUI__T_STATE);
-        cui__spring(ui, &st->pop, 1.0f, 0.35f, 0.35f);
+        cui__spring(ui, &st->pop, 1.0f, CUI__T_ENTER, 0.0f);
         cui_color accent = cui__emphasis(ui);
         int pill = cui__node_new(ui, iid);
         cui_node *pn = &ui->nodes[pill];
@@ -431,7 +431,7 @@ int cui_reactions(cui_ctx *ui, const char *id_str, cui_reaction *items, int coun
 /* Speed dial                                                               */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { bool open; cui_spring t, press; float hover; int z; } cui__dial_state;
+typedef struct { bool open; cui_transition t, press; float hover; int z; } cui__dial_state;
 typedef struct { float hover[16]; } cui__dial_items;
 
 int cui_speed_dial_ex(cui_ctx *ui, const char *id_str, const cui_speed_action *actions, int count, const cui_speed_dial_opts *o) {
@@ -454,8 +454,10 @@ int cui_speed_dial_ex(cui_ctx *ui, const char *id_str, const cui_speed_action *a
         if ((ui->mpressed[0] || ui->mpressed[1]) && ui->hot != id && ui->hot_layer != fid) st->open = false;
     }
     if (st->press.x == 0) st->press.x = 1;
-    cui__spring(ui, &st->t, st->open ? 1.0f : 0.0f, st->open ? 0.42f : 0.24f, st->open ? 0.18f : 0.0f);
-    cui__spring(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI_SPRING_SNAPPY);
+    float duration = st->open ? CUI__T_ENTER : CUI__T_EXIT;
+    cui__transition(ui, &st->t, st->open ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : duration,
+                    st->open ? CUI__EASE_ENTER : CUI__EASE_EXIT);
+    cui__transition(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     float size = 52;
     cui__btn_colors col = cui__button_colors(ui, CUI_BUTTON_PRIMARY, false);

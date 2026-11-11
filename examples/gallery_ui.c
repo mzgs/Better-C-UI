@@ -108,6 +108,8 @@ static void sidebar(cui_ctx *ui, gallery *g, bool drawer) {
                 g->dark = mode == 1;
                 cui_set_theme(ui, g->dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
             }
+            bool reduced = cui_theme_get(ui)->motion <= 0;
+            if (cui_switch(ui, "Reduce motion", &reduced)) cui_set_reduced_motion(ui, reduced);
             cui_row(ui, .justify = CUI_JUSTIFY_BETWEEN) {
                 for (int a = 0; a < CUI_ACCENT_COUNT; a++) {
                     static const unsigned hex[CUI_ACCENT_COUNT] = { 0x555555, 0x7747ff, 0x0562ef, 0x00864b, 0xf3ad20, 0xc25300, 0xd1403a, 0xd23286 };

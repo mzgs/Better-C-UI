@@ -95,7 +95,7 @@ static void cui__insp_close_group(cui_ctx *ui, cui__insp_build *b) {
     b->group_disabled = false;
 }
 
-typedef struct { cui_spring t; float hover, content_h; bool init; } cui__insp_group_state;
+typedef struct { cui_transition t; float hover, content_h; bool init; } cui__insp_group_state;
 
 bool cui_inspector_group(cui_ctx *ui, const char *title, bool *open) {
     cui__insp_build *b = cui__insp_current(ui);
@@ -111,7 +111,7 @@ bool cui_inspector_group(cui_ctx *ui, const char *title, bool *open) {
         if (cui_key_pressed(ui, CUI_KEY_LEFT) && *open) { *open = false; is_open = false; }
     }
     if (!st->init) { st->t.x = is_open ? 1.0f : 0.0f; st->init = true; }
-    cui__spring(ui, &st->t, is_open ? 1.0f : 0.0f, CUI__SPRING_EXPAND);
+    cui__transition(ui, &st->t, is_open ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     float t = cui__clampf(st->t.x, 0, 1);
     bool first = b ? b->groups == 0 : ui->nodes[cui__current(ui)].child_count == 0;

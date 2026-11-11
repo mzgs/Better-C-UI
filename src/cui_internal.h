@@ -9,7 +9,7 @@
  *   PNG and font outlines            cui_image.c, cui_text.c (used by color emoji)
  *   utf8 and strings                 cui_core.c
  *   hashing                          cui_core.c
- *   animation                        cui_core.c (springs, tweens) and the motion tokens
+ *   animation                        cui_core.c (transitions, springs, tweens) and motion tokens
  *   fonts and text                   cui_text.c, cui_draw.c
  *   draw list                        cui_draw.c
  *   layout tree                      cui_layout.c (cui_node, building and laying out the tree)
@@ -121,26 +121,41 @@ uint32_t cui__hash_str(const char *s, uint32_t seed);
 
 /* ---- animation ---- */
 typedef struct cui_spring { float x, v; } cui_spring;
+typedef struct cui_transition { float x, from, target, elapsed; } cui_transition;
+typedef enum { CUI__EASE_ENTER, CUI__EASE_EXIT, CUI__EASE_STATE, CUI__EASE_FEEDBACK = CUI__EASE_ENTER } cui__ease;
+bool cui__key_action(cui_ctx *ui);  /* a key press in this frame, without competing pointer input */
 float cui__animation_dt(cui_ctx *ui);  /* a new transition must not consume time spent idle */
 float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, float bounce);
 float cui__tween(cui_ctx *ui, float *x, float target, float duration);   /* exponential approach */
+float cui__ease_value(float progress, cui__ease ease);
+float cui__transition(cui_ctx *ui, cui_transition *s, float target, float duration, cui__ease ease);
 #define CUI_SPRING_SMOOTH 0.24f, 0.0f
-#define CUI_SPRING_SNAPPY 0.16f, 0.12f
-#define CUI_SPRING_MORPH  0.26f, 0.16f
+#define CUI_SPRING_SNAPPY 0.16f, 0.0f
+#define CUI_SPRING_MORPH  0.18f, 0.0f
 
-/* Motion and state tokens. One value per job, so every component answers in
- * the same time and the same way. Tween durations are the time to settle. */
-#define CUI__T_HIGHLIGHT 0.06f   /* list and menu rows that follow the pointer or the keys */
-#define CUI__T_HOVER     0.10f   /* hover color, edges, icon color */
+/* Timed transitions finish at the duration; exponential tweens settle toward
+ * continuously changing values. Springs keep velocity for gesture motion. */
+#define CUI__T_HIGHLIGHT 0.10f   /* list and menu rows that follow the pointer or the keys */
+#define CUI__T_HOVER     0.12f   /* hover color, edges, icon color */
 #define CUI__T_FOCUS     0.10f   /* focus rings and focused edges */
-#define CUI__T_STATE     0.12f   /* checked, selected, on: fills that report a state */
-#define CUI__SPRING_EXPAND 0.20f, 0.0f   /* disclosures, trees, accordions open and close */
-#define CUI__SPRING_ENTER  0.18f, 0.0f   /* popovers, menus, tooltips, hover cards */
-#define CUI__SPRING_DIALOG 0.22f, 0.0f   /* dialogs and toasts */
-#define CUI__SPRING_SHEET  0.26f, 0.0f   /* sheets travel the height of the screen */
-#define CUI__SPRING_EXIT   0.12f, 0.0f   /* every floating layer leaves faster than it came */
-#define CUI__ENTER_SCALE 0.96f   /* floating layers grow from here */
-#define CUI__PRESS       0.97f   /* buttons, chips, tiles */
+#define CUI__T_PRESS     0.10f   /* press and release */
+#define CUI__T_STATE     0.15f   /* checked, selected, on: fills that report a state */
+#define CUI__T_ICON      0.15f
+#define CUI__T_ENTER     0.18f   /* popovers and dropdowns */
+#define CUI__T_MENU      0.15f   /* menus, selects and comboboxes */
+#define CUI__T_TOOLTIP   0.12f
+#define CUI__T_TAB       0.15f   /* selection indicators; content changes immediately */
+#define CUI__T_DIALOG    0.22f
+#define CUI__T_MODAL_EXIT 0.15f
+#define CUI__T_EXIT      0.12f
+#define CUI__T_SIDEBAR   0.22f
+#define CUI__T_TOAST     0.20f
+#define CUI__T_EXPAND    0.20f
+#define CUI__T_PANEL     0.28f   /* large panels and gesture settling */
+#define CUI__SPRING_EXPAND CUI__T_EXPAND, 0.0f
+#define CUI__SPRING_ENTER  CUI__T_ENTER, 0.0f
+#define CUI__ENTER_SCALE 0.98f   /* floating layers grow from here */
+#define CUI__PRESS       0.98f   /* buttons, chips, tiles */
 #define CUI__PRESS_WIDE  0.98f   /* rows and cards: wide targets travel further at the same scale */
 #define CUI__DISABLED    0.45f   /* opacity of anything disabled */
 /* Radius steps derived from the theme, so a custom scale carries everywhere */
@@ -419,7 +434,7 @@ typedef struct cui_popup {
     int z;                     /* stacking order: later opens are on top */
     uint64_t last_frame;
     float t;                   /* open animation 0..1 */
-    cui_spring s;
+    cui_transition s;
 } cui_popup;
 
 typedef struct cui_toast_item {
@@ -431,7 +446,7 @@ typedef struct cui_toast_item {
     float duration, age;
     double updated;           /* last age update; creation does not consume the preceding idle gap */
     bool dismissed, action_clicked, hovered_pause, show_timer;
-    cui_spring enter;          /* 0..1 appear */
+    cui_transition enter;      /* 0..1 appear */
     cui_spring y;              /* stacked position */
     cui_spring sx;             /* swipe offset; right dismisses */
     float grab_x, vel;         /* drag anchor and smoothed speed (points per second) */
@@ -441,7 +456,7 @@ typedef struct cui_toast_item {
 
 /* Scope stacks used while building one frame (kept per context). */
 typedef struct cui__popup_build { cui_id id; bool disabled_pushed; bool menu; int item_index; } cui__popup_build;
-typedef struct cui__modal_build { cui_id id; bool disabled_pushed; } cui__modal_build;
+typedef struct cui__modal_build { cui_id id; bool disabled_pushed, keyboard; bool *open; } cui__modal_build;
 typedef struct cui__vlist_build { int count; float row_h; int first; } cui__vlist_build;
 
 #define CUI_MAX_TOASTS 16

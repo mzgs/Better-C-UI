@@ -23,6 +23,10 @@ What changed in Better-C-UI, newest first. Every component mentioned here runs l
 
 ### Changed
 
+- **More immediate interaction feedback.** Hover, press and closing transitions respond quickly from their first frame; dropdowns and tab indicators now take 150 ms. Keyboard focus no longer changes later mouse animation behavior, and the gallery has a Reduce motion switch for comparing feedback.
+
+- **Consistent desktop motion.** Shared enter, exit and state curves now drive bounded, interruptible transitions for buttons, toggles, tabs, disclosures and floating layers. Routine controls no longer bounce, card hover stays in place, keyboard navigation and the command palette are immediate, and dragged slider thumbs track the pointer directly. Reduced motion still snaps to the final state; gesture springs and intentional clocks are preserved.
+
 - **Faster UI feedback.** Shorter shared hover, focus, selection and press animations, quicker panel and floating-layer entrances, and faster exits make routine interactions more immediate. Reduced motion, tooltip delays and toast lifetimes are preserved.
 
 - Renamed the shared agent guide to `AGENTS.md` and updated its build, verification and contribution instructions.

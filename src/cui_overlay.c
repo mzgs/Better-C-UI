@@ -38,6 +38,7 @@ void cui__popup_set(cui_ctx *ui, cui_id id, bool open) {
         nav->keyboard = false;
     }
     p->open = open;
+    if (cui__key_action(ui)) p->s = (cui_transition){ .x = open ? 1.0f : 0.0f };
 }
 
 void cui__close_all_popups(cui_ctx *ui) {
@@ -85,6 +86,7 @@ static void cui__panel_style(cui_ctx *ui, cui_node *n, float pad) {
 bool cui__popup_begin(cui_ctx *ui, cui_id id, cui_id anchor, int placement, float width, float pad, float gap, bool menu) {
     cui_popup *p = cui__popup_get(ui, id, false);
     if (!p) return false;
+    bool keyboard = cui__key_action(ui);
     p->last_frame = ui->frame;
     if (p->open) {
         bool top = cui__popup_is_topmost(ui, p);
@@ -96,9 +98,9 @@ bool cui__popup_begin(cui_ctx *ui, cui_id id, cui_id anchor, int placement, floa
         }
     }
     float target = p->open ? 1.0f : 0.0f;
-    if (p->open) cui__spring(ui, &p->s, target, CUI__SPRING_ENTER);
-    else cui__spring(ui, &p->s, target, CUI__SPRING_EXIT);
-    if (!p->open && p->s.x <= 0.01f) { p->s.x = 0; p->s.v = 0; return false; }
+    float duration = p->open ? (menu || p->at_mouse ? CUI__T_MENU : CUI__T_ENTER) : CUI__T_EXIT;
+    cui__transition(ui, &p->s, target, keyboard ? 0 : duration, p->open ? CUI__EASE_ENTER : CUI__EASE_EXIT);
+    if (!p->open && p->s.x == 0) return false;
     float t = cui__clampf(p->s.x, 0, 1);
     p->anchor = anchor;
     int z = p->z ? p->z : 1000 + ++ui->layer_seq;
@@ -425,7 +427,7 @@ bool cui_select_ex(cui_ctx *ui, const char *id_str, const char *const *items, in
 /* Tooltip                                                                  */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { char text[256]; cui_id anchor, shown; cui_spring t, ox, oy; double last_shown; bool visible, passive; } cui__tooltip_state;
+typedef struct { char text[256]; cui_id anchor, shown; cui_transition t; double last_shown; bool visible, passive; } cui__tooltip_state;
 static cui__tooltip_state *cui__tooltip_get(cui_ctx *ui) { return cui_state(ui, 0x7001717u, sizeof(cui__tooltip_state)); }
 
 void cui_tooltip(cui_ctx *ui, const char *text) {
@@ -478,23 +480,13 @@ void cui__tooltip_passive(cui_ctx *ui, cui_id anchor, const char *text) {
 static void cui__tooltip_render(cui_ctx *ui) {
     cui__tooltip_state *tt = cui__tooltip_get(ui);
     bool show = tt->visible && (tt->passive || ui->hot == tt->anchor);
-    if (show) cui__spring(ui, &tt->t, 1.0f, CUI__SPRING_ENTER);
-    else cui__spring(ui, &tt->t, 0.0f, CUI__SPRING_EXIT);
+    bool neighbour = show && tt->shown && tt->anchor != tt->shown;
+    cui__transition(ui, &tt->t, show ? 1.0f : 0.0f, neighbour ? 0 : CUI__T_TOOLTIP, show ? CUI__EASE_ENTER : CUI__EASE_EXIT);
     if (show) tt->last_shown = ui->time;
     tt->visible = false;
     if (!show) tt->passive = false;
-    if (tt->t.x <= 0.01f || !tt->anchor) { tt->shown = 0; tt->ox.x = tt->oy.x = 0; return; }
-    /* moving to a neighbour while warm, the tooltip travels from where it was instead of popping again */
-    if (tt->anchor != tt->shown) {
-        if (tt->shown && tt->t.x > 0.3f && cui__has_prev_rect(ui, tt->shown) && cui__has_prev_rect(ui, tt->anchor)) {
-            cui_rect a = cui__prev_rect(ui, tt->shown), b = cui__prev_rect(ui, tt->anchor);
-            tt->ox.x += (a.x + a.w * 0.5f) - (b.x + b.w * 0.5f);
-            tt->oy.x += a.y - b.y;
-        }
-        tt->shown = tt->anchor;
-    }
-    cui__spring(ui, &tt->ox, 0, 0.32f, 0.08f);
-    cui__spring(ui, &tt->oy, 0, 0.32f, 0.08f);
+    if (tt->t.x == 0 || !tt->anchor) { tt->shown = 0; return; }
+    tt->shown = tt->anchor;
     float t = cui__clampf(tt->t.x, 0, 1);
     int root = cui__float_begin(ui, 0x7001718u, 0x7FFFFFF0, tt->anchor, CUI_PLACE_TOP, 6);
     cui_node *n = &ui->nodes[root];
@@ -503,8 +495,7 @@ static void cui__tooltip_render(cui_ctx *ui) {
     n->pad[0] = n->pad[2] = 5; n->pad[1] = n->pad[3] = 9;
     n->opacity = t;
     n->scale = CUI__ENTER_SCALE + (1.0f - CUI__ENTER_SCALE) * t;
-    n->tx = tt->ox.x;
-    n->ty = (1 - t) * 3 + tt->oy.x;
+    n->ty = (1 - t) * 3;
     n->max_w = 280;
     n->elevation = CUI_ELEVATION_RAISED;
     bool dark = ui->mode == CUI_THEME_DARK;
@@ -552,21 +543,20 @@ static void cui__tooltip_render(cui_ctx *ui) {
 /* Dialogs and sheets                                                       */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring t; uint64_t opened; bool was_open; int z; } cui__modal_state;
+typedef struct { cui_transition t; uint64_t opened; bool was_open; int z; } cui__modal_state;
 
 
 static bool cui__modal_begin(cui_ctx *ui, cui_id id, const char *title, bool *open, const char *description, float width,
                              bool persistent, bool close_button, int kind, cui_side side) {
     cui__modal_state *st = cui_state(ui, id, sizeof *st);
+    bool keyboard = cui__key_action(ui);
     bool is_open = open && *open;
     if (is_open && !st->was_open) { st->opened = ui->frame; st->z = 1000 + ++ui->layer_seq; }
     st->was_open = is_open;
     float target = is_open ? 1.0f : 0.0f;
-    if (is_open) {
-        if (kind == 0) cui__spring(ui, &st->t, target, CUI__SPRING_DIALOG);
-        else cui__spring(ui, &st->t, target, CUI__SPRING_SHEET);
-    } else cui__spring(ui, &st->t, target, CUI__SPRING_EXIT);
-    if (!is_open && st->t.x <= 0.01f) { st->t.x = 0; st->t.v = 0; return false; }
+    float duration = is_open ? (kind == 0 ? CUI__T_DIALOG : CUI__T_SIDEBAR) : CUI__T_MODAL_EXIT;
+    cui__transition(ui, &st->t, target, keyboard ? 0 : duration, is_open ? CUI__EASE_ENTER : CUI__EASE_EXIT);
+    if (!is_open && st->t.x == 0) return false;
     float t = cui__clampf(st->t.x, 0, 1);
     cui_id scrim_id = id ^ 0x5C819u;
     int z = st->z ? st->z : 1000 + ++ui->layer_seq;
@@ -616,7 +606,6 @@ static bool cui__modal_begin(cui_ctx *ui, cui_id id, const char *title, bool *op
         pn->max_h = ui->vh - 48;
         pn->opacity = t;
         pn->scale = CUI__ENTER_SCALE + (1.0f - CUI__ENTER_SCALE) * t;
-        pn->ty = (1 - t) * 10;
     } else {
         bool horiz = side == CUI_SIDE_LEFT || side == CUI_SIDE_RIGHT;
         if (horiz) { pn->w = CUI_PX(CUI_MIN(width, ui->vw - 16)); pn->h = CUI_PX(ui->vh - 16); }
@@ -633,6 +622,8 @@ static bool cui__modal_begin(cui_ctx *ui, cui_id id, const char *title, bool *op
     if (ui->mb_depth < 8) ui->mb_depth++;
     b->id = id;
     b->disabled_pushed = !is_open;
+    b->keyboard = keyboard;
+    b->open = open;
     if (!is_open) cui_push_disabled(ui, true);
     if (ui->dialog_depth < 8) ui->dialog_stack[ui->dialog_depth++] = id;
     cui_push_id_int(ui, (int)id);
@@ -679,6 +670,10 @@ static void cui__modal_end(cui_ctx *ui, int kind) {
     if (ui->dialog_depth > 0) ui->dialog_depth--;
     if (ui->mb_depth > 0) {
         cui__modal_build *b = &ui->mb_stack[--ui->mb_depth];
+        if (b->keyboard && b->open && !*b->open) {
+            cui__modal_state *st = cui_state(ui, b->id, sizeof *st);
+            st->t = (cui_transition){0};
+        }
         if (b->disabled_pushed) cui_pop_disabled(ui);
     }
 }
@@ -777,8 +772,8 @@ static void cui__toasts_render(cui_ctx *ui) {
             else cui__wakeup_after(ui, t->duration - t->age + 0.01f);
         }
         t->updated = ui->time;
-        if (t->dismissed) cui__spring(ui, &t->enter, 0.0f, CUI__SPRING_EXIT);
-        else cui__spring(ui, &t->enter, 1.0f, CUI__SPRING_DIALOG);
+        cui__transition(ui, &t->enter, t->dismissed ? 0.0f : 1.0f,
+                        t->dismissed ? CUI__T_EXIT : CUI__T_TOAST, t->dismissed ? CUI__EASE_EXIT : CUI__EASE_ENTER);
     }
     for (int i = 0; i < ui->toast_count;) {
         cui_toast_item *rt = &ui->toasts[i];
@@ -861,7 +856,7 @@ static void cui__toasts_render(cui_ctx *ui) {
         }
         if (!t->swiping) {
             bool flung = t->dismissed && t->sx.x > 0.5f;
-            cui__spring(ui, &t->sx, flung ? W + 48 : 0.0f, flung ? 0.3f : 0.42f, flung ? 0.0f : 0.2f);
+            cui__spring(ui, &t->sx, flung ? W + 48 : 0.0f, CUI__T_PANEL, 0.0f);
         }
         float swipe_fade = 1.0f - 0.7f * cui__clampf(t->sx.x / W, 0, 1);
         int tn = cui__absolute(ui, tid, t->sx.x, ty[i] + (t->sx.x > 0.5f ? 0 : (1 - e) * 24), W, t->height);
@@ -1292,7 +1287,7 @@ bool cui_color_picker(cui_ctx *ui, const char *id_str, cui_color *value) {
 /* Command palette                                                          */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { char query[128]; int highlight; bool was_open; cui_spring t; } cui__palette_state;
+typedef struct { char query[128]; int highlight; bool was_open; } cui__palette_state;
 
 static int cui__fuzzy(const char *text, const char *q) {
     /* subsequence match; higher is better, -1 = no match */
@@ -1321,10 +1316,7 @@ int cui_command_palette(cui_ctx *ui, bool *open, const cui_command *cmds, int co
     bool is_open = open && *open;
     if (is_open && !st->was_open) { st->query[0] = 0; st->highlight = 0; }
     st->was_open = is_open;
-    if (is_open) cui__spring(ui, &st->t, 1.0f, CUI__SPRING_ENTER);
-    else cui__spring(ui, &st->t, 0.0f, CUI__SPRING_EXIT);
-    if (!is_open && st->t.x <= 0.01f) { st->t.x = 0; st->t.v = 0; return -1; }
-    float t = cui__clampf(st->t.x, 0, 1);
+    if (!is_open) return -1;
     int chosen = -1;
     cui_id scrim_id = id ^ 0x5C819u;
     if (is_open) {
@@ -1336,7 +1328,7 @@ int cui_command_palette(cui_ctx *ui, bool *open, const cui_command *cmds, int co
     int root = cui__float_begin(ui, id, 0x7FFF0000, 0, CUI__PLACE_FULL, 0);
     cui_node *rn = &ui->nodes[root];
     rn->id = scrim_id;
-    rn->bg = cui_alpha(CUI_C(ui, SCRIM), t * 0.7f);
+    rn->bg = cui_alpha(CUI_C(ui, SCRIM), 0.7f);
     rn->flags |= CUI_NF_BLOCKER | CUI_NF_INTERACTIVE;
     rn->dir = CUI_STACK; rn->align = CUI_ALIGN_CENTER; rn->justify = CUI_JUSTIFY_START;
     rn->pad[0] = CUI_MAX(24.0f, ui->vh * 0.14f);
@@ -1351,9 +1343,6 @@ int cui_command_palette(cui_ctx *ui, bool *open, const cui_command *cmds, int co
     pn->radius = CUI_CORNERS(ui->theme.radius_panel);
     pn->elevation = CUI_ELEVATION_FLOATING;
     pn->flags |= CUI_NF_HIT_OPAQUE | CUI_NF_CLIP;
-    pn->opacity = t;
-    pn->scale = CUI__ENTER_SCALE + (1.0f - CUI__ENTER_SCALE) * t;
-    pn->ty = (1 - t) * -8;
     cui__open(ui, panel);
     /* search */
     int sr = cui__node_new(ui, 0);

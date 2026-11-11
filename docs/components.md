@@ -94,7 +94,7 @@ cui_button(ui, "Saving", .variant = CUI_BUTTON_PRIMARY, .loading = true);
 | `color` | Text and icon color. Pair it with `selected` for toggles: `.selected = liked, .color = liked ? CUI_COLOR_ACCENT : CUI_TRANSPARENT` |
 | `tooltip`, `shortcut` | Tooltip text and a shortcut hint |
 
-Use one primary button per view. Presses scale to 0.97 on a snappy spring. Keyboard: Tab to focus, Enter or Space to press.
+Use one primary button per view. Presses scale to 0.98 over 100 ms, with immediate pressed color and no bounce. Keyboard: Tab to focus, Enter or Space to press.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/button-states-dark.png"><img src="images/components/button-states.png" alt="Every button variant at rest, under the pointer, pressed, focused from the keyboard and disabled"></picture>
 
@@ -129,7 +129,7 @@ const char *icons[] = { CUI_ICON_LIST, CUI_ICON_LAYOUT_DASHBOARD, CUI_ICON_HISTO
 cui_segmented(ui, "view", items, 3, &view, .icons = icons);
 ```
 
-The highlight's two edges have their own springs: the leading one runs ahead and the trailing one follows, so it stretches toward the new option and draws in as it lands. Options: `size`, `full_width`, `icons`. Keyboard: arrows move the selection.
+The highlight moves and changes width together over 150 ms without overshoot. Keyboard selection is immediate; content never waits for the highlight. Options: `size`, `full_width`, `icons`. Keyboard: arrows move the selection.
 
 Returns true on the frame the selection changes. `view` is your `int`, the index of the selected option. The control writes it on a click and keeps it between 0 and `count` - 1; set it from code and the highlight glides there. `items` and `icons` are your arrays, read every frame, and `icons` needs an entry or `NULL` for each option. For pages of different content use tabs, and for options that can each be on or off use a toggle group.
 
@@ -147,7 +147,7 @@ cui_radio(ui, "Yearly", &billing, 1);
 cui_radio_group(ui, "autosave", (const char *[]){ "Every change", "Every 5 minutes", "Only when I save" }, 3, &autosave);
 ```
 
-Each returns true when it changes the value. The whole row, label included, is clickable. A press dips the box; checking overshoots a touch and settles, while clearing and keyboard toggles stay plain. The switch thumb stretches with its speed in flight, keeping its volume, and rounds out as it lands. A switch applies immediately; a checkbox is for choices confirmed later with a button. Options: `description`, `disabled`, `indeterminate` (checkbox). Keyboard: Space toggles.
+Each returns true when it changes the value. The whole row, label included, is clickable. A press dips the box subtly; check marks, radio dots and switch thumbs transition for 150 ms without overshoot. Keyboard toggles appear immediately. A switch applies immediately; a checkbox is for choices confirmed later with a button. Options: `description`, `disabled`, `indeterminate` (checkbox). Keyboard: Space toggles.
 
 ## Slider
 
@@ -543,7 +543,7 @@ A card is a surface that groups content. A metric shows one number with its chan
 
 ```c
 cui_card(ui, .gap = 12) { ... }
-if (cui_card(ui, .id = "project", .hoverable = true)) { ... }   /* lifts on hover, returns clicks */
+if (cui_card(ui, .id = "project", .hoverable = true)) { ... }   /* changes its border on hover, returns clicks */
 cui_metric(ui, "Weekly installs", "3,912", .delta = 8.1f, .spark = values, .spark_count = 7, .icon = CUI_ICON_DOWNLOAD);
 cui_metric(ui, "Median build", "3m 42s", .delta = -17.6f, .lower_is_better = true);   /* a fall, in green */
 ```
@@ -637,7 +637,7 @@ if (cui_accordion_begin(ui, "Is it dependency free?", &open)) {
 }
 ```
 
-The content animates its height on a smooth spring and the chevron rotates.
+The content transitions its height over 200 ms and the chevron rotates. Keyboard expansion is immediate.
 
 `cui_accordion_begin` returns true while the section is open or still closing, and only then do you add its content and call `cui_accordion_end`, as the `if` above does. `open` is your `bool` and must not be `NULL`: a click on the header flips it, and setting it from code opens or closes the section with the same animation. Each section has its own `bool`, so several can be open at once; to keep one open at a time, clear the others when one turns true. The title is also the identity, so two sections with the same title in one scope need a key (`"Details##billing"`). For a card that opens, use the expandable card.
 

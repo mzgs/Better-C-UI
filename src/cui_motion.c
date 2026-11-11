@@ -587,7 +587,7 @@ void cui_loader_ex(cui_ctx *ui, const cui_loader_opts *o) {
 struct cui_dock_build { cui_id id; float size, mag, gap; bool hot; int k, seps; struct cui_dock_build *prev; };
 typedef struct { int items, seps; } cui__dock_count;
 
-typedef struct { cui_spring s, press; float hover; } cui__dock_item_state;
+typedef struct { cui_spring s; cui_transition press; float hover; } cui__dock_item_state;
 
 void cui_dock_begin(cui_ctx *ui, const char *id_str, const cui_dock_opts *o) {
     cui_dock_opts d;
@@ -669,7 +669,8 @@ bool cui_dock_item_ex(cui_ctx *ui, const char *icon, const char *label, const cu
     }
     if (st->s.x <= 0 || b->mag <= 1) { st->s.x = 1; st->s.v = 0; }
     cui__spring(ui, &st->s, target, 0.28f, 0.0f);
-    cui__spring(ui, &st->press, r.pressed ? 0.9f : 1.0f, CUI_SPRING_SNAPPY);
+    if (st->press.x == 0) st->press.x = 1;
+    cui__transition(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     float sz = b->size * st->s.x;
     int n = cui__leaf(ui, iid, CUI_PX(sz), CUI_PX(sz));
@@ -714,7 +715,7 @@ void cui_dock_end(cui_ctx *ui) {
 /* Tab bar                                                                  */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring x, w; bool init; } cui__tb_state;
+typedef struct { cui_transition x, w; bool init; } cui__tb_state;
 typedef struct { float x, w; cui_color c; } cui__tb_paint;
 
 static void cui__paint_tab_bar(cui_ctx *ui, cui_node *n, void *data) {
@@ -797,8 +798,8 @@ bool cui_tab_bar_ex(cui_ctx *ui, const char *id_str, const cui_tab_bar_item *ite
             cui_rect ir = cui__prev_rect(ui, iid);
             if (ir.w > 0) {
                 if (!st->init) { st->x.x = ir.x; st->w.x = ir.w; st->init = true; }
-                cui__spring(ui, &st->x, ir.x, CUI_SPRING_SMOOTH);
-                cui__spring(ui, &st->w, ir.w, CUI_SPRING_SMOOTH);
+                cui__transition(ui, &st->x, ir.x, cui__key_action(ui) ? 0 : CUI__T_TAB, CUI__EASE_STATE);
+                cui__transition(ui, &st->w, ir.w, cui__key_action(ui) ? 0 : CUI__T_TAB, CUI__EASE_STATE);
                 p->x = st->x.x; p->w = st->w.x;
             }
         }
@@ -814,7 +815,7 @@ bool cui_tab_bar_ex(cui_ctx *ui, const char *id_str, const cui_tab_bar_item *ite
 /* Control tile                                                             */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { float on, hover; cui_spring press; bool init; } cui__tile_state;
+typedef struct { float on, hover; cui_transition press; bool init; } cui__tile_state;
 
 bool cui_control_tile_ex(cui_ctx *ui, const char *label, bool *on, const cui_tile_opts *o) {
     cui_tile_opts d;
@@ -827,9 +828,9 @@ bool cui_control_tile_ex(cui_ctx *ui, const char *label, bool *on, const cui_til
     bool v = on && *on;
     cui__tile_state *st = cui_state(ui, id, sizeof *st);
     if (!st->init) { st->on = v ? 1.0f : 0.0f; st->press.x = 1; st->init = true; }
-    cui__tween(ui, &st->on, v ? 1.0f : 0.0f, CUI__T_STATE);
+    cui__tween(ui, &st->on, v ? 1.0f : 0.0f, CUI__T_ICON);
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
-    cui__spring(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI_SPRING_SNAPPY);
+    cui__transition(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     bool dark = ui->mode == CUI_THEME_DARK;
     cui_color off_bg = dark ? cui_mix(CUI_C(ui, SURFACE), CUI_C(ui, FOREGROUND), 0.08f + 0.04f * st->hover) : cui_mix(CUI_C(ui, SURFACE_MUTED), CUI_C(ui, FOREGROUND), 0.035f * st->hover);
     cui_color on_bg = cui__color_set(o->color) ? cui_color_of(ui, o->color) : (ui->accent == CUI_ACCENT_NEUTRAL ? CUI_C(ui, CONTROL_ON) : CUI_C(ui, ACCENT));
@@ -983,7 +984,7 @@ static void cui__paint_np_scrub(cui_ctx *ui, cui_node *n, void *data) {
     }
 }
 
-typedef struct { bool dragging; float hover; float drag_pos; cui_spring press; } cui__np_state;
+typedef struct { bool dragging; float hover; float drag_pos; cui_transition press; } cui__np_state;
 
 static void cui__paint_art_color(cui_ctx *ui, cui_node *n, void *data) {
     cui_color c = *(cui_color *)data;
@@ -1067,7 +1068,8 @@ int cui_now_playing_ex(cui_ctx *ui, const char *id_str, cui_now_playing *np, con
     if (!compact && !narrow) { bo.tooltip = "Previous"; if (cui_icon_button_ex(ui, CUI_ICON_SKIP_BACK, &bo)) result |= CUI_PLAYER_PREV; }
     /* play / pause */
     cui_interact pr = cui__interact(ui, pid, CUI_IF_FOCUSABLE);
-    cui__spring(ui, &st->press, pr.pressed ? 0.9f : 1.0f, CUI_SPRING_SNAPPY);
+    if (st->press.x == 0) st->press.x = 1;
+    cui__transition(ui, &st->press, pr.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     if (pr.clicked || pr.keyboard_activate) { np->playing = !np->playing; result |= CUI_PLAYER_TOGGLE; }
     float pb = compact ? 36 : 40;
     int pn = cui__node_new(ui, pid);

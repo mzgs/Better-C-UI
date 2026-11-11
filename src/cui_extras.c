@@ -492,7 +492,7 @@ bool cui_hold_button_ex(cui_ctx *ui, const char *label, const cui_hold_opts *o) 
         st->back.v = 0;
     } else {
         if (!held) st->fired = false;
-        cui__spring(ui, &st->back, 0, 0.35f, 0.0f);
+        cui__spring(ui, &st->back, 0, CUI__T_SIDEBAR, 0.0f);
         st->progress = st->back.x;
     }
     st->held = held;

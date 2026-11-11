@@ -162,7 +162,8 @@ When a component grows past a screen or two, split it by phase rather than by li
 
 - A frame where nothing changed allocates nothing: use frame memory for per-frame data and `cui_state` for what persists.
 - Nothing animates or polls unless it has to: what waits asks for a wakeup (`cui__wakeup_after` in components, `cui_request_wakeup` in apps) instead of redrawing every frame.
-- Pass the full elapsed time to `cui_begin_frame`, including time spent asleep. Timers use that time; springs, tweens and other transitions use `cui__animation_dt` so a new interaction does not jump past its entrance after an idle wait.
+- Discrete visual changes use `cui_transition` and `cui__transition`, with shared `CUI__T_*` durations and `CUI__EASE_*` curves. A changed target replaces the current transition. Keep springs for gesture velocity and tweens for continuously changing values; never delay an action until its visual transition finishes. Use actual input events (`cui__key_action`), not the persistent focus-ring flag, when bypassing motion for keyboard actions.
+- Pass the full elapsed time to `cui_begin_frame`, including time spent asleep. Timers use that time; springs, tweens and timed transitions use `cui__animation_dt` so a new interaction does not jump past its entrance after an idle wait.
 - Local file browsers read on a worker and poll only while a listing is pending. Custom listers run on the UI thread: return cached data, or `CUI_FILE_LIST_PENDING` until it is ready.
 - Long lists build only the rows in view (`cui_virtual_list_begin`, the data grid, the terminal, the emoji grid).
 - The software renderer redraws only tiles that changed, so a component must draw the same triangles for the same state: no randomness or time in paint callbacks unless the component is animating.

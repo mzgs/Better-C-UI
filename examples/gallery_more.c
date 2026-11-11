@@ -306,7 +306,7 @@ static void page_disclosure(cui_ctx *ui) {
         "renders through OpenGL or a built-in software rasterizer, so it also runs in virtual machines and over remote desktop.",
         .lines = 2);
 
-    section(ui, "Expandable cards", "A header that opens a body with a spring.");
+    section(ui, "Expandable cards", "A header that opens a body with a short height transition.");
     cui_column(ui, .gap = 10) {
         cui_expandable_card(ui, "Billing", &card1, .description = "Pro plan, renews on December 1", .icon = CUI_ICON_CREDIT_CARD, .badge = "Active", .badge_tone = CUI_TONE_SUCCESS) {
             /* plain label and value pairs: a card inside the card would only add edges */

@@ -45,33 +45,44 @@ CUI's look is deliberate. These are the rules every component follows, and they 
 ## Motion
 
 - Motion explains cause and effect: what opened, what changed, where it came from.
-- Anything that reports state lands without overshoot (switch thumbs, progress, panel heights). Small feedback has a little life (presses, gliding highlights).
-- Presses scale to 0.97 (0.98 for rows and cards, which are wide), except for triggers that anchor a menu: those answer with color. Nothing grows on hover.
-- Frequent feedback is nearly instant, rare moments may take longer. One duration per job, in every component:
+- Routine feedback never bounces or overshoots. Presses scale to 0.98; triggers that anchor a menu answer with color. Hover changes color and opacity, without lifting cards.
+- Input and content changes take effect immediately. Only the visual feedback transitions; tab content never waits for an indicator. Keyboard focus, keyboard selection and the command palette appear immediately.
+- Reuse the motion tokens in `src/cui_internal.h`:
 
-| Job | Time |
+| Job | Duration at normal motion speed |
 |---|---|
-| A row following the pointer or the keys | 60 ms |
-| Hover color, edges, icon color | 100 ms |
-| A focus ring appearing | 100 ms |
-| A selection fill reporting its new state | 120 ms |
-| Press feedback | 160 ms spring |
-| Smooth travel, including switch thumbs | 240 ms spring, no overshoot |
-| A gliding highlight changing shape | 260 ms spring |
-| A disclosure, tree or accordion opening | 200 ms spring, no overshoot |
-| A popover, menu, tooltip or hover card appearing | 180 ms spring from 96% scale, rising 6 pt |
-| A dialog or toast appearing | 220 ms spring |
-| A sheet appearing | 260 ms spring |
-| Any floating layer leaving | 120 ms |
+| Row feedback | 100 ms |
+| Hover background and edges | 120 ms |
+| Focus | immediate for keyboard focus; 100 ms color feedback elsewhere |
+| Button press and release | 100 ms |
+| Checkbox, radio, switch and selection fills | 150 ms |
+| Icon changes | 150 ms |
+| Dropdowns, selects and context menus | 150 ms |
+| Popovers and hover cards | 180 ms |
+| Tooltips | 120 ms; warm neighbours appear immediately |
+| Tab and navigation indicators | 150 ms; immediate from the keyboard |
+| Modal opening / closing | 220 / 150 ms |
+| Sidebars and sheets opening | 220 ms |
+| Toast opening / closing | 200 / 120 ms |
+| Expand and collapse | 200 ms |
+| Large panels and gesture settling | 280 ms |
 
-These are the shared presets at normal motion speed. Springs approach the target
-quickly and settle afterward; their duration is not a hard deadline. Tooltip dwell
-delays, toast lifetimes and deliberate holds keep their own clocks.
+Timed transitions use these cubic Bezier curves, solving the time coordinate as
+well as the value:
 
+| Purpose | Curve |
+|---|---|
+| Enter, exit, hover and press feedback | `(0.2, 0.8, 0.2, 1)` |
+| Movement and state | `(0.4, 0, 0.2, 1)` |
+
+- Animation decisions use current input events, separately from the visible keyboard focus ring. Hover and mouse-triggered panels keep their transitions after keyboard use; keyboard-triggered changes remain immediate.
+- Timed transitions finish at their duration and retarget from the current value without queuing. Springs keep velocity for gestures, reordering and interactive motion. Exponential tweens smooth continuously changing values and color feedback in existing components.
+- Floating layers use opacity and a small transform. Popovers travel 6 pt from 98% scale; dialogs fade from 98% scale without a vertical slide. Sheets slide over content rather than resizing it on every frame.
+- Dragged controls, split dividers and scroll positions track input directly. Navigation has no added page animation, so scrolling and component state stay under the application's control.
 - Disabled is one opacity everywhere (45%).
-- Exits are faster than entrances. Everything is interruptible because everything is a spring.
-- Every animation has a reduced motion path that keeps the final state and the feedback.
-- A spring or tween resumes with one 60 Hz step after a gap longer than 100 ms, so an interaction after idle keeps its entrance. Clocks and expiry timers still receive the full elapsed time.
+- Reduced motion snaps transitions to the final state, preserving feedback. `theme.motion` scales durations, including slow motion for inspection.
+- Animation steps resume with one 60 Hz step after a gap longer than 100 ms. Tooltip dwell delays, toast lifetimes and deliberate holds keep the full elapsed time.
+- Specialty effects such as typewriter text, rolling numbers and gauge needles retain their own timing; the ordinary interaction budgets do not shorten a deliberate hold or a playback clock.
 
 ## Responsive
 

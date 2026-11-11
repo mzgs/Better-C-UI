@@ -354,7 +354,7 @@ int cui_tree_table_depth(cui_ctx *ui) {
     return b && b->cur >= 0 ? b->rows[b->cur].depth : 0;
 }
 
-typedef struct { cui_spring t; float hover; bool init; } cui__tt_chev;
+typedef struct { cui_transition t; float hover; bool init; } cui__tt_chev;
 
 void cui_tree_table_name(cui_ctx *ui, const char *label, const char *icon) {
     cui__tt_build *b = cui__tt_current(ui);
@@ -381,7 +381,7 @@ void cui_tree_table_name(cui_ctx *ui, const char *label, const char *icon) {
             ui->focus = b->id;   /* the keys carry on from the tree */
         }
         if (!cs->init) { cs->t.x = open ? 1.0f : 0.0f; cs->init = true; }
-        cui__spring(ui, &cs->t, open ? 1.0f : 0.0f, CUI__SPRING_EXPAND);
+        cui__transition(ui, &cs->t, open ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
         cui__tween(ui, &cs->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
         int bx = cui__node_new(ui, cid);
         cui_node *bn = &ui->nodes[bx];

@@ -5,14 +5,12 @@
 
 
 typedef struct {
-    float hover, focus;
-    cui_spring on;      /* 0..1 checked */
-    cui_spring press;   /* 0..1 pressed */
+    cui_transition hover, focus, on, press;
     bool init;
 } cui__toggle_state;
 
 typedef struct {
-    float t, v, hover, press, focus;   /* v: the spring's speed, in widths per second */
+    float t, hover, press, focus;
     bool indeterminate;
     int kind;           /* 0 checkbox, 1 switch, 2 radio */
 } cui__toggle_paint;
@@ -23,9 +21,9 @@ static void cui__paint_toggle(cui_ctx *ui, cui_node *n, void *data) {
     cui_color on = CUI_C(ui, CONTROL_ON);
     cui_color glyph = CUI_C(ui, CONTROL_GLYPH);
     float t = cui__clampf(p->t, 0, 1);
-    /* a press dips the box, and the toggle's small overshoot swells it: it answers the click like a key */
+    /* A press dips the box without moving its label. */
     if (p->kind != 1) {
-        float k = (1.0f - 0.06f * p->press) * (1.0f + 0.35f * CUI_MAX(0.0f, p->t - 1.0f));
+        float k = 1.0f - (1.0f - CUI__PRESS) * p->press;
         float cx = r.x + r.w * 0.5f, cy = r.y + r.h * 0.5f;
         r = (cui_rect){ cx - r.w * 0.5f * k, cy - r.h * 0.5f * k, r.w * k, r.h * k };
     }
@@ -48,15 +46,9 @@ static void cui__paint_toggle(cui_ctx *ui, cui_node *n, void *data) {
         cui_draw_rect(ui, r, CUI_CORNERS(h * 0.5f), cui_mix(track, on, t));
         cui__draw_sheen(ui, r, CUI_CORNERS(h * 0.5f), 0.5f * t);
         float pad = 2, d = h - pad * 2;
-        float stretch = p->press * 4;
-        float travel = w - pad * 2 - d - stretch;
+        float travel = w - pad * 2 - d;
         float x = r.x + pad + travel * t;
-        /* in flight the thumb stretches with its speed and thins to keep its volume, then rounds out as it lands */
-        float speed = fabsf(p->v) * travel;
-        float sx = 1.0f + CUI_MIN(0.28f, speed / 900.0f), sy = 1.0f / sx;
-        float tw = (d + stretch) * sx, tht = d * sy;
-        float grow = tw - (d + stretch);   /* anchored at the end it leaves from, so it never pokes out of the track */
-        x = cui__clampf(x - grow * t, r.x + pad, r.x + w - pad - tw);
+        float tw = d, tht = d;
         if (n->rtl) x = r.x + r.w - (x - r.x) - tw;
         cui_rect th = { x, r.y + pad + (d - tht) * 0.5f, tw, tht };
         cui_vec2 o1 = { 0, 1 }, o2 = { 0, 2 };
@@ -70,7 +62,7 @@ static void cui__paint_toggle(cui_ctx *ui, cui_node *n, void *data) {
         cui_color border = cui__control_edge(ui, p->hover);
         cui_draw_rect_border(ui, r, CUI_CORNERS(rr), cui_mix(CUI_C(ui, SURFACE), on, t), cui_mix(border, on, t), 1);
         cui__draw_sheen(ui, r, CUI_CORNERS(rr), 0.55f * t);
-        float dot = 7.0f * CUI_MAX(0.0f, p->t);   /* the dot pops a touch past its size, then settles */
+        float dot = 7.0f * t;
         if (dot > 0.2f) {
             cui_vec2 c = { r.x + rr, r.y + rr };
             cui_draw_circle(ui, c, dot * 0.5f, glyph);
@@ -91,12 +83,10 @@ static cui_interact cui__toggle_row(cui_ctx *ui, cui_id id, int kind, bool check
     float target = checked ? 1.0f : 0.0f;
     if (!st->init) { st->on.x = target; st->init = true; }
     if (r.clicked) target = 1.0f - target;
-    cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
-    cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
-    if (kind == 1) cui__spring(ui, &st->on, target, CUI_SPRING_SMOOTH);
-    else if (r.keyboard_activate) cui__spring(ui, &st->on, target, 0.2f, 0.0f);   /* keys toggle plainly */
-    else cui__spring(ui, &st->on, target, 0.26f, target > 0.5f ? 0.22f : 0.0f);   /* checking overshoots a little; clearing does not */
-    cui__spring(ui, &st->press, r.pressed ? 1.0f : 0.0f, CUI_SPRING_SNAPPY);
+    cui__transition(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER, CUI__EASE_FEEDBACK);
+    cui__transition(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, 0, CUI__EASE_STATE);
+    cui__transition(ui, &st->on, target, r.keyboard_activate ? 0 : CUI__T_STATE, CUI__EASE_STATE);
+    cui__transition(ui, &st->press, r.pressed ? 1.0f : 0.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
 
     bool has_desc = o && o->description;
     int row = cui__node_new(ui, id);
@@ -114,7 +104,7 @@ static cui_interact cui__toggle_row(cui_ctx *ui, cui_id id, int kind, bool check
     cui_node *cn = &ui->nodes[ctl];
     if (has_desc) cn->self_align = CUI__ALIGN_NOSTRETCH;
     cui__toggle_paint *p = cui__frame_alloc(ui, sizeof *p);
-    p->t = st->on.x; p->v = st->on.v; p->hover = st->hover; p->press = st->press.x; p->focus = st->focus; p->kind = kind;
+    p->t = st->on.x; p->hover = st->hover.x; p->press = st->press.x; p->focus = st->focus.x; p->kind = kind;
     p->indeterminate = o && o->indeterminate;
     cn->paint = cui__paint_toggle;
     cn->paint_data = p;
@@ -278,14 +268,12 @@ bool cui_slider_ex(cui_ctx *ui, const char *label, float *value, float min, floa
     cui_rect pr = cui__prev_rect(ui, track_id);
     float pad = 9;
     float x0 = pr.x + pad, x1 = pr.x + pr.w - pad;
-    bool jumped = false;
     if (r.active && ui->mdown[0] && pr.w > 0) {
         /* right to left, the minimum is at the right end */
         float mx = st->rtl ? x0 + x1 - ui->mx : ui->mx;
         float mt = (mx - x0) / (x1 - x0);
         if (ui->mpressed[0]) {
             st->dragging = true;
-            jumped = fabsf(mt - t) > 0.02f;
         }
         float over = 0;
         if (mx < x0) over = cui__rubber(mx - x0);
@@ -310,9 +298,9 @@ bool cui_slider_ex(cui_ctx *ui, const char *label, float *value, float min, floa
     v = cui__clampf(v, min, max);
     *value = v;
     t = (v - min) / (max - min);
-    if (!st->dragging) cui__spring(ui, &st->over, 0, 0.5f, 0.35f);
-    if (jumped || !st->dragging) cui__spring(ui, &st->thumb, t, 0.3f, 0.0f);
-    else { st->thumb.x = t; st->thumb.v = 0; }
+    if (!st->dragging) cui__spring(ui, &st->over, 0, CUI__T_PANEL, 0.0f);
+    if (st->dragging || r.focus_visible) { st->thumb.x = t; st->thumb.v = 0; }
+    else cui__spring(ui, &st->thumb, t, CUI__T_STATE, 0.0f);
     cui__tween(ui, &st->hover, (r.hovered || r.active) ? 1.0f : 0.0f, CUI__T_HOVER);
     cui__tween(ui, &st->active, r.active ? 1.0f : 0.0f, CUI__T_STATE);
     cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
@@ -361,8 +349,13 @@ bool cui_range_slider(cui_ctx *ui, const char *label, float *lo, float *hi, floa
     }
     *lo = min + ta * (max - min);
     *hi = min + tb * (max - min);
-    cui__spring(ui, &st->a, ta, 0.22f, 0);
-    cui__spring(ui, &st->b, tb, 0.22f, 0);
+    if (r.active || r.focus_visible) {
+        st->a = (cui_spring){ ta, 0 };
+        st->b = (cui_spring){ tb, 0 };
+    } else {
+        cui__spring(ui, &st->a, ta, CUI__T_STATE, 0);
+        cui__spring(ui, &st->b, tb, CUI__T_STATE, 0);
+    }
     cui__tween(ui, &st->hover, (r.hovered || r.active) ? 1.0f : 0.0f, CUI__T_HOVER);
     int col = cui__node_new(ui, id);
     ui->nodes[col].gap = 6;
@@ -413,13 +406,10 @@ static void cui__paint_star(cui_ctx *ui, cui_node *n, void *data) {
     cui_draw_polyline(ui, pts, 10, 1.0f, c, true);
 }
 
-typedef struct { int hover_index; cui_spring pop[16]; } cui__rating_state;
-
 bool cui_rating(cui_ctx *ui, const char *id_str, int *value, int max) {
     if (max <= 0) max = 5;
     if (max > 16) max = 16;
     cui_id id = cui_make_id(ui, id_str);
-    cui__rating_state *st = cui_state(ui, id, sizeof *st);
     int row = cui__node_new(ui, id);
     ui->nodes[row].dir = CUI_ROW; ui->nodes[row].gap = 2; ui->nodes[row].self_align = CUI__ALIGN_NOSTRETCH;
     cui__open(ui, row);
@@ -429,19 +419,17 @@ bool cui_rating(cui_ctx *ui, const char *id_str, int *value, int max) {
         cui_id sid = cui__hash(&k, sizeof k, id);
         cui_interact r = cui__interact(ui, sid, 0);
         if (r.hovered) { hover = k; cui__set_cursor(ui, CUI_CURSOR_HAND); }
-        if (r.clicked) { *value = (*value == k + 1) ? 0 : k + 1; changed = true; st->pop[k].v = 6; }
+        if (r.clicked) { *value = (*value == k + 1) ? 0 : k + 1; changed = true; }
         (void)r;
     }
     for (int k = 0; k < max; k++) {
         cui_id sid = cui__hash(&k, sizeof k, id);
-        if (st->pop[k].x == 0 && st->pop[k].v == 0) st->pop[k].x = 1;
-        cui__spring(ui, &st->pop[k], 1.0f, 0.35f, 0.45f);
         int s = cui__leaf(ui, sid, CUI_PX(22), CUI_PX(22));
         cui__mark_interactive(ui, s, 0);
         cui__star_paint *p = cui__frame_alloc(ui, sizeof *p);
         p->fill = (k < *value) ? 1.0f : 0.0f;
         p->hover = (hover >= 0 && k <= hover) ? 1.0f : 0.0f;
-        p->scale = st->pop[k].x;
+        p->scale = 1;
         ui->nodes[s].paint = cui__paint_star;
         ui->nodes[s].paint_data = p;
     }
@@ -453,7 +441,7 @@ bool cui_rating(cui_ctx *ui, const char *id_str, int *value, int max) {
 /* Chips                                                                    */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { float hover, sel, focus; cui_spring press; } cui__chip_state;
+typedef struct { float hover, sel, focus; cui_transition press; } cui__chip_state;
 
 bool cui_chip_ex(cui_ctx *ui, const char *label, bool *selected, const cui_chip_opts *o) {
     cui_chip_opts d;
@@ -471,8 +459,8 @@ bool cui_chip_ex(cui_ctx *ui, const char *label, bool *selected, const cui_chip_
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     cui__tween(ui, &st->sel, sel ? 1.0f : 0.0f, CUI__T_STATE);
     cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
-    if (st->press.x == 0 && st->press.v == 0) st->press.x = 1;
-    cui__spring(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI_SPRING_SNAPPY);
+    if (st->press.x == 0) st->press.x = 1;
+    cui__transition(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     int i = cui__node_new(ui, id);
     cui_node *n = &ui->nodes[i];
     n->dir = CUI_ROW; n->align = CUI_ALIGN_CENTER; n->gap = 6;
@@ -501,7 +489,7 @@ bool cui_chip_ex(cui_ctx *ui, const char *label, bool *selected, const cui_chip_
 /* Segmented control and tabs                                               */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring x, w, l, r; bool init; float hover[32]; float focus; } cui__seg_state;
+typedef struct { cui_transition x, w; bool init; float hover[32]; float focus; } cui__seg_state;
 
 typedef struct { cui_color bg, ring; float radius; bool shadow; bool underline; } cui__hl_paint;
 
@@ -557,14 +545,9 @@ static bool cui__segments(cui_ctx *ui, const char *id_str, const char *const *it
         tx += 10; tw -= 20;
     }
     if (have) {
-        if (!st->init) { st->l.x = tx; st->r.x = tx + tw; st->init = true; }
-        /* each edge has its own spring: the one in front leads and the one behind follows a beat later,
-           so the indicator stretches toward its new place and draws in as it lands */
-        bool right = tx + tw > st->r.x + 0.5f, left = tx < st->l.x - 0.5f;
-        cui__spring(ui, &st->l, tx, left ? 0.26f : 0.42f, left ? 0.0f : 0.14f);
-        cui__spring(ui, &st->r, tx + tw, right ? 0.26f : 0.42f, right ? 0.0f : 0.14f);
-        if (st->r.x - st->l.x < 4) st->r.x = st->l.x + 4;
-        st->x.x = st->l.x; st->w.x = st->r.x - st->l.x;
+        if (!st->init) { st->x.x = tx; st->w.x = tw; st->init = true; }
+        cui__transition(ui, &st->x, tx, cui__key_action(ui) ? 0 : CUI__T_TAB, CUI__EASE_STATE);
+        cui__transition(ui, &st->w, tw, cui__key_action(ui) ? 0 : CUI__T_TAB, CUI__EASE_STATE);
     }
     float h = cui__control_height(ui, size);
     /* squeezed (a phone): segments drop to 8px side padding before their labels truncate. The row
@@ -723,14 +706,15 @@ bool cui_tabs_ex(cui_ctx *ui, const char *id, const char *const *items, int coun
 
 typedef struct {
     uint64_t frame;
+    uint64_t keyboard_frame;
     cui_id first_id;
     int first_node;
     float target_dy, target_h;
     bool has_target, init;
-    cui_spring y, h;
+    cui_transition y, h;
 } cui__nav_group;
 
-typedef struct { float hover, focus; cui_spring press; } cui__nav_state;
+typedef struct { float hover, focus; cui_transition press; } cui__nav_state;
 
 bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *o) {
     cui_nav_opts d;
@@ -741,10 +725,11 @@ bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *o) {
     cui_id id = cui_make_id(ui, label) ^ 0x4A570005u;
     cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE);
     cui__nav_state *st = cui_state(ui, id, sizeof *st);
+    if (r.clicked) g->keyboard_frame = r.keyboard_activate ? ui->frame : 0;
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
-    if (st->press.x == 0 && st->press.v == 0) st->press.x = 1;
-    cui__spring(ui, &st->press, r.pressed ? CUI__PRESS_WIDE : 1.0f, CUI_SPRING_SNAPPY);
+    if (st->press.x == 0) st->press.x = 1;
+    cui__transition(ui, &st->press, r.pressed ? CUI__PRESS_WIDE : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     bool first = g->frame != ui->frame;
     if (first) {
         g->frame = ui->frame;
@@ -760,8 +745,10 @@ bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *o) {
     if (first) g->first_node = i;
     if (first && g->has_target) {
         if (!g->init) { g->y.x = g->target_dy; g->h.x = g->target_h; g->init = true; }
-        cui__spring(ui, &g->y, g->target_dy, CUI_SPRING_MORPH);
-        cui__spring(ui, &g->h, g->target_h, CUI_SPRING_MORPH);
+        /* The caller's new selection reaches this highlight up to two frames after activation. */
+        bool keyboard = cui__key_action(ui) || (g->keyboard_frame && ui->frame - g->keyboard_frame <= 2);
+        cui__transition(ui, &g->y, g->target_dy, keyboard ? 0 : CUI__T_TAB, CUI__EASE_STATE);
+        cui__transition(ui, &g->h, g->target_h, keyboard ? 0 : CUI__T_TAB, CUI__EASE_STATE);
     }
     cui_node *n = &ui->nodes[i];
     n->dir = CUI_ROW; n->align = CUI_ALIGN_CENTER; n->gap = 10;

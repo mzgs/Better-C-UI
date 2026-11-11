@@ -169,7 +169,7 @@ static void cui__kbd_body(cui_ctx *ui, const char *keys) {
     cui__close(ui);
 }
 
-typedef struct { float hover; cui_spring press; float focus; } cui__btn_state;
+typedef struct { cui_transition hover, press, focus; } cui__btn_state;
 
 typedef struct { float hover; cui_color color; } cui__underline_data;
 static void cui__paint_underline(cui_ctx *ui, cui_node *n, void *data) {
@@ -186,8 +186,8 @@ bool cui_link(cui_ctx *ui, const char *text) {
     memset(&rest, 0, sizeof rest);
     cui__btn_state *st = cui__state_lazy(ui, id, sizeof *st, r.hovered || r.focus_visible);
     if (!st) st = &rest;
-    cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
-    cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
+    cui__transition(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER, CUI__EASE_FEEDBACK);
+    cui__transition(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, 0, CUI__EASE_STATE);
     int i = cui__text_node(ui, text, cui__display_len(text), CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_body),
                            cui_mix(CUI_C(ui, ACCENT_STRONG), CUI_C(ui, FOREGROUND), ui->accent == CUI_ACCENT_NEUTRAL ? 1.0f : 0.0f), false);
     cui_node *n = &ui->nodes[i];
@@ -197,7 +197,7 @@ bool cui_link(cui_ctx *ui, const char *text) {
     cui__mark_interactive(ui, i, CUI_IF_FOCUSABLE);
     {
         cui__underline_data *u = cui__frame_alloc(ui, sizeof *u);
-        u->hover = st->hover; u->color = n->text_color;
+        u->hover = st->hover.x; u->color = n->text_color;
         n->paint = cui__paint_underline;
         n->paint_data = u;
         n->flags |= CUI_NF_PAINT_AFTER;
@@ -359,9 +359,9 @@ static bool cui__button_impl(cui_ctx *ui, const char *label, const char *icon_on
     if (v == CUI_BUTTON_DEFAULT) v = (icon_only || ui->button_group_depth > 0) ? CUI_BUTTON_GHOST : CUI_BUTTON_SECONDARY;
     cui__btn_colors col = cui__button_colors(ui, v, o->selected);
     if (o->color.r | o->color.g | o->color.b | o->color.a) col.fg = cui_color_of(ui, o->color);
-    cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
-    cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
-    cui__spring(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI_SPRING_SNAPPY);
+    cui__transition(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER, CUI__EASE_FEEDBACK);
+    cui__transition(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, 0, CUI__EASE_STATE);
+    cui__transition(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
 
     float h = cui__control_height(ui, o->size);
     float fs = o->size == CUI_SIZE_SM ? ui->theme.text_sm : o->size == CUI_SIZE_LG ? ui->theme.text_lg - 1 : ui->theme.text_body;
@@ -386,10 +386,10 @@ static bool cui__button_impl(cui_ctx *ui, const char *label, const char *icon_on
     else n->self_align = CUI__ALIGN_NOSTRETCH;
     float rad = CUI_MIN(ui->theme.radius_control, h * 0.5f);
     n->radius = CUI_CORNERS(rad);
-    cui_color bg = cui_mix(col.bg, col.bg_hover, st->hover);
+    cui_color bg = cui_mix(col.bg, col.bg_hover, st->hover.x);
     if (r.pressed) bg = col.bg_press;
     n->bg = bg;
-    if (col.border.a) { n->border = 1; n->border_color = cui_mix(col.border, col.border_hover, st->hover); }
+    if (col.border.a) { n->border = 1; n->border_color = cui_mix(col.border, col.border_hover, st->hover.x); }
     n->scale = st->press.x;
     n->opacity = disabled ? CUI__DISABLED : 1.0f;
     if (disabled) {
@@ -416,12 +416,12 @@ static bool cui__button_impl(cui_ctx *ui, const char *label, const char *icon_on
     cui__close(ui);
     if (v == CUI_BUTTON_LINK) {
         cui__underline_data *u = cui__frame_alloc(ui, sizeof *u);
-        u->hover = st->hover; u->color = col.fg;
+        u->hover = st->hover.x; u->color = col.fg;
         ui->nodes[i].paint = cui__paint_underline;
         ui->nodes[i].paint_data = u;
         ui->nodes[i].flags |= CUI_NF_PAINT_AFTER;
     } else {
-        cui__focus_ring(ui, i, st->focus);
+        cui__focus_ring(ui, i, st->focus.x);
     }
     ui->last_id = id;
     ui->last_node = i;
@@ -609,7 +609,7 @@ void cui_avatar_group(cui_ctx *ui, const char *const *names, int count, int max_
 /* Cards                                                                    */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { float hover; float sel; cui_spring lift; } cui__card_state;
+typedef struct { float hover; float sel; } cui__card_state;
 
 bool cui_card_begin(cui_ctx *ui, const cui_card_opts *o) {
     cui_card_opts d;
@@ -626,7 +626,6 @@ bool cui_card_begin(cui_ctx *ui, const cui_card_opts *o) {
         r = cui__interact(ui, id, CUI_IF_FOCUSABLE);
         st = cui_state(ui, id, sizeof *st);
         cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
-        cui__spring(ui, &st->lift, r.hovered ? -2.0f : 0.0f, CUI_SPRING_SMOOTH);
         hover = st->hover;
         clicked = r.clicked;
     }
@@ -654,7 +653,6 @@ bool cui_card_begin(cui_ctx *ui, const cui_card_opts *o) {
     if (o->hoverable) {
         n->elevation = CUI_ELEVATION_RAISED;
         n->elevation_alpha = hover;
-        n->ty = st->lift.x;
         cui__mark_interactive(ui, i, CUI_IF_FOCUSABLE);
         if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
     }

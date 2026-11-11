@@ -807,7 +807,7 @@ bool cui_wheel_picker_ex(cui_ctx *ui, const char *id_str, const char *const *ite
             *index = k;
         }
     }
-    if (!st->dragging) cui__spring(ui, &st->pos, target, 0.34f, 0.05f);
+    if (!st->dragging) cui__spring(ui, &st->pos, target, CUI__T_SIDEBAR, 0.0f);
     int node = cui__leaf(ui, id, o->width.kind ? o->width : CUI_PX(84), CUI_PX(rows * row_h));
     cui_node *n = &ui->nodes[node];
     n->radius = CUI_CORNERS(CUI__R_ITEM(ui));
@@ -963,8 +963,8 @@ static bool cui__time_dial_body(cui_ctx *ui, const char *id_str, int *hour, int 
     /* take the short way round */
     while (target_ang - st->ang.x > CUI_PI) target_ang -= 2 * CUI_PI;
     while (target_ang - st->ang.x < -CUI_PI) target_ang += 2 * CUI_PI;
-    cui__spring(ui, &st->ang, target_ang, 0.3f, 0.12f);
-    cui__spring(ui, &st->len, target_len, 0.3f, 0.0f);
+    cui__spring(ui, &st->ang, target_ang, CUI__T_ICON, 0.0f);
+    cui__spring(ui, &st->len, target_len, CUI__T_ICON, 0.0f);
     int face = cui__leaf(ui, face_id, CUI_PX(size), CUI_PX(size));
     cui__mark_interactive(ui, face, CUI_IF_DRAG);
     if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
@@ -1077,7 +1077,7 @@ bool cui_ruler_slider_ex(cui_ctx *ui, const char *label, float *value, float min
         if (cui_key_pressed(ui, CUI_KEY_LEFT) || cui_key_pressed(ui, CUI_KEY_DOWN)) *value = cui__clampf(*value - step * k, min, max);
         if (!st->dragging) target = *value;
     }
-    if (!st->dragging) cui__spring(ui, &st->shown, target, 0.4f, 0.0f);
+    if (!st->dragging) cui__spring(ui, &st->shown, target, CUI__T_STATE, 0.0f);
     cui__tween(ui, &st->hover, (r.hovered || st->dragging) ? 1.0f : 0.0f, CUI__T_HOVER);
     int col = cui__node_new(ui, id);
     ui->nodes[col].gap = 6;
@@ -1573,7 +1573,7 @@ int cui_avatar_upload(cui_ctx *ui, const char *id_str, const char *name, cui_tex
     cui__tween(ui, &st->hover, (r.hovered || over) ? 1.0f : 0.0f, CUI__T_HOVER);
     cui__tween(ui, &st->drag, over ? 1.0f : 0.0f, CUI__T_STATE);
     if (st->pop.x == 0) st->pop.x = 1;
-    cui__spring(ui, &st->pop, 1.0f, 0.4f, 0.3f);
+    cui__spring(ui, &st->pop, 1.0f, CUI__T_ENTER, 0.0f);
     int wrap = cui__node_new(ui, id);
     cui_node *wn = &ui->nodes[wrap];
     wn->dir = CUI_STACK; wn->w = CUI_PX(size); wn->h = CUI_PX(size);

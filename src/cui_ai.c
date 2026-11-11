@@ -4,9 +4,9 @@
 #include "cui_internal.h"
 
 
-/* A row that opens a body below it with a height spring (shared by the
+/* A row that opens a body below it with a height transition (shared by the
  * reasoning block and tool calls). */
-typedef struct { cui_spring t; float hover, content_h; bool init; } cui__fold_state;
+typedef struct { cui_transition t; float hover, content_h; bool init; } cui__fold_state;
 
 static bool cui__fold_body_begin(cui_ctx *ui, cui_id id, cui__fold_state *st, bool open, float indent) {
     float t = cui__clampf(st->t.x, 0, 1);
@@ -64,7 +64,7 @@ bool cui_reasoning_begin(cui_ctx *ui, const char *id_str, const cui_reasoning_op
     st->was_thinking = o->thinking;
     cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE);
     if (r.clicked) { st->open = !st->open; st->user_set = true; }
-    cui__spring(ui, &st->f.t, st->open ? 1.0f : 0.0f, CUI__SPRING_EXPAND);
+    cui__transition(ui, &st->f.t, st->open ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
     cui__tween(ui, &st->f.hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     int wrap = cui__node_new(ui, 0);
     ui->nodes[wrap].w = CUI_FILL; ui->nodes[wrap].gap = 0;
@@ -202,7 +202,7 @@ void cui_tool_call_ex(cui_ctx *ui, const char *id_str, const char *name, const c
     cui_interact r = cui__interact(ui, id, expandable ? CUI_IF_FOCUSABLE : 0);
     if (r.clicked && expandable) st->open = !st->open;
     if (!st->f.init) { st->f.t.x = st->open ? 1.0f : 0.0f; st->f.init = true; }
-    cui__spring(ui, &st->f.t, st->open ? 1.0f : 0.0f, CUI__SPRING_EXPAND);
+    cui__transition(ui, &st->f.t, st->open ? 1.0f : 0.0f, cui__key_action(ui) ? 0 : CUI__T_EXPAND, CUI__EASE_STATE);
     cui__tween(ui, &st->f.hover, r.hovered && expandable ? 1.0f : 0.0f, CUI__T_HOVER);
     int wrap = cui__node_new(ui, 0);
     cui_node *wn = &ui->nodes[wrap];
@@ -278,7 +278,7 @@ int cui_agent_plan_ex(cui_ctx *ui, const char *id_str, const cui_plan_step *step
     int done = 0, clicked = -1;
     for (int k = 0; k < count; k++) if (steps[k].status == CUI_TASK_DONE || steps[k].status == CUI_TASK_SKIPPED) done++;
     float *prog = cui_state(ui, id, sizeof(float));
-    cui__tween(ui, prog, count ? (float)done / count : 0, 0.4f);
+    cui__tween(ui, prog, count ? (float)done / count : 0, CUI__T_STATE);
     int card = cui__node_new(ui, id);
     cui_node *cn = &ui->nodes[card];
     cn->w = CUI_FILL; cn->gap = 2;
@@ -561,7 +561,7 @@ void cui_context_meter_ex(cui_ctx *ui, const char *id_str, float used, float lim
     cui_id id = cui_make_id(ui, id_str);
     float frac = limit > 0 ? used / limit : 0;
     float *anim = cui_state(ui, id, sizeof(float));
-    cui__tween(ui, anim, frac, 0.3f);
+    cui__tween(ui, anim, frac, CUI__T_STATE);
     cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE);
     int n = cui__node_new(ui, id);
     cui_node *nd = &ui->nodes[n];
@@ -669,6 +669,8 @@ int cui_response_actions_ex(cui_ctx *ui, const char *id_str, const cui_response_
 /* Prompt suggestions                                                       */
 /* ------------------------------------------------------------------------ */
 
+typedef struct { float hover; cui_transition press; } cui__suggestion_state;
+
 int cui_prompt_suggestions_ex(cui_ctx *ui, const char *id_str, const cui_prompt_suggestion *items, int count, const cui_prompt_suggestions_opts *o) {
     cui_prompt_suggestions_opts d;
     memset(&d, 0, sizeof d);
@@ -683,18 +685,18 @@ int cui_prompt_suggestions_ex(cui_ctx *ui, const char *id_str, const cui_prompt_
         cui_id cid = cui__hash(&k, sizeof k, id ^ 0x9A0u);
         cui_interact r = cui__interact(ui, cid, CUI_IF_FOCUSABLE);
         if (r.clicked) clicked = k;
-        float *st = cui_state(ui, cid, sizeof(float) * 3);
-        cui__tween(ui, &st[0], r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
-        cui_spring *press = (cui_spring *)&st[1];
+        cui__suggestion_state *st = cui_state(ui, cid, sizeof *st);
+        cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
+        cui_transition *press = &st->press;
         if (press->x <= 0) press->x = 1;
-        cui__spring(ui, press, r.pressed ? CUI__PRESS_WIDE : 1.0f, CUI_SPRING_SNAPPY);
+        cui__transition(ui, press, r.pressed ? CUI__PRESS_WIDE : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
         int c = cui__node_new(ui, cid);
         cui_node *cn = &ui->nodes[c];
         cn->dir = CUI_ROW; cn->gap = 12; cn->align = CUI_ALIGN_START;
         cn->pad[0] = cn->pad[2] = 12; cn->pad[1] = cn->pad[3] = 14;
         cn->radius = CUI_CORNERS(ui->theme.radius_panel);
-        cn->bg = cui_mix(CUI_C(ui, SURFACE), CUI_C(ui, FOREGROUND), (ui->mode == CUI_THEME_DARK ? 0.04f : 0.0f) + 0.03f * st[0]);
-        cn->border = 1; cn->border_color = cui_mix(CUI_C(ui, BORDER), CUI_C(ui, BORDER_STRONG), st[0]);
+        cn->bg = cui_mix(CUI_C(ui, SURFACE), CUI_C(ui, FOREGROUND), (ui->mode == CUI_THEME_DARK ? 0.04f : 0.0f) + 0.03f * st->hover);
+        cn->border = 1; cn->border_color = cui_mix(CUI_C(ui, BORDER), CUI_C(ui, BORDER_STRONG), st->hover);
         cn->scale = press->x;
         cui__mark_interactive(ui, c, CUI_IF_FOCUSABLE);
         if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
@@ -720,9 +722,7 @@ int cui_prompt_suggestions_ex(cui_ctx *ui, const char *id_str, const cui_prompt_
         cui__close(ui);
         cui_rect cpr = cui__prev_rect(ui, cid);
         int ar = cui__absolute(ui, 0, cpr.w > 0 ? cpr.w - 26 : -100, 12, 14, 14);   /* top right, out of the text's way */
-        ui->nodes[ar].tx = 3 * st[0];
-        ui->nodes[ar].ty = -3 * st[0];
-        ui->nodes[ar].opacity = CUI_MAX(0.001f, st[0]);   /* appears with the hover, not repeated on every card at rest */
+        ui->nodes[ar].opacity = CUI_MAX(0.001f, st->hover);   /* appears with the hover, not repeated on every card at rest */
         cui__open(ui, ar);
         cui__icon_node(ui, CUI_ICON_ARROW_UP_RIGHT, 14, CUI_C(ui, TEXT_MUTED));
         cui__close(ui);
@@ -836,7 +836,7 @@ bool cui_model_picker_ex(cui_ctx *ui, const char *id_str, const cui_model *model
 /* Chat composer                                                            */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { float focus; cui_spring send; } cui__cmp_state;
+typedef struct { float focus; cui_transition send; } cui__cmp_state;
 
 int cui_chat_composer_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, const cui_composer_opts *o) {
     cui_composer_opts d;
@@ -939,7 +939,7 @@ int cui_chat_composer_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap,
     cui_interact sr = cui__interact(ui, sid, CUI_IF_FOCUSABLE);
     if ((sr.clicked || sr.keyboard_activate) && can) result |= o->busy ? CUI_COMPOSER_STOP : CUI_COMPOSER_SEND;
     if (st->send.x <= 0) st->send.x = 1;
-    cui__spring(ui, &st->send, sr.pressed ? 0.88f : 1.0f, CUI_SPRING_SNAPPY);
+    cui__transition(ui, &st->send, sr.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     int sb = cui__node_new(ui, sid);
     cui_node *sn = &ui->nodes[sb];
     sn->w = CUI_PX(32); sn->h = CUI_PX(32); sn->radius = CUI_CORNERS(ui->theme.radius_surface - 10);
@@ -972,7 +972,7 @@ int cui_chat_composer_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap,
 /* Voice orb                                                                */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { cui_spring level, scale; float state_t[4]; bool init; } cui__orb_state;
+typedef struct { cui_spring level; cui_transition scale; float state_t[4]; bool init; } cui__orb_state;
 typedef struct { float t, level, w[4]; cui_color a, b, c; float hover; } cui__orb_paint;
 
 static void cui__orb_blob(cui_ctx *ui, cui_vec2 c, float r, float amp, float t, float seed, cui_color inner, cui_color outer, bool edged) {
@@ -1039,7 +1039,7 @@ bool cui_voice_orb_ex(cui_ctx *ui, const char *id_str, cui_voice_state state, fl
     if (!st->init) { st->state_t[state & 3] = 1; st->scale.x = 1; st->init = true; }
     for (int k = 0; k < 4; k++) cui__tween(ui, &st->state_t[k], k == (int)state ? 1.0f : 0.0f, CUI__T_STATE);
     cui__spring(ui, &st->level, cui__clampf(level, 0, 1), 0.18f, 0.0f);
-    cui__spring(ui, &st->scale, r.pressed ? CUI__PRESS : 1.0f, CUI_SPRING_SNAPPY);
+    cui__transition(ui, &st->scale, r.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
     float size = o->size > 0 ? o->size : 160;
     int n = cui__leaf(ui, id, CUI_PX(size), CUI_PX(size));
     cui_node *nd = &ui->nodes[n];

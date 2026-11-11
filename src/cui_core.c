@@ -360,10 +360,9 @@ void *cui__state_lazy(cui_ctx *ui, cui_id id, size_t size, bool want) {
  * scroll past without being hovered cost no allocation. */
 float cui__hover_fade(cui_ctx *ui, cui_id id, bool on, float duration) {
     cui_state_entry *e = cui__state_find(ui, id);
-    if (!on && (!e || !e->data || e->size < sizeof(float) || *(float *)e->data <= 0.0f)) return 0.0f;
-    float *v = cui_state(ui, id, sizeof(float));
-    cui__tween(ui, v, on ? 1.0f : 0.0f, duration);
-    return *v;
+    if (!on && (!e || !e->data || e->size < sizeof(cui_transition) || ((cui_transition *)e->data)->x <= 0.0f)) return 0.0f;
+    cui_transition *v = cui_state(ui, id, sizeof *v);
+    return cui__transition(ui, v, on ? 1.0f : 0.0f, duration, CUI__EASE_FEEDBACK);
 }
 
 void *cui_state(cui_ctx *ui, cui_id id, size_t size) {
@@ -508,6 +507,16 @@ void cui_input_key(cui_ctx *ui, cui_key key, bool down, int mods) {
     if ((int)key <= 0 || key >= CUI_KEY_COUNT) return;
     if (down && ui->kpressed[key] < 255) ui->kpressed[key]++;
     ui->kdown[key] = down;
+}
+
+bool cui__key_action(cui_ctx *ui) {
+    if (!ui->input_this_frame) return false;
+    if (ui->mx != ui->pmx || ui->my != ui->pmy || ui->scroll_dx || ui->scroll_dy) return false;
+    for (int i = 0; i < 3; i++)
+        if (ui->mdown[i] || ui->mpressed[i] || ui->mreleased[i]) return false;
+    for (int i = 1; i < CUI_KEY_COUNT; i++)
+        if (ui->kpressed[i]) return true;
+    return false;
 }
 
 void cui_input_file_hover(cui_ctx *ui, bool hovering, float x, float y) {
@@ -686,9 +695,52 @@ float cui__animation_dt(cui_ctx *ui) {
     return ui->dt > 0.1f ? 1.0f / 60.0f : ui->dt;
 }
 
+/* Solve the time coordinate as well as the value: Bezier t is not elapsed time. */
+float cui__ease_value(float progress, cui__ease ease) {
+    if (progress <= 0) return 0;
+    if (progress >= 1) return 1;
+    float x1 = ease == CUI__EASE_STATE ? 0.4f : 0.2f;
+    float x2 = 0.2f;
+    float y1 = ease == CUI__EASE_STATE ? 0.0f : 0.8f;
+    float t = progress, lo = 0, hi = 1;
+    for (int i = 0; i < 12; i++) {
+        float u = 1 - t;
+        float x = 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t;
+        float error = x - progress;
+        if (fabsf(error) < 0.00001f) break;
+        if (error < 0) lo = t; else hi = t;
+        float slope = 3 * u * u * x1 + 6 * u * t * (x2 - x1) + 3 * t * t * (1 - x2);
+        float next = slope > 0.00001f ? t - error / slope : -1;
+        t = next > lo && next < hi ? next : (lo + hi) * 0.5f;
+    }
+    float u = 1 - t;
+    return 3 * u * u * t * y1 + 3 * u * t * t + t * t * t;
+}
+
+float cui__transition(cui_ctx *ui, cui_transition *s, float target, float duration, cui__ease ease) {
+    if (ui->theme.motion <= 0 || duration <= 0 || ui->frame <= 1 || s->x == target) {
+        *s = (cui_transition){ target, target, target, 0 };
+        return target;
+    }
+    if (s->target != target || s->elapsed == 0) {
+        s->from = s->x;
+        s->target = target;
+        s->elapsed = 0;
+    }
+    duration *= ui->theme.motion;
+    s->elapsed = CUI_MIN(duration, s->elapsed + cui__animation_dt(ui));
+    if (s->elapsed >= duration * 0.99999f) { s->x = target; s->elapsed = duration; }
+    else {
+        s->x = cui__lerp(s->from, target, cui__ease_value(s->elapsed / duration, ease));
+        ui->animating = true;
+    }
+    return s->x;
+}
+
 float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, float bounce) {
     float motion = ui->theme.motion;
     if (motion <= 0.0f || ui->frame <= 1) { s->x = target; s->v = 0; return target; }
+    if (s->x == target && s->v == 0) return target;
     duration *= motion;
     float w = 2.0f * CUI_PI / duration;
     float k = w * w;
@@ -711,6 +763,7 @@ float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, floa
 float cui__tween(cui_ctx *ui, float *x, float target, float duration) {
     float motion = ui->theme.motion;
     if (motion <= 0.0f || ui->frame <= 1) { *x = target; return target; }
+    if (*x == target) return target;
     duration *= motion;
     float a = 1.0f - expf(-cui__animation_dt(ui) * 4.6f / duration);
     *x += (target - *x) * a;
