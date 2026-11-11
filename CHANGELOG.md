@@ -38,6 +38,15 @@ What changed in Better-C-UI, newest first. Every component mentioned here runs l
 
 ### Fixed
 
+- Charts no longer hang when large values are close together or an instrument's x-axis requests more ticks than fit on screen.
+- Coverage shows every file in folders with more than 512 children, sorts wide folders efficiently, handles deeply nested paths, and keeps cached paths valid when the caller replaces its strings.
+- Blame can display lines without a commit mapping instead of crashing.
+- JSON viewers reject malformed numbers and string escapes instead of reporting them as valid JSON.
+- File browser filters with repeated stars no longer cause exponential matching time.
+- Unnamed scroll boxes keep stable, distinct identities inside string and integer ID scopes, preserving their scroll state between frames.
+- Disabled scopes restore their enclosing state after more than 32 nested pushes.
+- Virtual lists and data grids avoid integer overflow when calculating visible rows near `INT_MAX`.
+- Built-in renderers reject invalid texture sizes and updates. OpenGL handles source strides with padding that is not a whole pixel, recovers correctly when growing its texture table fails, and releases shaders if initialization fails.
 - Native file dialogs reject oversized filters and paths instead of writing beyond their buffers or reporting a truncated path as successful. The CUI file picker keeps the dialog open and reports a path that does not fit.
 - Buttons and editors in different ordinary table rows now have separate identity scopes, so one row's action does not also activate another row.
 - Virtual lists clamp their scroll position when the row count shrinks, including filters that leave only a few rows or none.

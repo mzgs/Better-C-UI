@@ -647,6 +647,8 @@ Keyboard: Tab moves through the headers, and Enter or Space opens or closes the 
 
 Line, bar and donut charts and sparklines, with axes, a crosshair and a tooltip on hover.
 
+Axis ticks account for floating-point precision, so closely spaced large values (such as 100,000,000 and 100,000,008) do not stall drawing. As with all float data, differences smaller than a representable float are lost.
+
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/line-chart-dark.png"><img src="images/components/line-chart.png" alt="Line chart"></picture>
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/bar-donut-dark.png"><img src="images/components/bar-donut.png" alt="Bar and donut"></picture>

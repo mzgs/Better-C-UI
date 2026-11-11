@@ -377,7 +377,7 @@ cui_time_histogram_result cui_time_histogram_ex(cui_ctx *ui, const char *id_str,
 typedef struct {
     const char *name; int nlen;     /* the folder or file name, inside the app's path */
     int parent, depth, file;        /* file: index into the files, -1 for a folder */
-    int first_child, next;
+    int first_child, last_child, next;
     long lines, lines_hit, br, br_hit, fn, fn_hit;
 } cui__cov_node;
 
@@ -385,6 +385,7 @@ typedef struct {
     bool init;
     uint32_t key;
     cui__cov_node *nodes; int nn, cap;
+    char *paths;
     uint32_t folded[64]; int nfolded;
     int sort;                       /* 0 name, 1 lines, 2 branches, 3 functions */
     bool desc;
@@ -394,6 +395,7 @@ typedef struct {
 static void cui__cov_dtor(cui_ctx *ui, void *data) {
     cui__cov_state *s = data;
     cui__free(ui, s->nodes);
+    cui__free(ui, s->paths);
     s->nodes = NULL; s->nn = s->cap = 0;
 }
 
@@ -404,11 +406,12 @@ static int cui__cov_add(cui_ctx *ui, cui__cov_state *s, int parent, const char *
     memset(n, 0, sizeof *n);
     n->name = name; n->nlen = len; n->parent = parent; n->file = file;
     n->depth = parent >= 0 ? s->nodes[parent].depth + 1 : 0;
-    n->first_child = n->next = -1;
+    n->first_child = n->last_child = n->next = -1;
     if (parent >= 0) {   /* append to the parent's children */
-        int *at = &s->nodes[parent].first_child;
-        while (*at >= 0) at = &s->nodes[*at].next;
-        *at = s->nn;
+        cui__cov_node *p = &s->nodes[parent];
+        if (p->last_child >= 0) s->nodes[p->last_child].next = s->nn;
+        else p->first_child = s->nn;
+        p->last_child = s->nn;
     }
     return s->nn++;
 }
@@ -416,16 +419,24 @@ static int cui__cov_add(cui_ctx *ui, cui__cov_state *s, int parent, const char *
 /* the folder tree from the paths, with each folder summing what it holds; rebuilt when they change */
 static void cui__cov_build(cui_ctx *ui, cui__cov_state *s, const cui_coverage_file *files, int count) {
     uint32_t key = cui__hash(&count, sizeof count, 0xC0Fu);
+    size_t path_bytes = 0;
     for (int i = 0; i < count; i++) {
         key = cui__hash_str(files[i].path ? files[i].path : "", key);
         key = cui__hash(&files[i].lines, sizeof(int) * 6, key);
+        path_bytes += strlen(files[i].path ? files[i].path : "") + 1;
     }
     if (s->init && s->key == key) return;
     s->init = true; s->key = key; s->nn = 0;
+    s->paths = cui__realloc(ui, s->paths, CUI_MAX(path_bytes, 1));
+    char *path = s->paths;
     int root = cui__cov_add(ui, s, -1, "All files", 9, -1);
     if (root < 0) return;
     for (int i = 0; i < count; i++) {
-        const char *p = files[i].path ? files[i].path : "";
+        const char *source = files[i].path ? files[i].path : "";
+        size_t bytes = strlen(source) + 1;
+        memcpy(path, source, bytes);
+        const char *p = path;
+        path += bytes;
         int at = root;
         for (;;) {
             const char *e = p;
@@ -469,28 +480,50 @@ static void cui__cov_toggle(cui__cov_state *s, int k) {
     if (s->nfolded < 64) s->folded[s->nfolded++] = h;
 }
 
-/* the rows in order: folders first, then by the sort column; children of folded folders left out */
-static void cui__cov_flatten(cui_ctx *ui, const cui__cov_state *s, int k, int *rows, int *nr) {
-    rows[(*nr)++] = k;
-    if (s->nodes[k].file >= 0 || cui__cov_folded(s, k)) return;
-    int kids[512], nk = 0;
-    for (int c = s->nodes[k].first_child; c >= 0 && nk < 512; c = s->nodes[c].next) kids[nk++] = c;
-    for (int a = 1; a < nk; a++) {   /* insertion sort: few children per folder */
-        int x = kids[a], b = a - 1;
-        for (; b >= 0; b--) {
-            const cui__cov_node *p = &s->nodes[kids[b]], *q = &s->nodes[x];
-            bool pf = p->file < 0, qf = q->file < 0;
-            int c;
-            if (pf != qf) c = pf ? -1 : 1;
-            else if (s->sort == 0) { int m = memcmp(p->name, q->name, (size_t)CUI_MIN(p->nlen, q->nlen)); c = m ? m : p->nlen - q->nlen; }
-            else { double u = cui__cov_metric(p, s->sort), v = cui__cov_metric(q, s->sort); c = u < v ? -1 : u > v ? 1 : 0; }
-            if (s->desc && pf == qf) c = -c;
-            if (c <= 0) break;
-            kids[b + 1] = kids[b];
-        }
-        kids[b + 1] = x;
+static int cui__cov_compare(const cui__cov_state *s, int a, int b) {
+    const cui__cov_node *p = &s->nodes[a], *q = &s->nodes[b];
+    bool pf = p->file < 0, qf = q->file < 0;
+    if (pf != qf) return pf ? -1 : 1;
+    int c;
+    if (s->sort == 0) {
+        int m = memcmp(p->name, q->name, (size_t)CUI_MIN(p->nlen, q->nlen));
+        c = m < 0 ? -1 : m > 0 ? 1 : p->nlen < q->nlen ? -1 : p->nlen > q->nlen;
+    } else {
+        double u = cui__cov_metric(p, s->sort), v = cui__cov_metric(q, s->sort);
+        c = u < v ? -1 : u > v;
     }
-    for (int i = 0; i < nk; i++) cui__cov_flatten(ui, s, kids[i], rows, nr);
+    return s->desc ? -c : c;
+}
+
+/* Stable merge sort keeps wide folders O(n log n), including equal metrics. */
+static void cui__cov_sort(const cui__cov_state *s, int *kids, int *tmp, int n) {
+    if (n < 2) return;
+    int mid = n / 2;
+    cui__cov_sort(s, kids, tmp, mid);
+    cui__cov_sort(s, kids + mid, tmp + mid, n - mid);
+    int a = 0, b = mid;
+    for (int i = 0; i < n; i++) {
+        if (a < mid && (b == n || cui__cov_compare(s, kids[a], kids[b]) <= 0)) tmp[i] = kids[a++];
+        else tmp[i] = kids[b++];
+    }
+    memcpy(kids, tmp, sizeof *kids * (size_t)n);
+}
+
+/* Iterative traversal keeps folder depth off the C stack. */
+static void cui__cov_flatten(cui_ctx *ui, const cui__cov_state *s, int k, int *rows, int *nr) {
+    int *stack = cui__frame_alloc(ui, sizeof(int) * (size_t)s->nn);
+    int *tmp = cui__frame_alloc(ui, sizeof(int) * (size_t)s->nn);
+    int sp = 0;
+    stack[sp++] = k;
+    while (sp > 0) {
+        k = stack[--sp];
+        rows[(*nr)++] = k;
+        if (s->nodes[k].file >= 0 || cui__cov_folded(s, k)) continue;
+        int start = sp;
+        for (int c = s->nodes[k].first_child; c >= 0; c = s->nodes[c].next) stack[sp++] = c;
+        cui__cov_sort(s, stack + start, tmp, sp - start);
+        for (int a = start, b = sp - 1; a < b; a++, b--) { int t = stack[a]; stack[a] = stack[b]; stack[b] = t; }
+    }
 }
 
 typedef struct { float pct; cui_color c, track; } cui__cov_bar;
@@ -780,7 +813,7 @@ cui_blame_result cui_blame_ex(cui_ctx *ui, const char *id_str, const char *const
         int c = line_commit ? line_commit[i] : -1;
         if (c < 0 || c >= commit_count) c = -1;
         int pc = i > 0 && line_commit ? line_commit[i - 1] : -2;
-        bool run_start = i == 0 || pc != line_commit[i];
+        bool run_start = i == 0 || (line_commit && pc != line_commit[i]);
         cui_id rid = cui__hash(&i, sizeof i, id ^ 0xB1A4u);
         cui_id gid = rid ^ 0x6u;
         cui_interact gi = cui__interact(ui, gid, 0);

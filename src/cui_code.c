@@ -342,8 +342,14 @@ static bool cui__jstring(cui__jparse *p, int *start, int *len) {
     if (p->i >= p->n || p->s[p->i] != '"') return cui__jfail(p, "expected a string");
     int st = ++p->i;
     while (p->i < p->n && p->s[p->i] != '"') {
-        if (p->s[p->i] == '\\') p->i++;
-        else if ((unsigned char)p->s[p->i] < 0x20) return cui__jfail(p, "control character in string");
+        if (p->s[p->i] == '\\') {
+            if (++p->i >= p->n) return cui__jfail(p, "unterminated escape");
+            if (p->s[p->i] == 'u') {
+                for (int k = 0; k < 4; k++)
+                    if (++p->i >= p->n || cui__hex_digit((unsigned char)p->s[p->i]) < 0)
+                        return cui__jfail(p, "expected four hex digits");
+            } else if (!strchr("\"\\/bfnrt", p->s[p->i])) return cui__jfail(p, "invalid escape");
+        } else if ((unsigned char)p->s[p->i] < 0x20) return cui__jfail(p, "control character in string");
         p->i++;
     }
     if (p->i >= p->n) return cui__jfail(p, "unterminated string");
@@ -408,9 +414,22 @@ static int cui__jvalue(cui__jparse *p, int parent, int depth, int key_start, int
         return me;
     }
     if (c == '-' || (c >= '0' && c <= '9')) {
-        p->i++;
-        while (p->i < p->n && ((p->s[p->i] >= '0' && p->s[p->i] <= '9') || p->s[p->i] == '.' || p->s[p->i] == 'e' || p->s[p->i] == 'E' ||
-                               p->s[p->i] == '+' || p->s[p->i] == '-')) p->i++;
+        if (c == '-') p->i++;
+        if (p->i >= p->n || p->s[p->i] < '0' || p->s[p->i] > '9') { cui__jfail(p, "expected a digit"); return -1; }
+        if (p->s[p->i] == '0') p->i++;
+        else while (p->i < p->n && p->s[p->i] >= '0' && p->s[p->i] <= '9') p->i++;
+        if (p->i < p->n && p->s[p->i] == '.') {
+            int digits = ++p->i;
+            while (p->i < p->n && p->s[p->i] >= '0' && p->s[p->i] <= '9') p->i++;
+            if (p->i == digits) { cui__jfail(p, "expected a fractional digit"); return -1; }
+        }
+        if (p->i < p->n && (p->s[p->i] == 'e' || p->s[p->i] == 'E')) {
+            p->i++;
+            if (p->i < p->n && (p->s[p->i] == '+' || p->s[p->i] == '-')) p->i++;
+            int digits = p->i;
+            while (p->i < p->n && p->s[p->i] >= '0' && p->s[p->i] <= '9') p->i++;
+            if (p->i == digits) { cui__jfail(p, "expected an exponent digit"); return -1; }
+        }
         p->nodes[me].type = JV_NUM;
     } else if (!strncmp(p->s + p->i, "true", 4) || !strncmp(p->s + p->i, "null", 4)) {
         p->nodes[me].type = p->s[p->i] == 't' ? JV_BOOL : JV_NULL;

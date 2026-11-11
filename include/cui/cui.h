@@ -160,6 +160,7 @@ typedef uintptr_t cui_texture;
 typedef struct cui_renderer_iface {
     void *user;
     cui_texture (*texture_create)(void *user, int w, int h, cui_texture_format fmt, const void *pixels);
+    /* stride is bytes per source row. Built-in renderers ignore invalid rectangles or strides. */
     void (*texture_update)(void *user, cui_texture tex, int x, int y, int w, int h, const void *pixels, int stride);
     void (*texture_destroy)(void *user, cui_texture tex);
 } cui_renderer_iface;
@@ -503,6 +504,7 @@ CUI_API cui_rect cui_last_rect(cui_ctx *ui);
 CUI_API cui_rect cui_get_rect(cui_ctx *ui, cui_id id);
 CUI_API bool cui_last_hovered(cui_ctx *ui);
 CUI_API bool cui_is_disabled(cui_ctx *ui);
+/* Disabled scopes nest; popping restores the enclosing scope's state. */
 CUI_API void cui_push_disabled(cui_ctx *ui, bool disabled);
 CUI_API void cui_pop_disabled(cui_ctx *ui);
 
@@ -902,7 +904,8 @@ typedef struct cui_list_item_opts {
 CUI_API bool cui_list_item_ex(cui_ctx *ui, const char *title, const cui_list_item_opts *opts);
 
 /* Virtual list: only the visible rows are built, so lists with a million
- * rows stay fast. Fills first/last with the visible range. */
+ * rows stay fast. Fills first/last with the visible range, within [0, count]
+ * even at INT_MAX rows. Scroll offsets are floats, so huge lists lose row precision. */
 CUI_API void cui_virtual_list_begin(cui_ctx *ui, const char *id, int count, float row_height, cui_size height, int *first, int *last);
 CUI_API void cui_virtual_list_end(cui_ctx *ui);
 
@@ -1476,7 +1479,7 @@ typedef struct cui_code_opts {
 CUI_API void cui_code_block_ex(cui_ctx *ui, const char *id, const char *code, const cui_code_opts *opts);
 
 /* JSON viewer: a collapsible tree with typed colors and item counts.
- * Returns false when the text is not valid JSON (and shows the error). */
+ * Returns false for invalid JSON, including malformed numbers and escapes, and shows the error. */
 typedef struct cui_json_opts {
     int _;
     int expand_depth;          /* levels of the tree that start open, default 2 */
@@ -3997,7 +4000,8 @@ CUI_API cui_time_histogram_result cui_time_histogram_ex(cui_ctx *ui, const char 
  * folder sums up what it holds, and folders fold. Line coverage shows as a
  * bar colored by thresholds, with branches and functions beside it. Click a
  * column's title to sort. Enter or a double-click activates a file. Narrow
- * panels show lines only. */
+ * panels show lines only. Paths are copied for the cached tree; folders have
+ * no fixed child limit, and only visible rows are built. */
 typedef struct cui_coverage_file {
     const char *path;                /* "src/core/layout.c" */
     int lines;                       /* lines that can be covered */
@@ -4019,7 +4023,8 @@ CUI_API cui_coverage_result cui_coverage_ex(cui_ctx *ui, const char *id, const c
  * gutter entry with its author, age and hash, and a bar at the edge shades
  * newer changes stronger. Hover a gutter entry for the commit's summary and
  * to mark its lines; click it to get the commit. Only the lines in view are
- * built. On a phone the gutter keeps only the shade and initials. */
+ * built. On a phone the gutter keeps only the shade and initials.
+ * line_commit may be NULL when all lines have unknown authorship. */
 typedef struct cui_blame_commit {
     const char *hash;          /* the commit id; its first 7 characters are shown */
     const char *author;        /* shown in the gutter; on a phone as initials */
@@ -4130,7 +4135,7 @@ typedef struct cui_dot_chart_opts {
     double x_min, x_max;       /* what the first and last sample stand for; equal: 0 to count - 1 */
     cui_axis_units x_units;
     const char *x_format;      /* x labels with CUI_AXIS_NUMBER, default "%g" */
-    double x_step;             /* spacing of the x labels in x units; 0 picks one that fits */
+    double x_step;             /* x label spacing; 0 chooses it, dense steps are limited to one tick per pixel */
     float min, max;            /* value range when min != max; otherwise 0 to the largest stacked value */
     const char *format;        /* values in the readout, default "%.0f" */
     const char *unit;          /* after values in the readout, e.g. "MG" */

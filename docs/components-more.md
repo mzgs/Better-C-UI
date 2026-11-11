@@ -706,6 +706,8 @@ A folder's contents with name, date modified and size, folders first and names i
 
 A folder is read when you enter it or reload, not every frame, and only the rows in view are built, so a folder of 20,000 files scrolls and filters without slowing down. Reading goes through `list`, which defaults to `cui_fs_list` (POSIX or Windows; nothing in a browser build), so the same browser can show a zip file, a remote bucket or an asset database. A lister returns `CUI_FILE_LIST_NAMES_FULL` (-2) when the name buffer is too small; the browser grows that buffer and retries. Direct callers of `cui_fs_list` should do the same, rather than accepting a partial listing.
 
+File patterns support case-insensitive `*` and `?`, including repeated stars. Matching uses iteration rather than recursively expanding every possible match.
+
 If a chosen path cannot fit in the file picker's output buffer, it clears the output, returns false, and keeps the dialog open with an error. Native file dialogs also return false for paths or filters that cannot fit; they never report a truncated path as successful.
 
 ## Code
@@ -737,6 +739,8 @@ if (!cui_json_view(ui, "response", body, .expand_depth = 1)) { /* not valid JSON
 ```
 
 Collapsed objects and arrays show their size; click an object's or an array's row to fold or unfold it.
+
+Numbers and string escapes follow JSON syntax: incomplete fractions or exponents, leading zeroes, unknown escapes and incomplete `\u` escapes report an error.
 
 Returns true when the text is valid JSON. When it is not, the call returns false and the view shows the reason with the line and column where parsing stopped. `body` is your string. It is parsed again on every frame and nothing of it is kept. The library remembers which objects and arrays are folded, under `id` and by their position in the document, so a document with a different shape should get a different `id`. `expand_depth` is the number of levels open at first (2), and applies only the first time an `id` shows valid JSON. A document of more than 4,096 values or 64 levels is reported as invalid.
 
@@ -1356,9 +1360,11 @@ if (r.activated >= 0) open_file(files[r.activated].path);
 
 Each folder sums up what it holds, and a row for all files sits on top. Lines show as a bar and a percentage, with branches and functions beside them. They are colored red below `low` (50%), amber below `high` (80%) and green above. A click on a column's title sorts by it, and a second click reverses the order; folders stay above files. A click on a folder folds it. Up and Down move the selection, Left and Right fold and unfold a folder, and Enter folds a folder or, on a file, reports `activated`, as a double click does. A hover shows the counts behind the percentages. On a phone only the lines column is shown.
 
+Coverage copies paths into its cached tree, so the caller can replace its path strings between frames. Folders have no fixed child limit; sibling sorting takes O(n log n) work and traversal handles deeply nested paths without recursion. Only visible rows are built.
+
 ### Blame
 
-Source with who last changed each line.
+Source with who last changed each line. Pass `NULL` for `line_commit` to show source whose authorship is unknown.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/blame-dark.png"><img src="images/components/blame.png" alt="Blame"></picture>
 
@@ -2198,6 +2204,8 @@ Series stack: each one fills its own band above the one before it, and negative,
 The result reports the sample under the pointer or the keyboard cursor (`hovered`, its `x` and the stacked `value`, or -1), and `clicked` with the exact `x` of a click. The readout beside the cursor shows the time and the value with `unit`; `no_readout` hides it.
 
 In a right-to-left interface the chart keeps time running left to right, like the other time-based components, and Right still moves later. Its labels and readout are drawn with the library's text, so Persian and Arabic labels are shaped when CUI is built with `CUI_TEXT_SHAPING` and a font that covers them is loaded ([Text in other languages](integration.md#text-in-other-languages)).
+
+Very small `x_step` values are limited to one tick per pixel; labels that would crowd each other are still omitted. Tick spacing also accounts for numeric precision at large x values.
 
 Keyboard: Tab focuses the chart, Left and Right move the readout a sample (Shift: ten), Home and End jump to the first and last sample, Enter clicks at the cursor, and Esc hides the readout.
 

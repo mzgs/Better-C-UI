@@ -133,21 +133,15 @@ static void cui__path_join(char *out, size_t cap, const char *dir, const char *n
 
 /* a pattern list like "*.png;*.jpg": case-insensitive, * and ? only */
 static bool cui__glob1(const char *p, const char *pe, const char *s) {
-    while (p < pe) {
-        if (*p == '*') {
-            p++;
-            if (p == pe) return true;
-            for (; *s; s++) if (cui__glob1(p, pe, s)) return true;
-            return false;
-        }
-        if (!*s) return false;
-        char a = *p, b = *s;
-        a = (char)cui__ascii_lower(a);
-        b = (char)cui__ascii_lower(b);
-        if (a != '?' && a != b) return false;
-        p++; s++;
+    const char *star = NULL, *retry = NULL;
+    while (*s) {
+        if (p < pe && *p == '*') { star = ++p; retry = s; }
+        else if (p < pe && (*p == '?' || cui__ascii_lower((unsigned char)*p) == cui__ascii_lower((unsigned char)*s))) { p++; s++; }
+        else if (star) { p = star; s = ++retry; }
+        else return false;
     }
-    return !*s;
+    while (p < pe && *p == '*') p++;
+    return p == pe;
 }
 static bool cui__glob(const char *list, const char *name) {
     if (!list || !*list) return true;

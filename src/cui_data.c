@@ -260,10 +260,8 @@ void cui_virtual_list_begin(cui_ctx *ui, const char *id_str, int count, float ro
     /* figure out the visible window from the target offset so fast scrolls do not flash */
     cui__scroll_begin_ex(ui, id, &b, false);
     float y = ui->nodes[cui__current(ui)].scroll_y;
-    int f = (int)floorf(y / row_h) - 2;
-    int l = (int)ceilf((y + view_h) / row_h) + 2;
-    f = CUI_CLAMP(f, 0, count);
-    if (l > count) l = count;
+    int f = (int)CUI_CLAMP(floor((double)y / row_h) - 2, 0.0, (double)count);
+    int l = (int)CUI_CLAMP(ceil(((double)y + view_h) / row_h) + 2, 0.0, (double)count);
     if (l < f) l = f;
     *first = f;
     *last = l;

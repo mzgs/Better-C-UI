@@ -1,5 +1,8 @@
 /* Regression cases from the large-data and input-boundary audit. Runs headless. */
 #include "cui_internal.h"
+#include "cui/cui_render.h"
+#include <limits.h>
+#include <float.h>
 #if !defined(_WIN32)
 #include <unistd.h>
 #endif
@@ -33,6 +36,33 @@ static cui_ctx *context(bool rtl) {
     return ui;
 }
 
+static void test_scopes(void) {
+    cui_ctx *ui = context(false);
+    cui_id expected[3] = {0};
+    for (int frame = 0; frame < 3; frame++) {
+        cui_begin_frame(ui, 1.0f / 60);
+        for (int i = 0; i < 128; i++) cui_push_disabled(ui, i % 3 == 0);
+        for (int i = 127; i >= 0; i--) {
+            CHECK(cui_is_disabled(ui));
+            cui_pop_disabled(ui);
+        }
+        CHECK(!cui_is_disabled(ui));
+        cui_push_id(ui, "group");
+        for (int i = 0; i < 3; i++) {
+            if (i == 1) cui_push_id_int(ui, 7);
+            cui_id id = cui_box_begin(ui, &(cui_box){ .scroll_y = true });
+            cui_box_end(ui);
+            if (i == 1) cui_pop_id(ui);
+            if (!frame) expected[i] = id;
+            CHECK(id == expected[i]);
+        }
+        CHECK(expected[0] != expected[1] && expected[0] != expected[2]);
+        cui_pop_id(ui);
+        cui_end_frame(ui);
+    }
+    cui_destroy(ui);
+}
+
 static int list_count, first, last;
 static void list_frame(cui_ctx *ui) {
     cui_begin_frame(ui, 1.0f / 60);
@@ -62,6 +92,152 @@ static void test_shrinking_list(void) {
     list_count = -1;
     list_frame(ui);
     CHECK(first == 0 && last == 0);
+    cui_destroy(ui);
+}
+
+static void test_large_row_ranges(void) {
+    cui_ctx *ui = context(false);
+    list_count = INT_MAX;
+    list_frame(ui); list_frame(ui);
+    cui_scroll_to(ui, "rows", 1e12f);
+    list_frame(ui);
+    CHECK(first >= 0 && first <= last && last == INT_MAX);
+    static const cui_grid_column cols[] = { { .title = "Value" } };
+    for (int frame = 0; frame < 3; frame++) {
+        cui_begin_frame(ui, 1.0f / 60);
+        if (frame == 2) {
+            cui_scroll_state *s = cui_state(ui, cui_make_id(ui, "grid") ^ 0x5C011u, sizeof *s);
+            s->y = s->ty = 1e12f;
+        }
+        cui_data_grid_begin_ex(ui, "grid", cols, 1, INT_MAX, &first, &last, NULL);
+        CHECK(first >= 0 && first <= last && last <= INT_MAX);
+        cui_data_grid_end(ui);
+        cui_end_frame(ui);
+    }
+    cui_destroy(ui);
+}
+
+static void test_json_validation(void) {
+    static const char *const invalid[] = { "-", "01", "-01", "1.", "1e", "1e+", "1e--2", "[1+2]", "{\"a\":--1}",
+        "\"\\q\"", "\"\\uZZZZ\"", "\"\\u123\"", "\"\\", "\"unterminated" };
+    static const char *const valid[] = { "0", "-0", "123", "-12.34e+56", "1E-9", "[true,false,null]", "{\"x\":\"\\u0041\\n\\t\\\\\\\"\\/\\b\\f\\r\"}" };
+    cui_ctx *ui = context(false);
+    for (int i = 0; i < CUI_COUNTOF(invalid) + CUI_COUNTOF(valid); i++) {
+        cui_begin_frame(ui, 1.0f / 60);
+        bool good = i >= CUI_COUNTOF(invalid);
+        const char *json = good ? valid[i - CUI_COUNTOF(invalid)] : invalid[i];
+        CHECK(cui_json_view(ui, "json", json) == good);
+        cui_end_frame(ui);
+    }
+    cui_destroy(ui);
+}
+
+static void test_blame_without_commits(void) {
+    cui_ctx *ui = context(false);
+    const char *lines[] = { "first", "second", "third" };
+    cui_begin_frame(ui, 1.0f / 60);
+    cui_blame_result r = cui_blame(ui, "blame", lines, NULL, 3, NULL, 0);
+    cui_end_frame(ui);
+    CHECK(r.clicked == -1 && r.hovered == -1);
+    CHECK(cui_get_draw_data(ui)->vertex_count > 0);
+    cui_destroy(ui);
+}
+
+static void test_coverage_scale(void) {
+    enum { N = 10000 };
+    cui_coverage_file *files = calloc(N, sizeof *files);
+    char (*names)[32] = malloc(N * sizeof *names);
+    CHECK(files && names);
+    if (!files || !names) { free(files); free(names); return; }
+    for (int i = 0; i < N; i++) {
+        snprintf(names[i], sizeof names[i], "file-%05d.c", N - i);
+        files[i] = (cui_coverage_file){ .path = names[i], .lines = 10, .lines_hit = 5 };
+    }
+    cui_ctx *ui = context(false);
+    cui_begin_frame(ui, 1.0f / 60);
+    cui_coverage_result r = cui_coverage(ui, "coverage", files, N);
+    cui_end_frame(ui);
+    CHECK(r.lines == 50);
+    cui_push_id(ui, "coverage");
+    cui_scroll_state *s = cui_state(ui, cui_make_id(ui, "rows"), sizeof *s);
+    CHECK(s->content_h == (N + 1) * 30);
+    cui_pop_id(ui);
+    /* Cached paths must survive the caller replacing its strings next frame. */
+    char (*copy)[32] = malloc(N * sizeof *copy);
+    CHECK(copy != NULL);
+    if (copy) {
+        memcpy(copy, names, N * sizeof *copy);
+        free(names); names = copy;
+        for (int i = 0; i < N; i++) files[i].path = names[i];
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_coverage(ui, "coverage", files, N);
+        cui_end_frame(ui);
+    }
+    char deep[4002];
+    for (int i = 0; i < 2000; i++) { deep[i * 2] = 'a'; deep[i * 2 + 1] = '/'; }
+    deep[4000] = 'x'; deep[4001] = 0;
+    cui_coverage_file file = { .path = deep, .lines = 1, .lines_hit = 1 };
+    cui_begin_frame(ui, 1.0f / 60);
+    cui_coverage(ui, "deep", &file, 1);
+    cui_end_frame(ui);
+    cui_push_id(ui, "deep");
+    s = cui_state(ui, cui_make_id(ui, "rows"), sizeof *s);
+    CHECK(s->content_h == 2002 * 30);
+    cui_pop_id(ui);
+    cui_destroy(ui);
+    free(names); free(files);
+}
+
+static void test_texture_bounds(void) {
+    cui_sw_renderer *sw = cui_sw_create();
+    cui_renderer_iface r = cui_sw_iface(sw);
+    unsigned char pixels[64] = {0};
+    CHECK(r.texture_create(r.user, 0, 4, CUI_TEXTURE_RGBA8, pixels) == 0);
+    CHECK(r.texture_create(r.user, -1, 4, CUI_TEXTURE_RGBA8, pixels) == 0);
+    cui_texture t = r.texture_create(r.user, 4, 4, CUI_TEXTURE_RGBA8, pixels);
+    CHECK(t != 0);
+    r.texture_update(r.user, t, -1, 0, 4, 4, pixels, 16);
+    r.texture_update(r.user, t, 0, 0, 5, 4, pixels, 20);
+    r.texture_update(r.user, t, 0, 0, 4, 4, pixels, 1);
+    r.texture_update(r.user, t, INT_MAX, 0, 4, 4, pixels, 16);
+    r.texture_update(r.user, t, 0, 0, 4, 4, NULL, 16);
+    r.texture_update(r.user, t, 0, 0, 4, 4, pixels, 16);
+    r.texture_destroy(r.user, t);
+    cui_sw_destroy(sw);
+}
+
+static void test_chart_ranges(void) {
+    const float ranges[][2] = { { 1e8f, 1e8f + 8 }, { 1e8f, 1e8f }, { 1e-44f, 2e-44f },
+        { FLT_MAX, FLT_MAX }, { -FLT_MAX, FLT_MAX }, { NAN, 1 } };
+    for (int i = 0; i < CUI_COUNTOF(ranges); i++) {
+        float lo, hi, step;
+        cui__nice_range(ranges[i][0], ranges[i][1], 4, &lo, &hi, &step);
+        CHECK(isfinite(lo) && isfinite(hi) && isfinite(step));
+        CHECK(hi > lo && step > 0 && lo + step > lo);
+    }
+    cui_ctx *ui = context(false);
+    float values[] = { 1e8f, 1e8f + 8 };
+    cui_series series = { .values = values, .count = 2 };
+    for (int frame = 0; frame < 2; frame++) {
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_line_chart(ui, "auto", &series, 1);
+        cui_line_chart(ui, "fixed", &series, 1, .min = values[0], .max = values[1]);
+        cui_end_frame(ui);
+        CHECK(cui_get_draw_data(ui)->vertex_count > 0);
+    }
+    cui_vec2 points[] = { { 1e8f, 1e8f }, { 1e8f + 8, 1e8f + 8 } };
+    cui_scatter_series scatter = { .points = points, .count = 2 };
+    cui_begin_frame(ui, 1.0f / 60);
+    cui_scatter_chart(ui, "scatter", &scatter, 1);
+    cui_end_frame(ui);
+    cui_dot_series dots = { .values = values };
+    for (int frame = 0; frame < 2; frame++) {
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_dot_chart(ui, "dots", &dots, 1, 2, .x_min = frame ? 1e16 : 0,
+            .x_max = frame ? 1e16 + 2 : 1, .x_step = 1e-12);
+        cui_end_frame(ui);
+        CHECK(cui_get_draw_data(ui)->vertex_count > 0);
+    }
     cui_destroy(ui);
 }
 
@@ -166,6 +342,44 @@ static int long_names(void *user, const char *path, cui_file_entry *out, int cap
     return names_listed;
 }
 
+static int glob_names(void *user, const char *path, cui_file_entry *out, int cap, char *names, size_t names_cap, bool hidden) {
+    (void)user; (void)path; (void)hidden;
+    static const char *const files[] = { "Report.TXT", "data.csv", "a.txt", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" };
+    size_t used = 0;
+    for (int i = 0; i < CUI_COUNTOF(files); i++) {
+        size_t bytes = strlen(files[i]) + 1;
+        if (i >= cap || used + bytes > names_cap) return CUI_FILE_LIST_NAMES_FULL;
+        memcpy(names + used, files[i], bytes);
+        out[i] = (cui_file_entry){ .name = names + used };
+        used += bytes;
+    }
+    return CUI_COUNTOF(files);
+}
+
+static void test_file_globs(void) {
+    static const struct { const char *pattern; int count; } cases[] = {
+        { "*.txt", 2 }, { "?.txt", 1 }, { "**", 4 }, { "*.csv; *.TXT", 3 },
+        { "*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*b", 0 },
+        { "*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*", 1 }, { "", 4 }
+    };
+    cui_ctx *ui = context(false);
+    char path[32] = "/files";
+    for (int i = 0; i < CUI_COUNTOF(cases); i++) {
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_file_browser_result r = cui_file_browser(ui, "files", path, sizeof path,
+            .filter = cases[i].pattern, .list = glob_names, .no_places = true);
+        cui_end_frame(ui);
+        CHECK(!r.error);
+        if (cases[i].count) {
+            cui_push_id(ui, "files");
+            cui_scroll_state *s = cui_state(ui, cui_make_id(ui, "rows"), sizeof *s);
+            CHECK(s->content_h == cases[i].count * 30);
+            cui_pop_id(ui);
+        }
+    }
+    cui_destroy(ui);
+}
+
 static void test_file_names(void) {
     cui_ctx *ui = context(false);
     char path[256] = "/files";
@@ -225,9 +439,12 @@ static void test_picker_capacity(void) {
 }
 
 int main(void) {
-    test_ascii_helpers();
+    test_ascii_helpers(); test_scopes();
     test_shrinking_list(); test_table_controls(); test_horizontal_drag();
     test_parsers(); test_file_names(); test_picker_capacity();
+    test_large_row_ranges(); test_json_validation(); test_blame_without_commits();
+    test_coverage_scale(); test_texture_bounds();
+    test_file_globs(); test_chart_ranges();
     printf("audit regressions: %d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
 }

@@ -36,6 +36,8 @@ for (;;) {
 
 Coordinates are in points (logical pixels). `pixels_per_point` is 2 on a typical retina screen. Input events can arrive at any time between frames; CUI collects them for the next frame.
 
+Unnamed scrolling boxes keep their identity across frames inside `cui_push_id` and `cui_push_id_int` scopes. Give a box an explicit `id` when its position among siblings can change. Disabled scopes (`cui_push_disabled` / `cui_pop_disabled`) nest and restore the enclosing state, including beyond 32 levels.
+
 An idle CUI app costs nothing: with no input and nothing animating, `cui_needs_redraw` is false and the loop sleeps. Components that blink or wait (the caret, tooltips, toasts) set `cui_next_wakeup`. When your own content changes on a timer, such as a clock, a poll or messages arriving, call `cui_request_wakeup(ui, seconds)` during the frame. The loop then wakes for it instead of redrawing continuously. `cui_request_redraw` asks for the next frame right away, for things that change every frame.
 
 ### Input reference
@@ -95,6 +97,8 @@ You need two things:
 2. **One draw call per command.** For each `cui_draw_cmd` set the scissor rectangle to `clip` (pixels, top left origin), bind `texture` (0 means `font_atlas`) and draw `index_count` indices starting at `index_offset` as triangles. Blend with premultiplied alpha: `src * 1 + dst * (1 - src_alpha)`.
 
 The vertex format and the reference shader are in [rendering.md](rendering.md). Porting them to Vulkan, Metal, Direct3D 11/12, WebGPU, sokol or bgfx is mostly syntax.
+
+Texture update strides are in bytes and may include padding between rows. Both built-in renderers ignore an update if its rectangle is outside the texture, its pixels are NULL, or its stride is smaller than one row. Texture creation requires positive dimensions and an R8 or RGBA8 format. OpenGL texture storage can be retried after an allocation failure.
 
 ## Threads
 

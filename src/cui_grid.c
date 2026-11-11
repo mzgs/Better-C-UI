@@ -173,10 +173,8 @@ bool cui_data_grid_begin_ex(cui_ctx *ui, const char *id_str, const cui_grid_colu
     sb.width = CUI_FILL; sb.height = CUI_FILL;
     cui__scroll_begin_ex(ui, b->sid, &sb, true);
     /* Build rows for the offset after this frame's input and scroll animation. */
-    int f = (int)floorf((ss->y - CUI__GRID_HEAD) / b->row_h) - 2;
-    if (f < 0) f = 0;
-    int l = f + (int)ceilf(view_h / b->row_h) + 5;
-    if (l > nrows) l = nrows;
+    int f = (int)CUI_CLAMP(floor(((double)ss->y - CUI__GRID_HEAD) / b->row_h) - 2, 0.0, (double)nrows);
+    int l = (int)CUI_MIN((double)f + ceil((double)view_h / b->row_h) + 5, (double)nrows);
     if (f > l) f = l;
     b->first = f; b->last = l;
     *first = f; *last = l;

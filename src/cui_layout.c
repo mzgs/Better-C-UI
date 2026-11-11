@@ -50,7 +50,7 @@ void cui__close(cui_ctx *ui) {
 
 static cui_id cui__auto_id(cui_ctx *ui) {
     int d = ui->id_depth;
-    int c = ui->auto_counter[d < CUI_ID_STACK ? d : CUI_ID_STACK - 1]++;
+    int c = ui->auto_counter[d]++;
     cui_id seed = d ? ui->id_stack[d - 1] : 0x51ED270Bu;
     int cur = cui__current(ui);
     uint32_t key[2] = { (uint32_t)c, cur >= 0 ? ui->nodes[cur].id : 0 };

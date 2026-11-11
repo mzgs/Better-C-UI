@@ -483,9 +483,9 @@ struct cui_ctx {
 
     /* ids */
     cui_id id_stack[CUI_ID_STACK]; int id_depth;
-    int auto_counter[CUI_ID_STACK];
+    int auto_counter[CUI_ID_STACK + 1];
     int disabled_depth;
-    bool disabled_stack[32]; int disabled_n;
+    bool *disabled_stack; int disabled_n, disabled_cap;
 
     /* state store (open addressing over chained entries) */
     cui_state_entry *states; int state_count, state_cap;

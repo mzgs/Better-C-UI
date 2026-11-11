@@ -2,21 +2,31 @@
  * gauge. Charts animate in once, show a crosshair and a tooltip on hover,
  * and use the theme's series palette. */
 #include "cui_internal.h"
+#include <float.h>
 
 
 typedef struct { cui_spring intro; cui_spring hx; float hover_t; int hover; bool init; float plot_x, plot_w; } cui__chart_state;
 
 void cui__nice_range(float lo, float hi, int target_ticks, float *out_lo, float *out_hi, float *out_step) {
+    if (!isfinite(lo) || !isfinite(hi)) { lo = 0; hi = 1; }
     if (hi <= lo) { hi = lo + 1; }
     float range = hi - lo;
-    float rough = range / (float)target_ticks;
+    float min_step = CUI_MAX(CUI_MAX(fabsf(lo), fabsf(hi)) * FLT_EPSILON, nextafterf(0, 1));
+    float rough = isfinite(range) ? range / (float)CUI_MAX(1, target_ticks) : (float)(((double)hi - lo) / CUI_MAX(1, target_ticks));
+    rough = CUI_MAX(rough, min_step);
     float mag = powf(10.0f, floorf(log10f(rough)));
     float norm = rough / mag;
     float step = norm < 1.5f ? 1 : norm < 2.25f ? 2 : norm < 3.5f ? 2.5f : norm < 7.5f ? 5 : 10;
     step *= mag;
-    *out_lo = floorf(lo / step) * step;
-    *out_hi = ceilf(hi / step) * step;
-    if (*out_hi - *out_lo < step * 0.5f) *out_hi = *out_lo + step;
+    if (!isfinite(step)) step = FLT_MAX;
+    /* A tick must advance even when the range is tiny relative to its values. */
+    step = CUI_MAX(step, min_step);
+    *out_lo = (float)CUI_MAX(-FLT_MAX, (double)floorf(lo / step) * step);
+    *out_hi = (float)CUI_MIN(FLT_MAX, (double)ceilf(hi / step) * step);
+    if (*out_hi - *out_lo < step * 0.5f) {
+        if ((double)*out_lo + step <= FLT_MAX) *out_hi = *out_lo + step;
+        else *out_lo -= step;
+    }
     *out_step = step;
 }
 
@@ -194,9 +204,10 @@ static void cui__paint_xy_chart(cui_ctx *ui, cui_node *n, void *data) {
     } else {
         cui__nice_range(lo, hi, 4, &lo, &hi, &step);
     }
+    step = CUI_MAX(step, CUI_MAX(fabsf(lo), fabsf(hi)) * FLT_EPSILON);
     float fs = ui->theme.text_xs + 0.5f;
     float axis_w = 0;
-    for (float v = lo; v <= hi + step * 0.5f; v += step)
+    for (float v = lo; isfinite(v) && v <= hi + step * 0.5f; v += step)
         axis_w = CUI_MAX(axis_w, cui__text_width(ui, CUI_FONT_BODY, fs, cui__fmt_value(ui, p->o.format, v), -1, true));
     float label_h = p->labels ? 22 : 4;
     cui_rect plot = { r.x + axis_w + 10, r.y + 6, r.w - axis_w - 12, r.h - label_h - 8 };
@@ -204,7 +215,7 @@ static void cui__paint_xy_chart(cui_ctx *ui, cui_node *n, void *data) {
     if (p->st) { p->st->plot_x = plot.x - r.x; p->st->plot_w = plot.w; }
     float fh = cui__font_line_height(ui, CUI_FONT_BODY, fs);
     /* grid */
-    for (float v = lo; v <= hi + step * 0.5f; v += step) {
+    for (float v = lo; isfinite(v) && v <= hi + step * 0.5f; v += step) {
         float y = plot.y + plot.h - (v - lo) / (hi - lo) * plot.h;
         y = roundf(y * ui->scale) / ui->scale + 0.5f / ui->scale;
         if (!p->o.no_grid) {

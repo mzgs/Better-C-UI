@@ -251,7 +251,7 @@ cui_virtual_list(ui, "rows", 100000, 36, CUI_FILL, &first, &last) {
 }
 ```
 
-Virtual lists keep `first` and `last` inside the current row count and clamp scrolling when that count shrinks. An empty list returns `[0, 0)`.
+Virtual lists keep `first` and `last` inside the current row count, including `INT_MAX`, and clamp scrolling when that count shrinks. An empty list returns `[0, 0)`. Scroll offsets use floats, so very large lists can lose the precision of individual rows.
 
 ## Split views
 

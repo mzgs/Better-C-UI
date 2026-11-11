@@ -244,7 +244,12 @@ cui_gl_renderer *cui_gl_create(cui_gl_loader loader) {
     }
     GLuint_ vs = cui__gl_shader(r, GL_VERTEX_SHADER_, cui__vs_src);
     GLuint_ fs = cui__gl_shader(r, GL_FRAGMENT_SHADER_, cui__fs_src);
-    if (!vs || !fs) { free(r); return NULL; }
+    if (!vs || !fs) {
+        if (vs) r->gl.DeleteShader(vs);
+        if (fs) r->gl.DeleteShader(fs);
+        free(r);
+        return NULL;
+    }
     r->program = r->gl.CreateProgram();
     r->gl.AttachShader(r->program, vs);
     r->gl.AttachShader(r->program, fs);
@@ -300,14 +305,16 @@ void cui_gl_destroy(cui_gl_renderer *r) {
 
 static cui_texture cui__gl_tex_create(void *user, int w, int h, cui_texture_format fmt, const void *pixels) {
     cui_gl_renderer *r = user;
+    if (w <= 0 || h <= 0 || (fmt != CUI_TEXTURE_R8 && fmt != CUI_TEXTURE_RGBA8)) return 0;
     int slot = -1;
     for (int i = 0; i < r->tex_count; i++) if (!r->tex[i].id) { slot = i; break; }
     if (slot < 0) {
         if (r->tex_count == r->tex_cap) {
-            r->tex_cap = r->tex_cap ? r->tex_cap * 2 : 16;
-            void *n = realloc(r->tex, sizeof(*r->tex) * (size_t)r->tex_cap);
+            int cap = r->tex_cap ? r->tex_cap * 2 : 16;
+            void *n = realloc(r->tex, sizeof(*r->tex) * (size_t)cap);
             if (!n) return 0;
             r->tex = n;
+            r->tex_cap = cap;
         }
         slot = r->tex_count++;
     }
@@ -334,10 +341,16 @@ static void cui__gl_tex_update(void *user, cui_texture tex, int x, int y, int w,
     int slot = (int)tex - 1;
     if (slot < 0 || slot >= r->tex_count || !r->tex[slot].id) return;
     int bpp = (int)r->tex[slot].fmt;
+    if (!pixels || x < 0 || y < 0 || w <= 0 || h <= 0 || x > r->tex[slot].w || y > r->tex[slot].h ||
+        w > r->tex[slot].w - x || h > r->tex[slot].h - y || stride < 0 || (size_t)stride < (size_t)w * (size_t)bpp) return;
     r->gl.BindTexture(GL_TEXTURE_2D_, r->tex[slot].id);
     r->gl.PixelStorei(GL_UNPACK_ALIGNMENT_, 1);
     r->gl.PixelStorei(GL_UNPACK_ROW_LENGTH_, stride / bpp);
-    r->gl.TexSubImage2D(GL_TEXTURE_2D_, 0, x, y, w, h, r->tex[slot].fmt == CUI_TEXTURE_R8 ? GL_RED_ : GL_RGBA_, GL_UNSIGNED_BYTE_, pixels);
+    GLenum_ format = bpp == 1 ? GL_RED_ : GL_RGBA_;
+    if (stride % bpp) {   /* OpenGL's row length is in pixels, not bytes. */
+        for (int row = 0; row < h; row++)
+            r->gl.TexSubImage2D(GL_TEXTURE_2D_, 0, x, y + row, w, 1, format, GL_UNSIGNED_BYTE_, (const uint8_t *)pixels + (size_t)row * (size_t)stride);
+    } else r->gl.TexSubImage2D(GL_TEXTURE_2D_, 0, x, y, w, h, format, GL_UNSIGNED_BYTE_, pixels);
     r->gl.PixelStorei(GL_UNPACK_ROW_LENGTH_, 0);
 }
 

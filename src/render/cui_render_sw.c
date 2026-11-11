@@ -66,6 +66,8 @@ static void *cui__sw_xrealloc(void *p, size_t n) {
 
 static cui_texture cui__sw_tex_create(void *user, int w, int h, cui_texture_format fmt, const void *pixels) {
     cui_sw_renderer *r = user;
+    if (w <= 0 || h <= 0 || (fmt != CUI_TEXTURE_R8 && fmt != CUI_TEXTURE_RGBA8) ||
+        (size_t)w > SIZE_MAX / (size_t)h / (size_t)fmt) return 0;
     int slot = -1;
     for (int i = 0; i < r->tex_count; i++) if (!r->tex[i].used) { slot = i; break; }
     if (slot < 0) {
@@ -90,11 +92,12 @@ static void cui__sw_tex_update(void *user, cui_texture tex, int x, int y, int w,
     int slot = (int)tex - 1;
     if (slot < 0 || slot >= r->tex_count || !r->tex[slot].used) return;
     cui__sw_tex *t = &r->tex[slot];
+    if (!pixels || x < 0 || y < 0 || w <= 0 || h <= 0 || x > t->w || y > t->h ||
+        w > t->w - x || h > t->h - y || stride < 0 || (size_t)stride < (size_t)w * (size_t)t->fmt) return;
     cui__sw_note_change(r, tex, x, y, x + w, y + h);
     int bpp = (int)t->fmt;
     const uint8_t *src = pixels;
     for (int row = 0; row < h; row++) {
-        if (y + row < 0 || y + row >= t->h) continue;
         memcpy(t->data + ((size_t)(y + row) * (size_t)t->w + (size_t)x) * (size_t)bpp,
                src + (size_t)row * (size_t)stride, (size_t)w * (size_t)bpp);
     }

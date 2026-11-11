@@ -1495,7 +1495,7 @@ static cui__sc_geo cui__sc_layout(cui_ctx *ui, cui_rect r, const cui_scatter_ser
     cui__nice_range(yl, yh, 4, &g.y0, &g.y1, &g.ys);
     if (g.y1 - yh < py || (yl - g.y0 < py && g.y0 != 0)) cui__nice_range(yl - (yl - g.y0 < py && g.y0 != 0 ? py : 0), yh + (g.y1 - yh < py ? py : 0), 4, &g.y0, &g.y1, &g.ys);
     float fs = cui__fs(ui, ui->theme.text_xs), aw = 0;
-    for (float v = g.y0; v <= g.y1 + g.ys * 0.5f; v += g.ys) aw = CUI_MAX(aw, cui__text_width(ui, CUI_FONT_BODY, fs, cui__fmt_value(ui, o->y_format, v), -1, true));
+    for (float v = g.y0; isfinite(v) && v <= g.y1 + g.ys * 0.5f; v += g.ys) aw = CUI_MAX(aw, cui__text_width(ui, CUI_FONT_BODY, fs, cui__fmt_value(ui, o->y_format, v), -1, true));
     float top = legend_h + (o->y_label ? 22 : 6);
     g.plot = (cui_rect){ r.x + aw + 10, r.y + top, r.w - aw - 14, r.h - top - (o->x_label ? 46 : 26) };
     return g;
@@ -1518,12 +1518,12 @@ static void cui__paint_scatter(cui_ctx *ui, cui_node *n, void *data) {
     cui__sc_geo g = cui__sc_layout(ui, r, p->s, p->count, &p->o, p->legend_h);
     float fs = cui__fs(ui, ui->theme.text_xs);
     cui_rect pl = g.plot;
-    for (float v = g.y0; v <= g.y1 + g.ys * 0.5f; v += g.ys) {
+    for (float v = g.y0; isfinite(v) && v <= g.y1 + g.ys * 0.5f; v += g.ys) {
         float y = pl.y + pl.h - (v - g.y0) / (g.y1 - g.y0) * pl.h;
         cui_draw_rect(ui, (cui_rect){ pl.x, y - 0.5f, pl.w, 1 }, CUI_CORNERS(0), fabsf(v - g.y0) < g.ys * 0.01f ? CUI_C(ui, BORDER) : CUI_C(ui, BORDER_SUBTLE));
         cui__draw_text_at(ui, CUI_FONT_BODY, fs, pl.x - 8, y, CUI__AT_RIGHT, CUI_C(ui, TEXT_MUTED), cui__fmt_value(ui, p->o.y_format, v), true);
     }
-    for (float v = g.x0; v <= g.x1 + g.xs * 0.5f; v += g.xs) {
+    for (float v = g.x0; isfinite(v) && v <= g.x1 + g.xs * 0.5f; v += g.xs) {
         float x = pl.x + (v - g.x0) / (g.x1 - g.x0) * pl.w;
         cui__draw_text_at(ui, CUI_FONT_BODY, fs, x, pl.y + pl.h + 14, CUI__AT_CENTER, CUI_C(ui, TEXT_MUTED), cui__fmt_value(ui, p->o.x_format, v), true);
     }
@@ -1817,7 +1817,7 @@ static void cui__paint_candles(cui_ctx *ui, cui_node *n, void *data) {
     cui__nice_range(p->ylo, p->yhi, CUI_MAX(2, (int)(g.price.h / 40)), &glo, &ghi, &gstep);
     float last_y = p->has_last ? cui__cs_y(p, &g, p->last) : -1e9f;
     if (gstep > 0)
-        for (float v = glo; v <= p->yhi + gstep * 0.01f; v += gstep) {
+        for (float v = glo; isfinite(v) && v <= p->yhi + gstep * 0.01f; v += gstep) {
             if (v < p->ylo - gstep * 0.01f) continue;
             float y = cui__cs_y(p, &g, v);
             cui_draw_rect(ui, (cui_rect){ g.price.x, y - 0.5f, g.price.w, 1 }, CUI_CORNERS(0), CUI_C(ui, BORDER_SUBTLE));

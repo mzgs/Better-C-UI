@@ -257,6 +257,7 @@ void cui_destroy(cui_ctx *ui) {
     cui__free(ui, ui->prev_focus_order);
     cui__free(ui, ui->focus_layers);
     cui__free(ui, ui->prev_focus_layers);
+    cui__free(ui, ui->disabled_stack);
     cui__free(ui, ui->dl.vtx);
     cui__free(ui, ui->dl.idx);
     cui__free(ui, ui->dl.cmd);
@@ -441,12 +442,12 @@ cui_id cui_make_id(cui_ctx *ui, const char *str) {
 
 void cui_push_id(cui_ctx *ui, const char *str) {
     cui_id id = cui_make_id(ui, str);
-    if (ui->id_depth < CUI_ID_STACK) { ui->auto_counter[ui->id_depth] = 0; ui->id_stack[ui->id_depth++] = id; }
+    if (ui->id_depth < CUI_ID_STACK) { ui->id_stack[ui->id_depth++] = id; ui->auto_counter[ui->id_depth] = 0; }
 }
 
 void cui_push_id_int(cui_ctx *ui, int v) {
     cui_id id = cui__hash(&v, sizeof v, cui__seed(ui));
-    if (ui->id_depth < CUI_ID_STACK) { ui->auto_counter[ui->id_depth] = 0; ui->id_stack[ui->id_depth++] = id; }
+    if (ui->id_depth < CUI_ID_STACK) { ui->id_stack[ui->id_depth++] = id; ui->auto_counter[ui->id_depth] = 0; }
 }
 
 void cui_pop_id(cui_ctx *ui) { if (ui->id_depth > 0) ui->id_depth--; }
@@ -458,7 +459,8 @@ bool cui_last_hovered(cui_ctx *ui) { return ui->last_id && ui->hot == ui->last_i
 
 bool cui_is_disabled(cui_ctx *ui) { return ui->disabled_depth > 0; }
 void cui_push_disabled(cui_ctx *ui, bool d) {
-    if (ui->disabled_n < 32) ui->disabled_stack[ui->disabled_n++] = d;
+    CUI__GROW(ui, ui->disabled_stack, ui->disabled_n, ui->disabled_cap, 1);
+    ui->disabled_stack[ui->disabled_n++] = d;
     if (d) ui->disabled_depth++;
 }
 void cui_pop_disabled(cui_ctx *ui) {

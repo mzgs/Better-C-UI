@@ -2,6 +2,7 @@
  * the dot-matrix display. They share an axis (units, labels and ticks) and a quiet look:
  * values as dots, labels in the monospaced font, hairlines and one accent. */
 #include "cui_internal.h"
+#include <float.h>
 
 /* the gutter on the right of a dot chart and an event track, where value labels go, so the
  * two stacked at one width share their x positions */
@@ -52,11 +53,13 @@ typedef struct {
 static void cui__ins_draw_axis(cui_ctx *ui, const cui__ins_axis *a, float px, float pw, float y, cui_rect clip, bool ticks) {
     if (!(a->x1 > a->x0)) return;
     double step = a->step > 0 ? a->step : cui__ins_step(a->units, a->x1 - a->x0, pw, a->units == CUI_AXIS_HOURS ? 34 : 56);
+    step = CUI_MAX(step, (a->x1 - a->x0) / CUI_MAX(1.0f, pw));
+    step = CUI_MAX(step, CUI_MAX(fabs(a->x0), fabs(a->x1)) * DBL_EPSILON);
     if (!(step > 0)) return;
     float fs = cui__fs(ui, ui->theme.text_xs);
     double first = ceil(a->x0 / step - 1e-9) * step;
     float last_end = -1e9f;
-    for (double v = first; v <= a->x1 + step * 1e-6; v += step) {
+    for (double v = first; isfinite(v) && v <= a->x1 + step * 1e-6; v += step) {
         float x = px + (float)((v - a->x0) / (a->x1 - a->x0)) * pw;
         if (ticks) cui_draw_rect(ui, (cui_rect){ floorf(x), y - 6, 1, 3 }, CUI_CORNERS(0), CUI_C(ui, BORDER_STRONG));
         const char *lbl = cui__ins_label(ui, a->units, a->fmt, v, true);
