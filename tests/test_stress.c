@@ -75,6 +75,15 @@ int main(int argc, char **argv) {
     CHECK(unchanged.load == state.records[1].load &&
           memcmp(unchanged.history, state.records[1].history, sizeof unchanged.history) == 0);
 
+    float last_load = state.records[STRESS_RECORDS - 1].load;
+    state.workload = 4;
+    state.changes = 1;
+    stress_advance(&state, 0.2f);
+    CHECK(state.records[STRESS_RECORDS - 1].load != last_load);
+    CHECK(state.records[STRESS_RECORDS - 1].history[STRESS_HISTORY - 1] == state.records[STRESS_RECORDS - 1].load);
+    state.workload = 1;
+    state.changes = 2;
+
     cui_sw_renderer *sw = cui_sw_create();
     CHECK(sw != NULL);
     if (!sw) return 1;
@@ -105,14 +114,15 @@ int main(int argc, char **argv) {
     stress_test_frame(ui, &state);
     CHECK(state.built_rows > 0 && state.built_rows < 40);
 
-    for (int load = 0; load < 4; load++) {
+    for (int load = 0; load < 5; load++) {
         state.workload = load;
         stress_test_frame(ui, &state);
         CHECK(state.built_rows > 0 && state.built_rows < 40);
     }
+    state.workload = 3;
     state.virtualized = false;
     stress_test_frame(ui, &state);
-    CHECK(state.built_rows == STRESS_RECORDS);
+    CHECK(state.built_rows == 30000);
     state.workload = 1;
     cui_set_theme(ui, CUI_THEME_LIGHT);
     stress_test_frame(ui, &state);

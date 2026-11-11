@@ -22,8 +22,8 @@
 #endif
 #endif
 
-enum { STRESS_RECORDS = 30000, STRESS_HISTORY = 32, STRESS_POINTS = 256, STRESS_SERVICES = 8 };
-static const int stress_counts[] = { 1000, 3000, 10000, STRESS_RECORDS };
+enum { STRESS_RECORDS = 100000, STRESS_HISTORY = 32, STRESS_POINTS = 256, STRESS_SERVICES = 8 };
+static const int stress_counts[] = { 1000, 3000, 10000, 30000, STRESS_RECORDS };
 
 typedef struct {
     double sample_at, cpu_at, fps, frame_ms, cpu_percent, rss_mib;
@@ -202,11 +202,11 @@ static void stress_header(cui_ctx *ui, app_state *a) {
 }
 
 static void stress_toolbar(cui_ctx *ui, app_state *a) {
-    static const char *loads[] = { "1,000", "3,000", "10,000", "30,000" };
+    static const char *loads[] = { "1,000", "3,000", "10,000", "30,000", "100,000" };
     static const char *changes[] = { "One record", "All records", "Paused" };
     cui_row(ui, .width = CUI_FILL, .gap = 16, .pad_x = 20, .pad_y = 10, .wrap = true) {
         cui_label(ui, "Records");
-        if (cui_segmented(ui, "workload", loads, 4, &a->workload, .size = CUI_SIZE_SM)) {
+        if (cui_segmented(ui, "workload", loads, 5, &a->workload, .size = CUI_SIZE_SM)) {
             if (a->selected >= stress_counts[a->workload]) a->selected = 0;
             cui_scroll_to(ui, "records", 0);
             cui_scroll_to(ui, "virtual-records", 0);

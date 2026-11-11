@@ -40,7 +40,7 @@ cmake --build build-stress --target stress --parallel
 
 On Windows with Visual Studio, add `--config Release` and run `build-stress/examples/Release/stress.exe`.
 
-- **Records:** choose 1,000, 3,000, 10,000 or 30,000. The app keeps the full synthetic dataset allocated; the selector controls how many records participate in the interface.
+- **Records:** choose 1,000, 3,000, 10,000, 30,000 or 100,000. The app keeps the full 100,000-record synthetic dataset allocated; the selector controls how many records participate in the interface.
 - **One record:** update only the inspected record every 100 ms; charts remain unchanged. **All records** updates the active records, chart histories and heatmap at the same frequency. **Paused** stops these synthetic updates. All modes continue rendering so their frame rates can be compared.
 - **Virtualize rows:** build only the visible range and a small overscan, using the same row widgets as the full-build path. The footer reports the active renderer and how many rows were actually built. Virtualization does not skip the model updates in All records mode. RSS can stay elevated after switching modes because component state is collected after inactivity and the allocator can retain freed memory.
 - Edit instance names, select checkboxes, inspect a row with its settings button, toggle traffic and drag budgets or the pane divider while watching the counters. The inspector is omitted below 1,000 logical points; the charts stack into two columns.
