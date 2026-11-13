@@ -6,13 +6,15 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Changed
 
+- Removed the local HTML5 video example and its dedicated tests and screenshots.
+
 - **WebView is a separate add-on**: enable `CUI_WEBVIEW`, include `<cui/cui_webview.h>` and link `cui::webview` (installed packages request `COMPONENTS webview`). The core keeps the layout placeholder and has no browser libraries, even when the add-on is built. Native sources live in `addons/webview/`; pkg-config and amalgamated distributions provide separate add-on artifacts. Existing WebView callers must update their include/link settings.
 
 ### Added
 
 - **WebView navigation policy and startup scripts**: allow or cancel document navigation from C, including page links and frame navigation; apps can queue cancelled links for opening externally. Register main-frame JavaScript at document start with completion callbacks, before page scripts. Includes a blocked-link example and native checks for redirects, reloads, injection timing and callback destruction. See [Web view](docs/components-more.md#web-view).
 - **WebView JavaScript and browser APIs**: execute scripts with JSON results, receive main-frame page messages, observe load/progress/URL/error events, reload/stop, set a user agent, attach per-navigation HTTP headers, and clear cookies. Includes callback cleanup after destruction, an expanded desktop example, previews and loopback feature checks for the native engines. See [Web view](docs/components-more.md#web-view).
-- **Local HTML5 video example**: `webview_video` has a Choose video button and an unrestricted native file dialog, including MKV selection, then opens the selected file in the browser's player. Playback support depends on the browser runtime. No sample video or server is needed. `cui_webview_navigate` now accepts `file:///` URLs; Cocoa grants local pages access to sibling assets. Includes chooser tests, a macOS playback smoke check and [run instructions](docs/integration.md#local-html5-video-example).
+- **WebView local files**: `cui_webview_navigate` accepts `file:///` URLs; Cocoa grants local pages access to sibling assets.
 - **WebView fills remaining height** with a negative `height`, like the code editor. The desktop example now stretches the browser to the bottom as the window resizes.
 - **WebView history**: Back and Forward buttons in the desktop example use the native browser history and disable when no entry is available. Apps can use `cui_webview_can_go_back`, `cui_webview_can_go_forward`, `cui_webview_go_back` and `cui_webview_go_forward`.
 - **WebView example** opens `https://www.google.com` on startup; the Local page button still loads the bundled HTML demo.

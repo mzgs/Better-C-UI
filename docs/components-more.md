@@ -1513,10 +1513,6 @@ An optional native browser add-on: WKWebView on macOS/Cocoa, WebView2 on Windows
 
 The gallery, browser demo and image above show the unavailable placeholder. Native web content is drawn by the OS, outside CUI's software/OpenGL draw list, and is absent from `cui_app_screenshot`. Run [`examples/webview.c`](../examples/webview.c) for a live browser: it opens Google on startup, Back and Forward step through browser history, and Local page loads the bundled HTML demo.
 
-[`examples/webview_video.c`](../examples/webview_video.c) has a Choose video button that opens the native file dialog and plays the selected local file in the browser's HTML5 media player. No sample video or server is required. See [running the video example](integration.md#local-html5-video-example). The native engine supplies playback, seeking, volume and fullscreen; CUI places the browser surface.
-
-<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/webview-video-dark.png"><img src="images/components/webview-video.png" alt="Video example with a Choose video button and no video selected"></picture>
-
 Use `cui_webview_can_go_back(view)` and `cui_webview_can_go_forward(view)` to enable history buttons, then call `cui_webview_go_back(view)` or `cui_webview_go_forward(view)` when activated. These use the engine's history, including navigation initiated by links and page scripts. They return false if the direction has no entry or the handle is unavailable, starting, failed or destroyed. A successful `go_*` means the navigation was accepted, not that loading finished. The example requests a wakeup every 100 ms so button availability refreshes even when history changes without CUI input.
 
 ```c
