@@ -1,6 +1,57 @@
 /* Media: video player, carousel, image compare and card stack. */
 #include "cui_internal.h"
 
+typedef struct { bool focused; } cui__webview_state;
+typedef struct { cui_webview_handle *view; bool disabled, focus; } cui__webview_paint;
+
+static void cui__paint_webview(cui_ctx *ui, cui_node *n, void *data) {
+    cui__webview_paint *p = data;
+    cui_webview_handle *v = p->view;
+    cui_rect r = cui__rect_inset(n->rect, 1);
+    cui_rect clip = ui->dl.clip_stack[ui->dl.clip_depth - 1];
+    cui_xform xf = ui->dl.xform_stack[ui->dl.xform_depth - 1];
+    bool fits = r.x * ui->scale >= clip.x && r.y * ui->scale >= clip.y &&
+        (r.x + r.w) * ui->scale <= clip.x + clip.w + 0.01f &&
+        (r.y + r.h) * ui->scale <= clip.y + clip.h + 0.01f;
+    /* shortcut: native children cannot join triangle clipping or transforms;
+     * hide partial/transformed surfaces until composited browsers are needed. */
+    bool show = v && !v->dead && !p->disabled && fits && r.w > 0 && r.h > 0 &&
+        !ui->float_count && xf.scale == 1 && xf.alpha >= 0.999f && xf.ox == 0 && xf.oy == 0;
+    if (v && !v->dead) { v->rect = r; v->seen = show; }
+    const char *label = !v || v->dead ? "Web view unavailable" :
+        p->disabled ? "Web view disabled" : v->status == CUI_WEBVIEW_ERROR ? "Web view could not start" :
+        v->status == CUI_WEBVIEW_STARTING ? "Starting web view..." : "Web view hidden";
+    cui__draw_text_at(ui, CUI_FONT_BODY, cui__fs(ui, 14), r.x + r.w * 0.5f,
+        r.y + r.h * 0.5f, CUI__AT_CENTER, CUI_C(ui, TEXT_MUTED), label, false);
+    if (p->focus) cui__draw_focus_ring(ui, cui__rect_inset(n->rect, 2), CUI_CORNERS(0), 1);
+}
+
+void cui_webview_ex(cui_ctx *ui, const char *id_str, cui_webview_handle *view, const cui_webview_opts *o) {
+    cui_webview_opts d = {0};
+    if (!o) o = &d;
+    if (view && (view->ui != ui || view->dead)) view = NULL;
+    cui_id id = cui_make_id(ui, id_str);
+    cui_push_disabled(ui, o->disabled);
+    bool disabled = cui_is_disabled(ui);
+    cui_interact input = cui__interact(ui, id, view ? CUI_IF_FOCUSABLE : 0);
+    cui__webview_state *st = cui_state(ui, id, sizeof *st);
+    if (view) {
+        view->id = id;
+        if (!disabled && input.focused && !st->focused) view->focus_requested = true;
+    }
+    st->focused = input.focused;
+    int index = cui__leaf(ui, id, o->width.kind ? o->width : CUI_FILL,
+        isfinite(o->height) && o->height < 0 ? CUI_FILL : CUI_PX(isfinite(o->height) && o->height > 0 ? o->height : 320));
+    cui_node *n = &ui->nodes[index];
+    n->bg = CUI_C(ui, SURFACE_MUTED);
+    n->border_color = CUI_C(ui, BORDER); n->border = 1;
+    cui__webview_paint *p = cui__frame_alloc(ui, sizeof *p);
+    p->view = view; p->disabled = disabled; p->focus = input.focus_visible;
+    n->paint = cui__paint_webview; n->paint_data = p;
+    if (view) cui__mark_interactive(ui, index, CUI_IF_FOCUSABLE);
+    cui_pop_disabled(ui);
+}
+
 typedef struct { cui_texture frame; float aspect; bool focus; } cui__video_paint;
 
 static void cui__paint_video(cui_ctx *ui, cui_node *n, void *data) {

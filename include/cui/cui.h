@@ -2180,6 +2180,26 @@ typedef struct cui_video_player_opts {
  * updates fullscreen. NULL video returns 0 without building anything. */
 CUI_API int cui_video_player_ex(cui_ctx *ui, const char *id, cui_video *video, const cui_video_player_opts *opts);
 
+/* Native browser surface. Create the handle with cui_app_webview_create
+ * (cui_app.h), then place it once per frame in its app's UI. NULL draws an
+ * unavailable placeholder, also usable without the app layer. Native content
+ * is absent from CUI screenshots and hidden while floating UI is open.
+ * Tab enters the page; Ctrl+Tab / Ctrl+Shift+Tab return to CUI. */
+typedef struct cui_webview_handle cui_webview_handle;
+typedef enum cui_webview_status {
+    CUI_WEBVIEW_UNAVAILABLE = 0, /* NULL handle or support not built */
+    CUI_WEBVIEW_STARTING,
+    CUI_WEBVIEW_READY,          /* engine ready; not a page-load result */
+    CUI_WEBVIEW_ERROR           /* engine creation or content submission failed */
+} cui_webview_status;
+typedef struct cui_webview_opts {
+    int _;
+    cui_size width;            /* default fill */
+    float height;              /* points, default 320; negative fills remaining height */
+    bool disabled;             /* hide the native surface and block input */
+} cui_webview_opts;
+CUI_API void cui_webview_ex(cui_ctx *ui, const char *id, cui_webview_handle *view, const cui_webview_opts *opts);
+
 /* ------------------------------------------------------------------------ */
 /* AI interfaces                                                            */
 /* ------------------------------------------------------------------------ */
@@ -4456,6 +4476,7 @@ CUI_API const cui_draw_data *cui_get_draw_data(cui_ctx *ui);
 #define cui_carousel_slide(ui)              CUI__SCOPE(cui_carousel_slide_begin(ui), cui_carousel_slide_end(ui))
 #define cui_image_compare(ui, id, before, after, pos, ...) cui_image_compare_ex((ui), (id), (before), (after), (pos), CUI__OPTS(cui_compare_opts, __VA_ARGS__))
 #define cui_video_player(ui, id, video, ...) cui_video_player_ex((ui), (id), (video), CUI__OPTS(cui_video_player_opts, __VA_ARGS__))
+#define cui_webview(ui, id, view, ...) cui_webview_ex((ui), (id), (view), CUI__OPTS(cui_webview_opts, __VA_ARGS__))
 #define cui_card_stack_item(ui, depth)      CUI__SCOPE(cui_card_stack_item_begin((ui), (depth)), cui_card_stack_item_end(ui))
 #define cui_counter(ui, id, value, ...)     cui_counter_ex((ui), (id), (value), CUI__OPTS(cui_counter_opts, __VA_ARGS__))
 #define cui_ticker(ui, id, items, count, ...) cui_ticker_ex((ui), (id), (items), (count), CUI__OPTS(cui_ticker_opts, __VA_ARGS__))

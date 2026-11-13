@@ -1505,6 +1505,43 @@ The call returns a bitmask: `CUI_PLAYER_TOGGLE` writes `playing`, `CUI_PLAYER_SE
 
 Keyboard: Tab reaches the video surface and each control. On the surface, Enter or Space toggles playback, Left/Right seek five seconds, Home/End seek to the start/end, Up/Down change volume by 5%, M toggles mute and F requests fullscreen. Each button also works with Enter or Space. The seek and volume sliders use arrows and Home/End. The UI never starts playback on its own; reduced motion removes the controls' feedback animation. The gallery and live scene are frame previews, not decoded video playback.
 
+### Web view
+
+An optional native browser surface: WKWebView on macOS/Cocoa, WebView2 on Windows/Win32, and WebKitGTK on Linux/X11. It accepts a URL or an HTML string, including JavaScript and forms. The default build has no browser dependency. See [Native WebView setup](integration.md#native-webview-setup) to enable it.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/webview-dark.png"><img src="images/components/webview.png" alt="Web view unavailable placeholder in the renderer preview"></picture>
+
+The gallery, browser demo and image above show the unavailable placeholder. Native web content is drawn by the OS, outside CUI's software/OpenGL draw list, and is absent from `cui_app_screenshot`. Run [`examples/webview.c`](../examples/webview.c) for a live browser: it opens Google on startup, Back and Forward step through browser history, and Local page loads the bundled HTML demo.
+
+Use `cui_webview_can_go_back(view)` and `cui_webview_can_go_forward(view)` to enable history buttons, then call `cui_webview_go_back(view)` or `cui_webview_go_forward(view)` when activated. These use the engine's history, including navigation initiated by links and page scripts. They return false if the direction has no entry or the handle is unavailable, starting, failed or destroyed. A successful `go_*` means the navigation was accepted, not that loading finished. The example requests a wakeup every 100 ms so button availability refreshes even when history changes without CUI input.
+
+```c
+#include <cui/cui_app.h>
+
+int main(void) {
+    cui_app *app = cui_app_create(&(cui_app_desc){ .title = "Web view" });
+    if (!app) return 1;
+    cui_webview_handle *view = cui_app_webview_create(app);
+    cui_webview_set_html(view, "<!doctype html><h1>Hello from HTML</h1><input aria-label='Name'>");
+    while (cui_app_frame(app)) {
+        cui_ctx *ui = cui_app_ui(app);
+        cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .pad = 16) {
+            cui_webview(ui, "page", view, .height = 360);
+        }
+    }
+    cui_app_destroy(app);
+    return 0;
+}
+```
+
+Create a handle once, then place it at most once per frame, always in its app's context. `width` defaults to fill and follows the parent's layout and reading direction; `height` is in logical points, default 320; a negative value fills the remaining height in a bounded parent. The desktop example uses `.height = -1` to stretch to the bottom when resized. A `NULL` handle draws the placeholder. Creation returns `NULL` when support is disabled, the backend is unsupported, or native creation fails. WebView2 starts asynchronously: `cui_webview_get_status` returns `STARTING`, `READY`, or `ERROR`; `READY` describes the engine, not whether a page loaded successfully. A `NULL` or destroyed handle reports `UNAVAILABLE`.
+
+`cui_webview_navigate(view, url)` accepts absolute `http://`, `https://` and `about:blank` URLs. `cui_webview_set_html(view, html)` loads a UTF-8 string without a local-file base URL. Both copy their input, reject malformed UTF-8, and return whether submission was accepted; the latest request is queued during startup. The browser displays its own network and certificate errors. No native script bridge is installed, and certificate validation remains enabled. Web pages can run scripts, use the network and store browser data according to the native engine's defaults. The initial URL restriction is not a navigation sandbox for links or scripts within a page.
+
+Omitting the call hides the native surface at the end of that frame. `.disabled = true` or an enclosing disabled scope hides it and blocks interaction. Native child views draw above CUI's triangles, so they also hide while floating UI is present, while transformed or translucent, and when partially clipped by a scroll area or the viewport. The browser reappears when its entire rectangle is visible. Keep other content out of its rectangle. Its own page handles scrolling, RTL, accessibility, appearance and reduced motion; use HTML `lang`, `dir`, `color-scheme` and `prefers-reduced-motion` as appropriate. CUI's surrounding surface uses theme tokens and adds no animation.
+
+Keyboard: Tab reaches the browser, then the engine handles navigation inside the page. Ctrl+Tab returns to the next CUI control; Ctrl+Shift+Tab returns to the previous one. These shortcuts are reserved by the host. All APIs run on the app thread (the main thread on macOS). The app destroys every handle before closing the window. To release one earlier, call `cui_webview_destroy(view)` and stop using it immediately; cleanup occurs at frame end. Browser state is preserved while the surface is hidden.
+
 ### Carousel
 
 A strip of slides the user drags or steps through, one at a time.

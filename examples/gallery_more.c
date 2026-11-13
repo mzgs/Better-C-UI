@@ -109,6 +109,16 @@ static void page_actions(cui_ctx *ui) {
     }
 }
 
+static void page_webview(cui_ctx *ui) {
+    section(ui, "Web view", "Native browser surface. Run the webview example with CUI_WEBVIEW=ON for live web content.");
+    cui_row(ui, .gap = 8) {
+        cui_button(ui, "Back", .disabled = true);
+        cui_button(ui, "Forward", .disabled = true);
+    }
+    cui_webview(ui, "browser-preview", NULL, .height = 280);
+    cui_secondary(ui, "The gallery and renderer screenshots show the unavailable placeholder.");
+}
+
 /* ---- smart inputs ------------------------------------------------------- */
 
 static void page_inputs(cui_ctx *ui) {
@@ -1675,6 +1685,7 @@ static const more_page pages[] = {
     { "Developer tools", CUI_ICON_SQUARE_TERMINAL, page_devtools },
     { "More developer tools", CUI_ICON_BUG, page_devtools2 },
     { "Instruments", CUI_ICON_CHART_LINE, page_instruments },
+    { "Web view", CUI_ICON_GLOBE, page_webview },
 };
 
 int gallery_more_count(void) { return (int)(sizeof pages / sizeof pages[0]); }

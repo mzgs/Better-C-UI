@@ -81,6 +81,29 @@ CUI_API void *cui_app_native_window(cui_app *app);
 /* Name of the active backend: "win32", "cocoa", "x11", "sdl2", "glfw". */
 CUI_API const char *cui_app_backend(cui_app *app);
 
+/* Optional embedded browser (CUI_WEBVIEW=ON): Cocoa/WKWebView,
+ * Win32/WebView2, X11/WebKitGTK. Other backends return NULL. Call on the app
+ * thread. The app owns handles and destroys them before closing its window.
+ * NULL app means the current app. Creation is asynchronous on Windows. */
+CUI_API cui_webview_handle *cui_app_webview_create(cui_app *app);
+/* Invalidates the handle immediately; native cleanup occurs at frame end. */
+CUI_API void cui_webview_destroy(cui_webview_handle *view);
+CUI_API cui_webview_status cui_webview_get_status(const cui_webview_handle *view);
+/* Copies UTF-8 content; while starting, the latest request is queued.
+ * navigate accepts absolute http://, https:// and about:blank URLs only.
+ * set_html uses no local-file base URL. No native script bridge is installed.
+ * true means accepted, not successfully loaded; the engine handles network
+ * and certificate errors. Never bypass certificate validation. */
+CUI_API bool cui_webview_navigate(cui_webview_handle *view, const char *url);
+CUI_API bool cui_webview_set_html(cui_webview_handle *view, const char *html);
+/* Native navigation history. All return false for NULL, starting, failed or
+ * destroyed handles. go_* returns whether navigation was accepted; it does
+ * not wait for the page to load. An empty direction returns false. */
+CUI_API bool cui_webview_can_go_back(cui_webview_handle *view);
+CUI_API bool cui_webview_can_go_forward(cui_webview_handle *view);
+CUI_API bool cui_webview_go_back(cui_webview_handle *view);
+CUI_API bool cui_webview_go_forward(cui_webview_handle *view);
+
 /* Native file dialogs. Blocking; returns true and writes the chosen path
  * (UTF-8) to out when the user confirms. On Linux this uses zenity or
  * kdialog when installed. Pass NULL as app to use the current app (handy in

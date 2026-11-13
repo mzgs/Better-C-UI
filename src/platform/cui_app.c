@@ -102,6 +102,7 @@ void cui_app_destroy(cui_app *app) {
     if (!app) return;
     if (cui__current_app == app) cui__current_app = NULL;
     if (app->in_frame) { cui_end_frame(app->ui); app->in_frame = false; }
+    if (app->webviews.destroy) app->webviews.destroy(app);
     /* release textures while the GL context still exists */
     cui_set_renderer(app->ui, NULL);
     if (app->gl) cui_gl_destroy(app->gl);
@@ -117,7 +118,7 @@ void cui_app_destroy(cui_app *app) {
 }
 
 /* NULL means the app that is running: a cui_app_run callback has no other way to name it */
-static cui_app *cui__app_or_current(cui_app *app) { return app ? app : cui__current_app; }
+cui_app *cui__app_or_current(cui_app *app) { return app ? app : cui__current_app; }
 
 cui_ctx *cui_app_ui(cui_app *app) { app = cui__app_or_current(app); return app ? app->ui : NULL; }
 void cui_app_quit(cui_app *app) { app = cui__app_or_current(app); if (app) app->running = false; }
@@ -160,6 +161,7 @@ void cui__app_render(cui_app *app) {
     if (app->in_frame) {
         cui_end_frame(app->ui);
         app->in_frame = false;
+        if (app->webviews.sync) app->webviews.sync(app);
     }
     const cui_draw_data *dd = cui_get_draw_data(app->ui);
     int w = dd->width_px, h = dd->height_px;
@@ -251,7 +253,13 @@ bool cui_app_frame(cui_app *app) {
         float wake = cui_next_wakeup(ui);
         timeout = wake >= 0 ? wake : -1;
     }
+    /* GTK has its own event queue; bound the wait only while a view exists. */
+    if (app->webviews.pump) {
+        app->webviews.pump();
+        if (timeout < 0 || timeout > 0.016) timeout = 0.016;
+    }
     cui__plat_wait(app, timeout);
+    if (app->webviews.pump) app->webviews.pump();
     if (!app->running) return false;
     cui__app_begin(app);
     return true;
@@ -267,7 +275,10 @@ void cui__app_live_frame(cui_app *app) {
         return;
     }
     app->in_live_resize = true;
-    if (app->in_frame) { cui_end_frame(app->ui); app->in_frame = false; }
+    if (app->in_frame) {
+        cui_end_frame(app->ui); app->in_frame = false;
+        if (app->webviews.sync) app->webviews.sync(app);
+    }
     cui__app_begin(app);
     app->frame_cb(app->ui, app->frame_user);
     cui__app_render(app);

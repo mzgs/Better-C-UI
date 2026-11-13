@@ -102,6 +102,30 @@ The vertex format and the reference shader are in [rendering.md](rendering.md). 
 
 Texture update strides are in bytes and may include padding between rows. Both built-in renderers ignore an update if its rectangle is outside the texture, its pixels are NULL, or its stride is smaller than one row. Texture creation requires positive dimensions and an R8 or RGBA8 format. OpenGL texture storage can be retried after an allocation failure.
 
+## Native WebView setup
+
+The optional [`cui_webview`](components-more.md#web-view) uses a platform browser engine and works with either CUI renderer. It requires the app layer and the Cocoa, Win32 or X11 backend. SDL2, GLFW, custom window hosts and WebAssembly use the unavailable placeholder; configuring `CUI_WEBVIEW=ON` with an unsupported desktop backend fails explicitly.
+
+```sh
+cmake -S . -B build-webview -DCMAKE_BUILD_TYPE=Debug -DCUI_WEBVIEW=ON
+cmake --build build-webview --target webview
+./build-webview/examples/webview
+```
+
+| Platform | Build and runtime requirements |
+|---|---|
+| macOS | System [WKWebView](https://developer.apple.com/documentation/webkit/wkwebview); CMake links WebKit and compiles the adapter with Objective-C ARC. |
+| Windows | Download and extract Microsoft's [WebView2 SDK](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/machine-setup). Set `-DCUI_WEBVIEW2_SDK=C:/path/to/extracted/package`. CMake uses `build/native/include/WebView2.h` and the architecture's `WebView2Loader.dll.lib`; distribute the matching `WebView2Loader.dll` next to your executable. Install the [WebView2 Runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution). Browser data lives under `%LOCALAPPDATA%/Better-C-UI/WebView2-<executable-path-hash>`. Use an STA app thread. |
+| Linux/X11 | Install GTK3 and [WebKitGTK 4.1](https://webkitgtk.org/reference/webkit2gtk/stable/class.WebView.html) development packages (`libwebkit2gtk-4.1-dev` on Debian/Ubuntu). CMake finds `webkit2gtk-4.1` through pkg-config. The runtime must include the X11 GDK backend; Wayland embedding is not implemented. GTK's event queue is serviced by the app loop, with a maximum idle wait of 16 ms while a view exists. |
+
+No SDK is downloaded by the build and no browser is added to the default build. Browser SDKs, runtimes and processes have their own size and memory costs.
+
+For a single-file build, define `CUI_WEBVIEW` when compiling the implementation, use the native window backend, and add the same headers and libraries manually: `-framework WebKit` on macOS; the SDK include directory and `WebView2Loader.dll.lib` on Windows; `pkg-config --cflags --libs webkit2gtk-4.1` on Linux. MinGW cross builds also need `src/platform/webview2_compat` on the include path for Microsoft's header spelling. A no-app build can still call `cui_webview(ui, id, NULL)` to draw the placeholder.
+
+`cui_webview_smoke` is an explicit real-window check when tests and WebViews are enabled. On macOS and Linux it also checks DOM/JavaScript, keyboard exit, hide/show and an optional native snapshot (`./build-webview/tests/cui_webview_smoke /tmp/webview.png`). It is separate from headless CTest; CTest checks the shared lifecycle and component layout with a substitute engine.
+
+Run `python3 tests/webview_history.py ./build-webview/tests/cui_webview_smoke` on macOS or Linux to also check Back and Forward between two local HTTP pages. The script serves only on loopback, uses Python's standard library, and needs no Internet connection.
+
 ## Threads
 
 A `cui_ctx` is not thread safe; use it from one thread. You may create several contexts (for several windows) and use each from its own thread. The software renderer parallelizes internally.

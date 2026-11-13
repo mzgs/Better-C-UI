@@ -1,11 +1,15 @@
 # Changelog
 
-What changed in Better-C-UI, newest first. Every component mentioned here runs live in the docs.
+What changed in Better-C-UI, newest first. Component previews and desktop examples are linked below.
 
 ## Unreleased
 
 ### Added
 
+- **WebView fills remaining height** with a negative `height`, like the code editor. The desktop example now stretches the browser to the bottom as the window resizes.
+- **WebView history**: Back and Forward buttons in the desktop example use the native browser history and disable when no entry is available. Apps can use `cui_webview_can_go_back`, `cui_webview_can_go_forward`, `cui_webview_go_back` and `cui_webview_go_forward`.
+- **WebView example** opens `https://www.google.com` on startup; the Local page button still loads the bundled HTML demo.
+- **Optional WebView control**: `cui_webview` embeds native web content with WKWebView (Cocoa), WebView2 (Win32), or WebKitGTK 4.1 (X11), enabled by `CUI_WEBVIEW=ON`. Includes URL/HTML loading, keyboard entry and exit, automatic hide/show, app-owned cleanup, and a `webview` example. Native content is outside renderer screenshots; unsupported builds show a placeholder. See [Web view](docs/components-more.md#web-view) and [setup](docs/integration.md#native-webview-setup).
 - **Docking example**: run `build/examples/docking` to try dockable tabs, resizable panes, closing and reopening a panel, and resetting the layout.
 - **Media UI**: `cui_video_player` displays an app-owned frame with play/pause, seek, volume/mute, fullscreen requests and keyboard controls. Hide its toolbar for custom controls. Includes a `media_ui` example alongside the gallery preview; decoding, audio and playback remain the app's responsibility. See [Video player](docs/components-more.md#video-player).
 - **Stress-test app** ([`examples/stress.c`](examples/stress.c)): a dense operations console with charts, editable service records, routing controls and logs. Compare 1,000–100,000 fully built rows with virtualized rows, change one record or all records, and watch FPS, frame interval, process CPU and current resident memory at the top right. See [Performance](docs/performance.md#interactive-stress-app).

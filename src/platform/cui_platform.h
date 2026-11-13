@@ -33,6 +33,12 @@ struct cui_app {
     const char *screenshot_path;  /* CUI_SCREENSHOT: save a PNG and quit */
     int screenshot_frames;
     int frames;
+    struct {
+        struct cui__webview *head;
+        void (*sync)(cui_app *app);
+        void (*destroy)(cui_app *app);
+        void (*pump)(void);
+    } webviews;
 };
 
 /* Implemented by each backend. */
@@ -60,6 +66,7 @@ bool cui__plat_file_dialog(cui_app *app, const cui_file_dialog_opts *o, char *ou
 bool cui__plat_open_url(const char *url);
 
 /* Shared helpers for backends. */
+cui_app *cui__app_or_current(cui_app *app);
 void cui__app_render(cui_app *app);                   /* end frame (if open), render, present */
 void cui__app_live_frame(cui_app *app);               /* run one frame from inside a resize loop */
 void cui__app_set_clipboard_cache(cui_app *app, const char *utf8);

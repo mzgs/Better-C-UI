@@ -10,7 +10,7 @@ It draws everything itself, with OpenGL or its own software renderer. It does no
 
 ## Then why does it say "native"?
 
-Because the app is compiled machine code in a real window, with no browser, no web view and no interpreter inside. It does not mean native widgets. A CUI app looks the same on Windows, macOS and Linux, and does not look like the system's own apps. If your app has to look and behave exactly like a platform's own, use that platform's toolkit.
+Because the app is compiled machine code in a real window. Its default build has no browser, web view or interpreter inside; an [optional WebView control](components-more.md#web-view) can embed web content. It does not mean native widgets. A CUI app looks the same on Windows, macOS and Linux, and does not look like the system's own apps. If your app has to look and behave exactly like a platform's own, use that platform's toolkit.
 
 ## How is it different from Dear ImGui or Nuklear?
 

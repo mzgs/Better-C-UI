@@ -668,6 +668,16 @@ const char *cui__size_text(cui_ctx *ui, double bytes);   /* "4.2 KB" */
 int cui__utc_offset(int64_t t);                           /* minutes east of UTC of the local zone at t */
 
 /* ---- shared widget pieces ---- */
+/* Placement is recorded by cui_media.c; the app's optional native-view hook
+ * applies it after painting, so omission and floating layers hide the view. */
+struct cui_webview_handle {
+    cui_ctx *ui;
+    cui_id id;
+    cui_rect rect;
+    bool seen, focus_requested, dead;
+    cui_webview_status status;
+};
+
 void cui__widgets_begin_frame(cui_ctx *ui);
 void cui__widgets_end_frame(cui_ctx *ui);   /* toasts, tooltips */
 void cui__tooltip_passive(cui_ctx *ui, cui_id anchor, const char *text);   /* hover by rect, for things that are not interactive */

@@ -1660,6 +1660,16 @@ SCENE(video_player) {
         cui_secondary(ui, "Frame preview. The app supplies video and audio.");
     }
 }
+SCENE(webview) {
+    cui_column(ui, UPTO(640), .height = CUI_FILL, .gap = 10) {
+        cui_row(ui, .gap = 8) {
+            cui_button(ui, "Back", .disabled = true);
+            cui_button(ui, "Forward", .disabled = true);
+        }
+        cui_secondary(ui, "Native content is shown in the webview desktop example.");
+        cui_webview(ui, "browser", NULL, .height = -1);
+    }
+}
 SCENE(image_viewer) {
     static cui_texture photo;
     static cui_image_view view = { 1.6f, 1180, 330 };
@@ -4073,6 +4083,7 @@ int main(int argc, char **argv) {
         { "dock", scene_dock, 760, 200, true }, { "tiles", scene_tiles, 360, 360, true },
         { "player", scene_player, 820, 300, true },
         { "video-player", scene_video_player, 720, 500, true },
+        { "webview", scene_webview, 720, 420, true },
         { "reasoning-tools", scene_reasoning_tools, 680, 640, true }, { "agent-plan", scene_agent_plan, 820, 340, true },
         { "sources", scene_sources, 680, 380, true }, { "composer", scene_composer, 640, 190, true }, { "model-picker", scene_model_picker, 380, 300, true },
         { "voice-orb", scene_voice_orb, 760, 230, true }, { "suggestions", scene_suggestions, 640, 260, true },

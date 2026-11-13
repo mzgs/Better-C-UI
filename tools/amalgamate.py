@@ -19,6 +19,7 @@ become macros the app can set before the implementation:
     CUI_NO_DEFAULT_FONTS    leave out Inter, Geist and Lucide (about 180 KB)
     CUI_NO_STB_IMAGE        leave out PNG and JPEG loading
     CUI_TEXT_SHAPING        Arabic-script shaping and bidi
+    CUI_WEBVIEW             native browser (link WebKit / WebView2Loader / WebKitGTK)
 
 On macOS the window layer is Objective-C: compile cui.c (or the file with CUI_IMPLEMENTATION)
 with -x objective-c -fobjc-arc, or define CUI_NO_APP.
@@ -53,6 +54,13 @@ def platform_block(emit):
     emit_file = emit.file
     emit_file("src/platform/cui_app.c")
     emit_file("src/platform/cui_dialogs.c")
+    emit_file("src/platform/cui_webview.c")
+    emit("#ifdef CUI_WEBVIEW\n")
+    emit("#if defined(CUI_PLATFORM_SDL2) || defined(CUI_PLATFORM_GLFW)\n#error \"CUI_WEBVIEW requires the native window backend\"\n")
+    emit("#elif defined(_WIN32)\n"); emit_file("src/platform/cui_webview_win32.c")
+    emit("#elif defined(__APPLE__)\n"); emit_file("src/platform/cui_webview_cocoa.m")
+    emit("#else\n"); emit_file("src/platform/cui_webview_gtk.c")
+    emit("#endif\n#endif /* CUI_WEBVIEW */\n")
     emit("#if defined(CUI_PLATFORM_SDL2)\n"); emit_file("src/platform/cui_app_sdl2.c")
     emit("#elif defined(CUI_PLATFORM_GLFW)\n"); emit_file("src/platform/cui_app_glfw.c")
     emit("#elif defined(_WIN32)\n"); emit_file("src/platform/cui_app_win32.c")
