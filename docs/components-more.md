@@ -2165,6 +2165,18 @@ Items run left to right and `cui_status_bar_spacer` sends the rest to the right 
 
 Panels the user arranges by dragging: split, tabbed and resized, with a layout you can save and load.
 
+The standalone [docking example](../examples/docking.c) opens a native window:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --target docking
+./build/examples/docking
+```
+
+On Windows with Visual Studio, add `--config Debug` to the build command and run `build\examples\Debug\docking.exe`.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/docking-example-dark.png"><img src="images/components/docking-example.png" alt="The standalone docking example with files, editor, output and inspector panes"></picture>
+
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/docking-dark.png"><img src="images/components/docking.png" alt="A dockspace with a scene tree, viewport, log and inspector; the Log tab is being dragged over the viewport, with drop targets and a preview of the right half"></picture>
 
 ```c

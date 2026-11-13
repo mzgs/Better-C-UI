@@ -258,6 +258,7 @@ Complete apps in [`examples/`](examples), each a single C file. They also run in
 | Example | What it shows |
 |---|---|
 | [`hello`](examples/hello.c) | The smallest app |
+| [`docking`](examples/docking.c) | Drag tabs to dock panels, resize dividers, close and reopen the inspector |
 | [`todo`](examples/todo.c) | The app the [tutorial](docs/tutorial.md) builds: a list, a filter, a dialog, saving to a file |
 | [`caffeine`](examples/caffeine.c) | The instruments together: a dot-matrix chart with annotations, cups you drag on a time axis, readouts and a dot-matrix verdict |
 | [`assistant`](examples/assistant.c) | AI assistant: reasoning, tool calls, sources, plan, composer with a model picker |

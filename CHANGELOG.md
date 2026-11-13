@@ -6,6 +6,7 @@ What changed in Better-C-UI, newest first. Every component mentioned here runs l
 
 ### Added
 
+- **Docking example**: run `build/examples/docking` to try dockable tabs, resizable panes, closing and reopening a panel, and resetting the layout.
 - **Media UI**: `cui_video_player` displays an app-owned frame with play/pause, seek, volume/mute, fullscreen requests and keyboard controls. Hide its toolbar for custom controls. Includes a `media_ui` example alongside the gallery preview; decoding, audio and playback remain the app's responsibility. See [Video player](docs/components-more.md#video-player).
 - **Stress-test app** ([`examples/stress.c`](examples/stress.c)): a dense operations console with charts, editable service records, routing controls and logs. Compare 1,000–100,000 fully built rows with virtualized rows, change one record or all records, and watch FPS, frame interval, process CPU and current resident memory at the top right. See [Performance](docs/performance.md#interactive-stress-app).
 - **Instruments**, five components for interfaces that read like an instrument: values as dots, labels in the monospaced font, hairlines and one accent. See [Instruments](docs/components-more.md#instruments) and the gallery's new *Instruments* page.
