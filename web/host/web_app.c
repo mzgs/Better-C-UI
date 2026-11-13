@@ -46,15 +46,6 @@ cui_vec2 cui_app_size(cui_app *app) { (void)app; return (cui_vec2){ web_content_
 bool cui_app_is_software(cui_app *app) { (void)app; return true; }
 void *cui_app_native_window(cui_app *app) { (void)app; return NULL; }
 const char *cui_app_backend(cui_app *app) { (void)app; return "web"; }
-cui_webview_handle *cui_app_webview_create(cui_app *app) { (void)app; return NULL; }
-void cui_webview_destroy(cui_webview_handle *view) { (void)view; }
-cui_webview_status cui_webview_get_status(const cui_webview_handle *view) { (void)view; return CUI_WEBVIEW_UNAVAILABLE; }
-bool cui_webview_navigate(cui_webview_handle *view, const char *url) { (void)view; (void)url; return false; }
-bool cui_webview_set_html(cui_webview_handle *view, const char *html) { (void)view; (void)html; return false; }
-bool cui_webview_can_go_back(cui_webview_handle *view) { (void)view; return false; }
-bool cui_webview_can_go_forward(cui_webview_handle *view) { (void)view; return false; }
-bool cui_webview_go_back(cui_webview_handle *view) { (void)view; return false; }
-bool cui_webview_go_forward(cui_webview_handle *view) { (void)view; return false; }
 bool cui_app_file_dialog(cui_app *app, const cui_file_dialog_opts *opts, char *out, size_t cap) { (void)app; (void)opts; (void)out; (void)cap; return false; }
 bool cui_app_open_url(const char *url) { (void)url; return false; }
 bool cui_app_screenshot(cui_app *app, void *rgba, int width, int height) { (void)app; (void)rgba; (void)width; (void)height; return false; }

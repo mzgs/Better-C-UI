@@ -1,5 +1,5 @@
 /* Exercise the real shared lifecycle with a small native-engine substitute. */
-#include "platform/cui_webview.h"
+#include "../addons/webview/cui_webview.h"
 #include <assert.h>
 
 static int wv_created, wv_destroyed, wv_loaded;
@@ -16,6 +16,31 @@ bool cui__webview_native_history(cui__webview *v, bool forward, bool move) {
 }
 void cui__webview_native_place(cui__webview *v, bool visible) { (void)v; wv_visible = visible; }
 void cui__webview_native_pump(void) {}
+void cui__webview_native_wake(cui__webview *v) { (void)v; }
+
+static int wv_scripts, wv_agents, wv_controls, wv_results, wv_events;
+static bool wv_stopped, wv_destroy_on_event;
+bool cui__webview_native_eval(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user) {
+    assert(!strcmp(script, "1+2")); wv_scripts++;
+    cui__webview_result(v, callback, "3", NULL, user);
+    return true;
+}
+bool cui__webview_native_user_agent(cui__webview *v) { (void)v; wv_agents++; return !wv_fail; }
+bool cui__webview_native_control(cui__webview *v, bool stop) { (void)v; wv_controls++; wv_stopped = stop; return !wv_fail; }
+bool cui__webview_native_clear_cookies(cui__webview *v, cui_webview_result_fn callback, void *user) {
+    if (wv_fail) return false;
+    cui__webview_result(v, callback, "null", NULL, user);
+    return true;
+}
+static void wv_result(cui_webview_handle *view, const char *json, const char *error, void *user) {
+    assert(view && !error && !strcmp(json, user)); wv_results++;
+}
+static void wv_event(cui_webview_handle *view, const cui_webview_event *event, void *user) {
+    assert(user == &wv_events && event->url && event->message);
+    assert(strlen(event->url) < 4096 && strlen(event->message) < 4096);
+    wv_events++;
+    if (wv_destroy_on_event) cui_webview_destroy(view);
+}
 
 static void wv_frame(cui_app *app, cui_webview_handle *view, bool disabled, bool clipped, bool floating) {
     cui_ctx *ui = app->ui;
@@ -42,6 +67,31 @@ int main(void) {
     assert(!cui_webview_can_go_back(NULL) && !cui_webview_can_go_forward(NULL));
     assert(!cui_webview_go_back(NULL) && !cui_webview_go_forward(NULL));
     assert(!cui_webview_go_back(v) && !cui_webview_go_forward(v));
+    assert(cui_webview_get_load_info(v).state == CUI_WEBVIEW_LOAD_IDLE);
+    assert(!cui_webview_eval(v, "1+2", wv_result, "3") && !cui_webview_reload(v) && !cui_webview_stop(v));
+    assert(!cui_webview_clear_cookies(v, wv_result, "null"));
+    assert(cui_webview_set_user_agent(v, "CUI-Test/1") && wv_agents == 0);
+    assert(!strcmp(((cui__webview *)v)->user_agent, "CUI-Test/1"));
+    assert(!cui_webview_set_user_agent(v, "bad\r\nHeader: yes"));
+    assert(!cui_webview_set_user_agent(v, "\xff"));
+    cui_webview_set_event_handler(v, wv_event, &wv_events);
+    char name[] = "X-Test", value[] = "first";
+    cui_webview_header header = {name, value};
+    cui_webview_request_opts request = { .headers = &header, .header_count = 1 };
+    assert(cui_webview_navigate_ex(v, "https://example.com", &request));
+    value[0] = 'X'; name[0] = 'Y';
+    assert(!strcmp(((cui__webview *)v)->headers[0].name, "X-Test"));
+    assert(!strcmp(((cui__webview *)v)->headers[0].value, "first"));
+    header.name = "Bad:Name"; assert(!cui_webview_navigate_ex(v, "https://example.com", &request));
+    header.name = "X-Test"; header.value = "x\nInjected: x";
+    assert(!cui_webview_navigate_ex(v, "https://example.com", &request));
+    header.value = "\x7f"; assert(!cui_webview_navigate_ex(v, "https://example.com", &request));
+    header.value = "\xff"; assert(!cui_webview_navigate_ex(v, "https://example.com", &request));
+    header.value = "okay";
+    assert(!cui_webview_navigate_ex(v, "file:///tmp/x.html", &request));
+    request.header_count = -1; assert(!cui_webview_navigate_ex(v, "https://example.com", &request));
+    request.header_count = 1; request.headers = NULL;
+    assert(!cui_webview_navigate_ex(v, "https://example.com", &request));
     char html[] = "<p>First</p>";
     assert(cui_webview_set_html(v, html));
     html[3] = 'X';
@@ -64,6 +114,30 @@ int main(void) {
     wv_frame(&app, v, false, false, false);
     assert(!wv_visible); /* asynchronous startup */
     v->status = CUI_WEBVIEW_READY;
+    assert(cui_webview_eval(v, "1+2", wv_result, "3") && wv_scripts == 1 && wv_results == 1);
+    assert(!cui_webview_eval(v, "\xff", wv_result, "3"));
+    assert(cui_webview_clear_cookies(v, wv_result, "null") && wv_results == 2);
+    assert(cui_webview_set_user_agent(v, NULL) && !((cui__webview *)v)->user_agent && wv_agents == 1);
+    assert(cui_webview_reload(v) && !wv_stopped && cui_webview_stop(v) && wv_stopped && wv_controls == 2);
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_LOAD_STARTED, "https://example.com/a", NULL, 0, 0);
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_LOAD_PROGRESS, "https://example.com/a", NULL, 0.4f, 0);
+    cui_webview_load_info info = cui_webview_get_load_info(v);
+    assert(info.state == CUI_WEBVIEW_LOADING && info.progress == 0.4f && !strcmp(info.url, "https://example.com/a"));
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_MESSAGE, "https://example.com/a", "hello", 0.4f, 0);
+    assert(wv_events == 3 && cui_webview_get_load_info(v).progress == 0.4f);
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_LOAD_ERROR, "https://example.com/a", "test error", 0.4f, 42);
+    info = cui_webview_get_load_info(v);
+    assert(info.state == CUI_WEBVIEW_LOAD_FAILED && info.error_code == 42 && !strcmp(info.error, "test error"));
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_LOAD_STARTED, "about:blank", NULL, 0, 0);
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_LOAD_FINISHED, "about:blank", NULL, 1, 0);
+    info = cui_webview_get_load_info(v);
+    assert(info.state == CUI_WEBVIEW_LOADED && info.progress == 1 && !*info.error);
+    cui_webview_set_event_handler(v, NULL, NULL);
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_URL_CHANGED, "about:blank#hash", NULL, 1, 0);
+    assert(wv_events == 6 && !strcmp(cui_webview_get_load_info(v).url, "about:blank#hash"));
+    info = cui_webview_get_load_info(v);
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_URL_CHANGED, info.url, NULL, info.progress, 0);
+    assert(!strcmp(cui_webview_get_load_info(v).url, "about:blank#hash"));
     assert(!cui_webview_can_go_back(v) && !cui_webview_go_back(v));
     assert(!cui_webview_can_go_forward(v) && !cui_webview_go_forward(v));
     wv_history_at = wv_history_last = 1;
@@ -98,6 +172,9 @@ int main(void) {
     cui__webview_claim_focus((cui__webview *)v);
     assert(app.ui->focus == v->id && !app.ui->focus_visible);
     wv_fail = true;
+    assert(!cui_webview_set_user_agent(v, "Rejected") && !((cui__webview *)v)->user_agent);
+    assert(!cui_webview_reload(v) && !cui_webview_stop(v));
+    assert(!cui_webview_clear_cookies(v, wv_result, "null") && wv_results == 2);
     assert(!cui_webview_set_html(v, ""));
     assert(cui_webview_get_status(v) == CUI_WEBVIEW_ERROR);
     assert(!cui_webview_can_go_back(v) && !cui_webview_go_back(v));
@@ -106,7 +183,10 @@ int main(void) {
     assert(cui_webview_get_status(v) == CUI_WEBVIEW_READY);
     cui_begin_frame(app.ui, 1.0f / 60);
     cui_webview(app.ui, "page", v);
-    cui_webview_destroy(v); /* queued paint data must remain valid until frame end */
+    cui_webview_set_event_handler(v, wv_event, &wv_events); wv_destroy_on_event = true;
+    cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_MESSAGE, "about:blank", "destroy", 1, 0);
+    assert(v->dead); /* event callbacks may invalidate their handle */
+    assert(!cui_webview_eval(v, "1+2", wv_result, "3") && !cui_webview_set_user_agent(v, NULL));
     assert(cui_webview_get_status(v) == CUI_WEBVIEW_UNAVAILABLE);
     assert(!cui_webview_can_go_back(v) && !cui_webview_go_forward(v));
     cui_end_frame(app.ui); app.webviews.sync(&app);
@@ -115,6 +195,6 @@ int main(void) {
     app.webviews.destroy(&app);
     assert(wv_destroyed == 2);
     cui_destroy(app.ui);
-    puts("webview: content, UTF-8, placement, visibility and lifecycle checks passed");
+    puts("webview: content, UTF-8, scripts, headers, settings, events, placement and lifecycle checks passed");
     return 0;
 }

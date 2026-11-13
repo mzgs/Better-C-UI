@@ -24,7 +24,8 @@ LDFLAGS=(--no-entry --gc-sections --strip-all -z stack-size=4194304 --initial-me
 compile() {   # src obj [extra flags...]
     local src=$1 obj=$2; shift 2
     if [[ ! -f "$obj" || "$src" -nt "$obj" || "$HERE/shim/include/math.h" -nt "$obj" \
-          || "$ROOT/include/cui/cui.h" -nt "$obj" || "$ROOT/src/cui_internal.h" -nt "$obj" ]]; then
+          || "$ROOT/include/cui/cui.h" -nt "$obj" || "$ROOT/include/cui/cui_app.h" -nt "$obj" \
+          || "$ROOT/include/cui/cui_webview.h" -nt "$obj" || "$ROOT/src/cui_internal.h" -nt "$obj" ]]; then
         "$CC" "${CFLAGS[@]}" "$@" -c "$src" -o "$obj"
     fi
 }
@@ -42,10 +43,11 @@ done
 compile "$HERE/shim/libc.c" "$OUT/obj/libc.o" -fno-builtin &
 compile "$HERE/host/web_host.c" "$OUT/obj/web_host.o" &
 compile "$HERE/host/web_app.c" "$OUT/obj/web_app.o" &
+compile "$HERE/host/web_webview.c" "$OUT/obj/web_webview.o" &
 wait
 rm -f "$OUT/libcui.a"
 llvm-ar rcs "$OUT/libcui.a" "$OUT"/obj/lib_*.o
-BASE=("$OUT/obj/web_host.o" "$OUT/libcui.a" "$OUT/obj/libc.o")
+BASE=("$OUT/obj/web_host.o" "$OUT/obj/web_webview.o" "$OUT/libcui.a" "$OUT/obj/libc.o")
 
 link() {   # name objs...
     local name=$1; shift

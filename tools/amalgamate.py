@@ -19,10 +19,12 @@ become macros the app can set before the implementation:
     CUI_NO_DEFAULT_FONTS    leave out Inter, Geist and Lucide (about 180 KB)
     CUI_NO_STB_IMAGE        leave out PNG and JPEG loading
     CUI_TEXT_SHAPING        Arabic-script shaping and bidi
-    CUI_WEBVIEW             native browser (link WebKit / WebView2Loader / WebKitGTK)
 
 On macOS the window layer is Objective-C: compile cui.c (or the file with CUI_IMPLEMENTATION)
 with -x objective-c -fobjc-arc, or define CUI_NO_APP.
+
+The optional native browser is emitted separately as cui_webview.h + cui_webview.c.
+Compile and link it explicitly with the matching core and the platform browser SDK.
 """
 import os
 import re
@@ -54,13 +56,6 @@ def platform_block(emit):
     emit_file = emit.file
     emit_file("src/platform/cui_app.c")
     emit_file("src/platform/cui_dialogs.c")
-    emit_file("src/platform/cui_webview.c")
-    emit("#ifdef CUI_WEBVIEW\n")
-    emit("#if defined(CUI_PLATFORM_SDL2) || defined(CUI_PLATFORM_GLFW)\n#error \"CUI_WEBVIEW requires the native window backend\"\n")
-    emit("#elif defined(_WIN32)\n"); emit_file("src/platform/cui_webview_win32.c")
-    emit("#elif defined(__APPLE__)\n"); emit_file("src/platform/cui_webview_cocoa.m")
-    emit("#else\n"); emit_file("src/platform/cui_webview_gtk.c")
-    emit("#endif\n#endif /* CUI_WEBVIEW */\n")
     emit("#if defined(CUI_PLATFORM_SDL2)\n"); emit_file("src/platform/cui_app_sdl2.c")
     emit("#elif defined(CUI_PLATFORM_GLFW)\n"); emit_file("src/platform/cui_app_glfw.c")
     emit("#elif defined(_WIN32)\n"); emit_file("src/platform/cui_app_win32.c")
@@ -161,6 +156,23 @@ def build_source(header_seen):
     return e.text()
 
 
+def build_webview(header_seen):
+    header = Emitter()
+    header.seen = set(header_seen)
+    header.file("include/cui/cui_webview.h")
+    source = Emitter()
+    source.seen = set(header.seen)
+    source("#ifndef CUI_WEBVIEW\n#define CUI_WEBVIEW\n#endif\n")
+    source("#ifdef CUI_NO_APP\n#error \"The WebView add-on requires the app layer\"\n#endif\n")
+    source.file("addons/webview/cui_webview.c")
+    source("#if defined(CUI_PLATFORM_SDL2) || defined(CUI_PLATFORM_GLFW)\n#error \"The WebView add-on requires a native window backend\"\n")
+    source("#elif defined(_WIN32)\n"); source.file("addons/webview/cui_webview_win32.c")
+    source("#elif defined(__APPLE__)\n"); source.file("addons/webview/cui_webview_cocoa.m")
+    source("#else\n"); source.file("addons/webview/cui_webview_gtk.c")
+    source("#endif\n")
+    return header.text(), source.text()
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "build", "amalgamation")
     os.makedirs(out, exist_ok=True)
@@ -177,7 +189,12 @@ def main():
         f.write("\n#ifdef CUI_IMPLEMENTATION\n#ifndef CUI_IMPLEMENTATION_DONE\n#define CUI_IMPLEMENTATION_DONE\n")
         f.write(source)
         f.write("#endif\n#endif /* CUI_IMPLEMENTATION */\n" + licenses())
-    for name in ["cui.h", "cui.c", "cui_single.h"]:
+    addon_header, addon_source = build_webview(he.seen)
+    with open(os.path.join(out, "cui_webview.h"), "w", encoding="utf-8") as f:
+        f.write(banner("optional WebView add-on header") + '#include "cui.h"\n' + addon_header)
+    with open(os.path.join(out, "cui_webview.c"), "w", encoding="utf-8") as f:
+        f.write(banner("optional WebView add-on") + POSIX + '#include "cui_webview.h"\n' + addon_source)
+    for name in ["cui.h", "cui.c", "cui_single.h", "cui_webview.h", "cui_webview.c"]:
         p = os.path.join(out, name)
         print(f"  {name:13} {os.path.getsize(p) // 1024:6d} KB  {p}")
 

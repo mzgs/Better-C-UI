@@ -2181,7 +2181,7 @@ typedef struct cui_video_player_opts {
 CUI_API int cui_video_player_ex(cui_ctx *ui, const char *id, cui_video *video, const cui_video_player_opts *opts);
 
 /* Native browser surface. Create the handle with cui_app_webview_create
- * (cui_app.h), then place it once per frame in its app's UI. NULL draws an
+ * (cui_webview.h, optional add-on), then place it once per frame in its app's UI. NULL draws an
  * unavailable placeholder, also usable without the app layer. Native content
  * is absent from CUI screenshots and hidden while floating UI is open.
  * Tab enters the page; Ctrl+Tab / Ctrl+Shift+Tab return to CUI. */

@@ -1507,7 +1507,7 @@ Keyboard: Tab reaches the video surface and each control. On the surface, Enter 
 
 ### Web view
 
-An optional native browser surface: WKWebView on macOS/Cocoa, WebView2 on Windows/Win32, and WebKitGTK on Linux/X11. It accepts a URL or an HTML string, including JavaScript and forms. The default build has no browser dependency. See [Native WebView setup](integration.md#native-webview-setup) to enable it.
+An optional native browser add-on: WKWebView on macOS/Cocoa, WebView2 on Windows/Win32, and WebKitGTK on Linux/X11. It accepts a URL or an HTML string, including JavaScript and forms. The default build has no browser dependency. Browser creation, scripting, events and settings live in `<cui/cui_webview.h>` and the separately linked `cui::webview` target; the core retains the layout slot and unavailable placeholder. See [Native WebView setup](integration.md#native-webview-setup) to enable it.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/webview-dark.png"><img src="images/components/webview.png" alt="Web view unavailable placeholder in the renderer preview"></picture>
 
@@ -1520,7 +1520,7 @@ The gallery, browser demo and image above show the unavailable placeholder. Nati
 Use `cui_webview_can_go_back(view)` and `cui_webview_can_go_forward(view)` to enable history buttons, then call `cui_webview_go_back(view)` or `cui_webview_go_forward(view)` when activated. These use the engine's history, including navigation initiated by links and page scripts. They return false if the direction has no entry or the handle is unavailable, starting, failed or destroyed. A successful `go_*` means the navigation was accepted, not that loading finished. The example requests a wakeup every 100 ms so button availability refreshes even when history changes without CUI input.
 
 ```c
-#include <cui/cui_app.h>
+#include <cui/cui_webview.h>
 
 int main(void) {
     cui_app *app = cui_app_create(&(cui_app_desc){ .title = "Web view" });
@@ -1540,7 +1540,44 @@ int main(void) {
 
 Create a handle once, then place it at most once per frame, always in its app's context. `width` defaults to fill and follows the parent's layout and reading direction; `height` is in logical points, default 320; a negative value fills the remaining height in a bounded parent. The desktop example uses `.height = -1` to stretch to the bottom when resized. A `NULL` handle draws the placeholder. Creation returns `NULL` when support is disabled, the backend is unsupported, or native creation fails. WebView2 starts asynchronously: `cui_webview_get_status` returns `STARTING`, `READY`, or `ERROR`; `READY` describes the engine, not whether a page loaded successfully. A `NULL` or destroyed handle reports `UNAVAILABLE`.
 
-`cui_webview_navigate(view, url)` accepts absolute `http://`, `https://`, `file:///` and `about:blank` URLs. Local file URLs have no host name, use forward slashes, and escape path characters such as spaces (`%20`), `#` (`%23`) and `%` (`%25`). For example, `file:///path/to/index.html` or `file:///C:/Video%20demo/index.html`. On Cocoa, local pages receive read access to their containing directory so sibling assets can load. Load trusted local pages; other engines apply their own file-origin rules. `cui_webview_set_html(view, html)` loads a UTF-8 string without a local-file base URL. Both copy their input, reject malformed UTF-8, and return whether submission was accepted; the latest request is queued during startup. The browser displays its own network and certificate errors. No native script bridge is installed, and certificate validation remains enabled. Web pages can run scripts, use the network and store browser data according to the native engine's defaults. The initial URL restriction is not a navigation sandbox for links or scripts within a page.
+`cui_webview_navigate(view, url)` accepts absolute `http://`, `https://`, `file:///` and `about:blank` URLs. Local file URLs have no host name, use forward slashes, and escape path characters such as spaces (`%20`), `#` (`%23`) and `%` (`%25`). For example, `file:///path/to/index.html` or `file:///C:/Video%20demo/index.html`. On Cocoa, local pages receive read access to their containing directory so sibling assets can load. Load trusted local pages; other engines apply their own file-origin rules. `cui_webview_set_html(view, html)` loads a UTF-8 string without a local-file base URL. Both copy their input, reject malformed UTF-8, and return whether submission was accepted; the latest request is queued during startup. Certificate validation remains enabled. Web pages can run scripts, use the network and store browser data according to the native engine's defaults. The initial URL restriction is not a navigation sandbox for links or scripts within a page.
+
+**JavaScript and page messages.** `cui_webview_eval` executes JavaScript in the main page and delivers its JSON result to a callback. Wait for `CUI_WEBVIEW_LOAD_FINISHED` before accessing a newly loaded document. It requires a `READY` engine, rejects malformed UTF-8, and does not await JavaScript promises. Undefined becomes `"null"`; values the engine cannot serialize may produce `"null"` or a native error. Native execution errors pass an error string and a NULL JSON result; WebView2 also returns `"null"` for JavaScript exceptions, so use an explicit `try/catch` result when distinguishing those matters.
+
+```c
+static void script_done(cui_webview_handle *view, const char *json,
+                        const char *error, void *user) {
+    (void)view; (void)user;
+    printf("%s\n", error ? error : json);
+}
+
+/* Call after the document finishes loading. */
+cui_webview_eval(view, "document.title", script_done, NULL);
+```
+
+Each new main document gets `window.cui.postMessage(string)`. Install a C event handler with `cui_webview_set_event_handler(view, handler, user)` to receive `CUI_WEBVIEW_MESSAGE`; `event->message` contains the string and `event->url` identifies its main-frame page. A handler can dispatch an approved app action and send a response through `cui_webview_eval`. No arbitrary C function or native object is exposed. Iframe messages are rejected. Treat page input as untrusted, check the URL against the pages your app trusts, and validate the requested action before acting. Passing NULL detaches the event handler.
+
+```js
+window.cui.postMessage("refresh-records");
+```
+
+**Loading feedback.** `cui_webview_get_load_info` returns page state (`LOAD_IDLE`, `LOADING`, `LOADED`, or `LOAD_FAILED`), progress, URL, error description and platform error code. The engine's `READY` status stays separate: a failed page does not make the engine unavailable. Events report `LOAD_STARTED`, `LOAD_PROGRESS`, `URL_CHANGED`, `LOAD_FINISHED`, and `LOAD_ERROR`, including page-initiated navigation and history URL changes. Cocoa and GTK provide estimated progress; WebView2 reports coarse milestones (0 at navigation, 0.5 at content loading, 1 on success). HTTP error pages such as a 404 can still finish loading successfully; a load error describes a browser/network failure. Platform error codes are not interchangeable.
+
+**Browser controls.** `cui_webview_reload` and `cui_webview_stop` control the current load. `cui_webview_set_user_agent(view, text)` copies a custom user agent for subsequent requests; NULL or an empty string restores the default, and the setting can be queued while the engine starts. `cui_webview_clear_cookies` clears every cookie in the view's native browser store, which can be shared by other views. Its completion callback receives `json="null"` and no error on success. It does not clear local storage or the cache.
+
+```c
+cui_webview_header headers[] = { { "X-App-Version", "1" } };
+cui_webview_request_opts request = { .headers = headers, .header_count = 1 };
+cui_webview_navigate_ex(view, "https://example.com/", &request);
+```
+
+Request headers are copied and apply to that HTTP(S) navigation, rather than being globally injected into page subresources or later links. Names must be HTTP tokens; values reject newlines and control characters other than tab. The native engine controls restricted headers and redirect handling. Zero options preserve ordinary navigation.
+
+Callbacks run on the app thread and can arrive outside a CUI frame. Events and completed results request a redraw and wake an idle native app. Store results in app state and build the UI in the normal frame callback. Copy strings you need after a callback; load-info strings last until the next event. A callback may invalidate its view with `cui_webview_destroy`; pending script/cookie callbacks are suppressed after destruction. Use `cui_app_quit`, rather than destroying the app from inside a callback. An API returning false does not schedule a completion callback; cookie completion can run before `cui_webview_clear_cookies` returns.
+
+The [desktop example](../examples/webview.c) includes Run JavaScript, a page-to-C message button in Local page, loading progress, Reload/Stop, user-agent input and Clear cookies. This renderer-only preview shows its layout with the native browser unavailable:
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/webview-features-dark.png"><img src="images/components/webview-features.png" alt="WebView example with JavaScript input, browser settings and navigation controls"></picture>
 
 Omitting the call hides the native surface at the end of that frame. `.disabled = true` or an enclosing disabled scope hides it and blocks interaction. Native child views draw above CUI's triangles, so they also hide while floating UI is present, while transformed or translucent, and when partially clipped by a scroll area or the viewport. The browser reappears when its entire rectangle is visible. Keep other content out of its rectangle. Its own page handles scrolling, RTL, accessibility, appearance and reduced motion; use HTML `lang`, `dir`, `color-scheme` and `prefers-reduced-motion` as appropriate. CUI's surrounding surface uses theme tokens and adds no animation.
 

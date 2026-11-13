@@ -99,6 +99,7 @@ The window layer for your system is picked by the preprocessor. Before the imple
 | `CUI_DEFAULT_FONTS` | `ON` | Embed Inter, Geist and Lucide (about 180 KB) |
 | `CUI_STB_IMAGE` | `ON` | PNG and JPEG loading for `cui_image_load` |
 | `CUI_BUILD_SHARED` | `OFF` | Build a shared library |
+| `CUI_WEBVIEW` | `OFF` | Build the separate `cui::webview` native browser add-on ([setup](integration.md#native-webview-setup)) |
 | `CUI_BUILD_EXAMPLES`, `CUI_BUILD_TESTS` | `ON` at top level | |
 
 Cross compiling for Windows from Linux works with the included toolchain file:

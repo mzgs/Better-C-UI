@@ -1,5 +1,5 @@
 /* Exercise the example's chooser without opening a native dialog. */
-#include "platform/cui_webview.h"
+#include "../addons/webview/cui_webview.h"
 #include <cui/cui_render.h>
 #include <assert.h>
 

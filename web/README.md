@@ -53,6 +53,7 @@ build's primary modifier, including select all, copy, paste and find.
 - `shim/`: a small libc (allocator, strings, printf, strtod, time) so plain
   `clang --target=wasm32` builds the library without a sysroot. Math calls the
   browser's `Math`.
+- `host/web_webview.c`: unavailable stubs for native WebView add-on APIs, kept separate from the app host.
 - `host/web_host.c`: the browser platform layer: contexts, input, clipboard,
   the software renderer and draw data for WebGL2.
 - `host/web_app.c`: `cui_app_run` for the browser, so `examples/*.c`, and any

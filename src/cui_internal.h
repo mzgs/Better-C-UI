@@ -101,7 +101,7 @@ bool cui__tt_box(cui__tt *t, int gid, float scale, int *x0, int *y0, int *x1, in
 void cui__tt_render(cui__tt *t, int gid, float scale, unsigned char *out, int w, int h, int stride);
 
 /* ---- utf8 ---- */
-int cui__utf8_decode(const char *s, int len, uint32_t *cp);   /* returns bytes consumed (>=1) */
+CUI_API int cui__utf8_decode(const char *s, int len, uint32_t *cp);   /* returns bytes consumed (>=1) */
 int cui__utf8_encode(uint32_t cp, char *out);
 int cui__utf8_prev(const char *s, int pos);
 int cui__utf8_next(const char *s, int len, int pos);
@@ -116,7 +116,7 @@ static inline int cui__hex_digit(int c) {
 bool cui__contains_ci(const char *hay, const char *needle);   /* ASCII case-insensitive substring; an empty needle matches */
 
 /* ---- hashing ---- */
-uint32_t cui__hash(const void *data, size_t len, uint32_t seed);
+CUI_API uint32_t cui__hash(const void *data, size_t len, uint32_t seed);
 uint32_t cui__hash_str(const char *s, uint32_t seed);
 
 /* ---- animation ---- */

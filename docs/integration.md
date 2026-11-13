@@ -104,7 +104,7 @@ Texture update strides are in bytes and may include padding between rows. Both b
 
 ## Native WebView setup
 
-The optional [`cui_webview`](components-more.md#web-view) uses a platform browser engine and works with either CUI renderer. It requires the app layer and the Cocoa, Win32 or X11 backend. SDL2, GLFW, custom window hosts and WebAssembly use the unavailable placeholder; configuring `CUI_WEBVIEW=ON` with an unsupported desktop backend fails explicitly.
+The optional [`cui_webview`](components-more.md#web-view) add-on lives in `addons/webview/` and links as `cui::webview`. Include `<cui/cui_webview.h>` for its browser APIs. It uses a platform browser engine and works with either CUI renderer. It requires the app layer and the Cocoa, Win32 or X11 backend. SDL2, GLFW, custom window hosts and WebAssembly use the unavailable placeholder; configuring `CUI_WEBVIEW=ON` with an unsupported desktop backend fails explicitly.
 
 ```sh
 cmake -S . -B build-webview -DCMAKE_BUILD_TYPE=Debug -DCUI_WEBVIEW=ON
@@ -112,19 +112,51 @@ cmake --build build-webview --target webview
 ./build-webview/examples/webview
 ```
 
+Applications link the add-on explicitly; it brings in `cui::cui` transitively:
+
+```cmake
+# Configure this checkout with -DCUI_WEBVIEW=ON.
+add_subdirectory(Better-C-UI)
+add_executable(my_app main.c)
+target_link_libraries(my_app PRIVATE cui::webview)
+cui_app_target(my_app)
+```
+
+For an installed package, use `find_package(cui REQUIRED COMPONENTS webview)`
+and link `cui::webview`. Plain `find_package(cui REQUIRED)` imports only the
+core and does not discover browser SDKs. `OPTIONAL_COMPONENTS webview` allows
+an application to check `cui_webview_FOUND` without failing when the add-on
+was not installed. With pkg-config, use `pkg-config --cflags --libs cui-webview`;
+`cui.pc` contains only the core's dependencies.
+
 | Platform | Build and runtime requirements |
 |---|---|
 | macOS | System [WKWebView](https://developer.apple.com/documentation/webkit/wkwebview); CMake links WebKit and compiles the adapter with Objective-C ARC. |
 | Windows | Download and extract Microsoft's [WebView2 SDK](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/machine-setup). Set `-DCUI_WEBVIEW2_SDK=C:/path/to/extracted/package`. CMake uses `build/native/include/WebView2.h` and the architecture's `WebView2Loader.dll.lib`; distribute the matching `WebView2Loader.dll` next to your executable. Install the [WebView2 Runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution). Browser data lives under `%LOCALAPPDATA%/Better-C-UI/WebView2-<executable-path-hash>`. Use an STA app thread. |
 | Linux/X11 | Install GTK3 and [WebKitGTK 4.1](https://webkitgtk.org/reference/webkit2gtk/stable/class.WebView.html) development packages (`libwebkit2gtk-4.1-dev` on Debian/Ubuntu). CMake finds `webkit2gtk-4.1` through pkg-config. The runtime must include the X11 GDK backend; Wayland embedding is not implemented. GTK's event queue is serviced by the app loop, with a maximum idle wait of 16 ms while a view exists. |
 
-No SDK is downloaded by the build and no browser is added to the default build. Browser SDKs, runtimes and processes have their own size and memory costs.
+No SDK is downloaded by the build. `CUI_WEBVIEW` defaults to OFF; the add-on and its native example targets are built only when enabled. Enabling it creates a separate static library and never adds native browser code or browser libraries to `cui::cui`. The add-on is static even with a shared core, and its installed target carries the required core/browser link dependencies. Browser SDKs, runtimes and processes have their own size and memory costs.
 
-For a single-file build, define `CUI_WEBVIEW` when compiling the implementation, use the native window backend, and add the same headers and libraries manually: `-framework WebKit` on macOS; the SDK include directory and `WebView2Loader.dll.lib` on Windows; `pkg-config --cflags --libs webkit2gtk-4.1` on Linux. MinGW cross builds also need `src/platform/webview2_compat` on the include path for Microsoft's header spelling. A no-app build can still call `cui_webview(ui, id, NULL)` to draw the placeholder.
+The single-file generator emits the add-on separately as `cui_webview.h` and `cui_webview.c`. Include that generated header and compile/link the add-on source with the matching core's `cui.c`/`cui.h`. Defining `CUI_WEBVIEW` on the core alone no longer embeds the browser. Use the same `CUI_TEXT_SHAPING` and platform options for both sources. The add-on shares version-matched internal app/frame structures and is not an independently versioned ABI.
+
+Add the native browser dependencies manually for a non-CMake build: `-framework WebKit` on macOS (compile both sources as Objective-C with ARC); the WebView2 SDK include directory and `WebView2Loader.dll.lib` on Windows; `pkg-config --cflags --libs webkit2gtk-4.1` on Linux. MinGW cross builds also need `addons/webview/webview2_compat` on the include path for Microsoft's header spelling. A core-only or no-app build can still call `cui_webview(ui, id, NULL)` to draw the placeholder.
+
+`python3 tests/webview_package.py build-webview` installs an existing build into a temporary prefix and checks core-only consumers, required/optional add-on discovery, and add-on consumer linking. Run it against enabled, disabled and shared-core builds to check the package boundary.
 
 `cui_webview_smoke` is an explicit real-window check when tests and WebViews are enabled. On macOS and Linux it also checks DOM/JavaScript, keyboard exit, hide/show and an optional native snapshot (`./build-webview/tests/cui_webview_smoke /tmp/webview.png`). It is separate from headless CTest; CTest checks the shared lifecycle and component layout with a substitute engine.
 
 Run `python3 tests/webview_history.py ./build-webview/tests/cui_webview_smoke` on macOS or Linux to also check Back and Forward between two local HTTP pages. The script serves only on loopback, uses Python's standard library, and needs no Internet connection.
+
+The [WebView API](components-more.md#web-view) also provides JavaScript evaluation and JSON results, main-frame page messages through `window.cui.postMessage(string)`, page-load/progress/URL/error events, Reload/Stop, custom user agents, per-navigation request headers and cookie clearing. Callbacks run on the app thread; keep UI building in your frame callback. Browser configuration uses the native engine and store; it does not change the platform, composition or screenshot limits described above. On Windows, user-agent changes require WebView2 Settings2; headers and cookie clearing require the WebView2 `_2` interface. Unsupported runtime interfaces reject the operation rather than weakening browser defaults.
+
+Run the real-engine feature checks against loopback fixtures:
+
+```sh
+cmake --build build-webview --target cui_webview_features
+python3 tests/webview_features.py ./build-webview/tests/cui_webview_features
+```
+
+This checks script results, page messages and rejected iframe messages, page state/progress/errors, history URL changes, user-agent override/reset, actual HTTP headers, cookie clearing, Reload/Stop, destruction with a script pending, and waking an idle app for a delayed page message. The launcher isolates test browser data with temporary XDG directories on Linux, a unique application identifier on macOS, and a temporary executable path/profile on Windows; its cookie test clears that test store. It is an explicit desktop test rather than a headless CTest entry. Render the example layout separately with `./build-webview/tests/cui_webview_features --shots /tmp/cui-shots` after creating the output directory; append `360` to check the narrow layout.
 
 ### Local HTML5 video example
 

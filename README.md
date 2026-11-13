@@ -112,6 +112,8 @@ How it sits beside the libraries you may know:
 
 Better-C-UI is a good fit for a desktop tool, an editor, a dashboard or a game's interface written in C or C++, where you want it small and want it to look finished without designing every control. Read [Limitations](#limitations) before you decide.
 
+The optional [native WebView add-on](docs/integration.md#native-webview-setup) is built separately with `CUI_WEBVIEW=ON`. Link `cui::webview` and include `<cui/cui_webview.h>` to embed web content. Ordinary `cui::cui` applications keep their existing dependencies.
+
 ## Install
 
 You need a C99 compiler and CMake 3.14 or newer. With CMake:

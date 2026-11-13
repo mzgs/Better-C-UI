@@ -1,4 +1,4 @@
-#include <cui/cui_app.h>
+#include <cui/cui_webview.h>
 #include <string.h>
 
 enum { VIDEO_PATH_CAP = 4096 };

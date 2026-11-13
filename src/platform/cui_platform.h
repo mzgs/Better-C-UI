@@ -66,7 +66,8 @@ bool cui__plat_file_dialog(cui_app *app, const cui_file_dialog_opts *o, char *ou
 bool cui__plat_open_url(const char *url);
 
 /* Shared helpers for backends. */
-cui_app *cui__app_or_current(cui_app *app);
+/* Private bridge for version-matched add-ons, also exported by shared cores. */
+CUI_API cui_app *cui__app_or_current(cui_app *app);
 void cui__app_render(cui_app *app);                   /* end frame (if open), render, present */
 void cui__app_live_frame(cui_app *app);               /* run one frame from inside a resize loop */
 void cui__app_set_clipboard_cache(cui_app *app, const char *utf8);

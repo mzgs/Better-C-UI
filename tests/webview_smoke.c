@@ -1,5 +1,5 @@
 /* Real-window smoke test; run explicitly on a desktop with its browser runtime. */
-#include "platform/cui_webview.h"
+#include "../addons/webview/cui_webview.h"
 #include <assert.h>
 #if defined(__APPLE__)
 #import <Cocoa/Cocoa.h>

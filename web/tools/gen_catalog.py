@@ -692,19 +692,19 @@ def keyboard_lines(body_html):
     return out, note
 
 # ---------------------------------------------------------------- the function reference
-REF_HEADERS = ["include/cui/cui.h", "include/cui/cui_app.h", "include/cui/cui_render.h"]
+REF_HEADERS = ["include/cui/cui.h", "include/cui/cui_app.h", "include/cui/cui_render.h", "include/cui/cui_webview.h"]
 
 def reference(fn_struct, owners, items):
     """Every public function in the headers, in header order under the header's own section
     titles: its signature, the comment written beside it, and the page that explains it."""
     declared = set()
-    for rel in REF_HEADERS: declared |= set(re.findall(r"CUI_API\b[^;(]*?\b(cui_\w+)\s*\(", strip_comments(read(rel))))
+    for rel in REF_HEADERS: declared |= set(re.findall(r"CUI_(?:WEBVIEW_)?API\b[^;(]*?\b(cui_\w+)\s*\(", strip_comments(read(rel))))
     macros = set()
     for rel in REF_HEADERS: macros |= set(re.findall(r"^\s*#define\s+(cui_\w+)\(", read(rel), re.M))
     out = []
     for rel in REF_HEADERS:
         lines = read(rel).split("\n")
-        sec = {"title": {"cui.h": "Setup", "cui_app.h": "The app window", "cui_render.h": "Renderers"}[rel.split("/")[-1]], "header": rel, "fns": []}
+        sec = {"title": {"cui.h": "Setup", "cui_app.h": "The app window", "cui_render.h": "Renderers", "cui_webview.h": "WebView add-on"}[rel.split("/")[-1]], "header": rel, "fns": []}
         i = 0
         while i < len(lines):
             ln = lines[i]
@@ -719,10 +719,10 @@ def reference(fn_struct, owners, items):
                 if sec["fns"]: out.append(sec)
                 sec = {"title": title, "header": rel, "fns": []}
                 i += 1; continue
-            if ln.startswith("CUI_API"):
+            if ln.startswith(("CUI_API", "CUI_WEBVIEW_API")):
                 start = i; decl = ln
                 while ";" not in strip_comments(decl) and i + 1 < len(lines): i += 1; decl += " " + lines[i].strip()
-                code = strip_comments(decl); code = re.sub(r"\s+", " ", code[:code.index(";")]).replace("CUI_API ", "").strip()
+                code = strip_comments(decl); code = re.sub(r"\s+", " ", code[:code.index(";")]).replace("CUI_API ", "").replace("CUI_WEBVIEW_API ", "").strip()
                 code = re.sub(r"\s*CUI_\w+\([^)]*\)\s*$", "", code)      # a printf-format attribute after the parameters
                 m = re.search(r"\b(cui_\w+)\s*\(", code)
                 if m:
@@ -757,7 +757,7 @@ def reference(fn_struct, owners, items):
     # the guide that explains a section whose functions have no component page
     guide_of = {"Layout": "layout", "Theme": "theming", "Fonts": "theming", "Custom drawing": "custom-components", "Identity": "getting-started",
                 "Context and frame": "integration", "Input (called by the platform layer)": "integration", "Draw data (consumed by renderers)": "rendering",
-                "software renderer": "integration", "OpenGL renderer": "integration", "The app window": "getting-started"}
+                "software renderer": "integration", "OpenGL renderer": "integration", "The app window": "getting-started", "WebView add-on": "integration"}
     used = set()
     for sct in out:
         sct["guide"] = guide_of.get(sct["title"])
