@@ -104,7 +104,8 @@ class Emitter:
 
 
 # what cui_internal.h asks for before any system header (popen, localtime_r, strnlen)
-POSIX = ("#if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)\n"
+POSIX = ("#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)\n#define _DARWIN_C_SOURCE\n#endif\n"
+         "#if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)\n"
          "#define _POSIX_C_SOURCE 200809L\n#endif\n")
 
 

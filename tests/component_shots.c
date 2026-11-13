@@ -1639,6 +1639,27 @@ static void shot_scene(unsigned char *px, int w, int h, bool color) {
             p[2] = (unsigned char)(fminf(1, fmaxf(0, b)) * 255); p[3] = 255;
         }
 }
+static void shot_video_free(cui_ctx *ui, void *data) {
+    cui_image_destroy(ui, *(cui_texture *)data);
+}
+SCENE(video_player) {
+    cui_id id = cui_make_id(ui, "video-texture");
+    cui_texture *texture = cui_state(ui, id, sizeof *texture);
+    if (!*texture) {
+        static unsigned char px[640 * 360 * 4];
+        shot_scene(px, 640, 360, true);
+        *texture = cui_image_create(ui, 640, 360, px);
+        cui_state_on_free(ui, id, shot_video_free);
+    }
+    cui_video *video = cui_state(ui, cui_make_id(ui, "video-data"), sizeof *video);
+    if (!video->duration) *video = (cui_video){ .position = 76, .duration = 222, .volume = 0.7f };
+    video->frame = *texture;
+    cui_column(ui, UPTO(640), .gap = 10) {
+        cui_video_player(ui, "video", video, .width = CUI_FILL, .height = 300);
+        cui_text(ui, "Field notes: the north ridge", .font = CUI_FONT_MEDIUM);
+        cui_secondary(ui, "Frame preview. The app supplies video and audio.");
+    }
+}
 SCENE(image_viewer) {
     static cui_texture photo;
     static cui_image_view view = { 1.6f, 1180, 330 };
@@ -4051,6 +4072,7 @@ int main(int argc, char **argv) {
         { "text-effects", scene_text_effects, 760, 220, true }, { "loaders", scene_loaders, 520, 110, true },
         { "dock", scene_dock, 760, 200, true }, { "tiles", scene_tiles, 360, 360, true },
         { "player", scene_player, 820, 300, true },
+        { "video-player", scene_video_player, 720, 500, true },
         { "reasoning-tools", scene_reasoning_tools, 680, 640, true }, { "agent-plan", scene_agent_plan, 820, 340, true },
         { "sources", scene_sources, 680, 380, true }, { "composer", scene_composer, 640, 190, true }, { "model-picker", scene_model_picker, 380, 300, true },
         { "voice-orb", scene_voice_orb, 760, 230, true }, { "suggestions", scene_suggestions, 640, 260, true },

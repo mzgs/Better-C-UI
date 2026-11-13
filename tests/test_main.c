@@ -4013,6 +4013,119 @@ static void test_media(void) {
     cui_destroy(ui);
 }
 
+typedef struct { cui_video video; cui_id id; int events; bool disabled, rtl, no_controls; } video_ctx;
+static void build_video(cui_ctx *ui, void *u) {
+    video_ctx *a = u;
+    cui_column(ui, .width = CUI_FILL, .pad = 16, .direction = a->rtl ? CUI_DIRECTION_RTL : CUI_DIRECTION_LTR) {
+        a->events |= cui_video_player(ui, "video", &a->video, .width = CUI_FILL, .height = 180, .disabled = a->disabled, .no_controls = a->no_controls);
+        a->id = cui_last_id(ui);
+    }
+}
+static void test_video(void) {
+    printf("video: transport, seek, volume, fullscreen request, disabled, invalid times and narrow RTL\n");
+    cui_ctx *ui = new_ctx();
+    video_ctx a = { .video = { .position = 30, .duration = 120, .volume = 0.5f } };
+    run(ui, build_video, &a, 3);
+    a.video.position = 31.137f; a.video.volume = 0.731f;
+    run(ui, build_video, &a, 3);
+    CHECK(a.events == 0 && a.video.position == 31.137f && a.video.volume == 0.731f);
+    a.video.position = 30; a.video.volume = 0.5f;
+    key(ui, build_video, &a, CUI_KEY_TAB, 0);
+    key(ui, build_video, &a, CUI_KEY_SPACE, 0);
+    CHECK(a.video.playing && (a.events & CUI_PLAYER_TOGGLE));
+    key(ui, build_video, &a, CUI_KEY_RIGHT, 0);
+    CHECK_NEAR(a.video.position, 35, 0.001);
+    CHECK(a.events & CUI_PLAYER_SEEK);
+    key(ui, build_video, &a, CUI_KEY_UP, 0);
+    CHECK_NEAR(a.video.volume, 0.55, 0.001);
+    CHECK(a.events & CUI_PLAYER_VOLUME);
+    key(ui, build_video, &a, CUI_KEY_M, 0);
+    CHECK(a.video.muted && (a.events & CUI_PLAYER_MUTE));
+    key(ui, build_video, &a, CUI_KEY_F, 0);
+    CHECK((a.events & CUI_PLAYER_FULLSCREEN) && !a.video.fullscreen);
+    key(ui, build_video, &a, CUI_KEY_END, 0);
+    key(ui, build_video, &a, CUI_KEY_RIGHT, 0);
+    CHECK_NEAR(a.video.position, 120, 0.001);
+    key(ui, build_video, &a, CUI_KEY_HOME, 0);
+    CHECK_NEAR(a.video.position, 0, 0.001);
+    /* The scrubber has its own focus and reports pointer and keyboard seeks. */
+    key(ui, build_video, &a, CUI_KEY_TAB, 0);
+    key(ui, build_video, &a, CUI_KEY_RIGHT, 0);
+    CHECK_NEAR(a.video.position, 1.2, 0.001);
+    cui_rect r = rect_of(ui, a.id);
+    click_at(ui, build_video, &a, r.x + r.w * 0.75f, r.y + 201);
+    CHECK(a.video.position > 85 && a.video.position < 95);
+    /* Changing a button's icon must keep keyboard focus on that button. */
+    key(ui, build_video, &a, CUI_KEY_TAB, 0);
+    key(ui, build_video, &a, CUI_KEY_ENTER, 0);
+    CHECK(!a.video.playing);
+    key(ui, build_video, &a, CUI_KEY_ENTER, 0);
+    CHECK(a.video.playing);
+    key(ui, build_video, &a, CUI_KEY_TAB, 0);
+    key(ui, build_video, &a, CUI_KEY_ENTER, 0);
+    CHECK(!a.video.muted);
+    key(ui, build_video, &a, CUI_KEY_ENTER, 0);
+    CHECK(a.video.muted);
+    a.disabled = true; a.events = 0;
+    run(ui, build_video, &a, 2);
+    key(ui, build_video, &a, CUI_KEY_RIGHT, 0);
+    click_at(ui, build_video, &a, r.x + 30, r.y + 40);
+    CHECK(a.events == 0 && a.video.playing);
+    a.disabled = false;
+    a.video.duration = NAN; a.video.position = INFINITY; a.video.volume = NAN; a.video.aspect = NAN;
+    run(ui, build_video, &a, 2);
+    CHECK(a.video.position == 0 && a.video.volume == 0);
+    click_at(ui, build_video, &a, r.x + 30, r.y + 40);
+    a.events = 0;
+    key(ui, build_video, &a, CUI_KEY_RIGHT, 0);
+    CHECK(a.video.position == 0 && !(a.events & CUI_PLAYER_SEEK));
+    a.video.duration = 0; a.video.position = 45;
+    run(ui, build_video, &a, 2);
+    key(ui, build_video, &a, CUI_KEY_RIGHT, 0);
+    CHECK(a.video.position == 45 && !(a.events & CUI_PLAYER_SEEK));
+    a.video.duration = 4000; a.video.position = 3661;
+    cui_set_viewport(ui, 240, 500, 1);
+    a.rtl = true;
+    run(ui, build_video, &a, 3);
+    r = rect_of(ui, a.id);
+    CHECK(r.w <= 208.01f && r.h > 250);
+    key(ui, build_video, &a, CUI_KEY_LEFT, 0);
+    CHECK_NEAR(a.video.position, 3656, 0.001);
+    a.no_controls = true; a.events = 0;
+    run(ui, build_video, &a, 3);
+    r = rect_of(ui, a.id);
+    CHECK_NEAR(r.h, 180, 0.001);
+    float position = a.video.position;
+    run(ui, build_video, &a, 8);
+    CHECK(a.video.position == position && a.events == 0);
+    key(ui, build_video, &a, CUI_KEY_RIGHT, 0);
+    CHECK_NEAR(a.video.position, position + 5, 0.001);
+    CHECK(a.events & CUI_PLAYER_SEEK);
+    unsigned char pixel[] = { 210, 70, 40, 255 };
+    a.video.frame = cui_image_create(ui, 1, 1, pixel); a.video.aspect = 2;
+    run(ui, build_video, &a, 2);
+    const cui_draw_data *dd = cui_get_draw_data(ui);
+    int image_vertices = 0;
+    float x0 = 1000, y0 = 1000, x1 = 0, y1 = 0;
+    for (int i = 0; i < dd->command_count; i++) {
+        const cui_draw_cmd *cmd = &dd->commands[i];
+        if (cmd->texture != a.video.frame) continue;
+        for (uint32_t j = 0; j < cmd->index_count; j++) {
+            const cui_vertex *v = &dd->vertices[dd->indices[cmd->index_offset + j]];
+            x0 = fminf(x0, v->x - v->lx - v->hw); y0 = fminf(y0, v->y - v->ly - v->hh);
+            x1 = fmaxf(x1, v->x - v->lx + v->hw); y1 = fmaxf(y1, v->y - v->ly + v->hh); image_vertices++;
+        }
+    }
+    CHECK(image_vertices == 6);
+    CHECK_NEAR((x1 - x0) / (y1 - y0), 2, 0.001);
+    CHECK_NEAR((y0 + y1) / 2, r.y + 90, 0.001);
+    cui_image_destroy(ui, a.video.frame);
+    cui_begin_frame(ui, 1.0f / 60);
+    CHECK(cui_video_player_ex(ui, "null", NULL, NULL) == 0);
+    cui_end_frame(ui);
+    cui_destroy(ui);
+}
+
 typedef struct { int mode; int hit; cui_id id; int empty; } viz_ctx;
 
 static void build_viz(cui_ctx *ui, void *u) {
@@ -7128,6 +7241,7 @@ int main(void) {
     test_gradient();
     test_timeline();
     test_media();
+    test_video();
     test_viz();
     test_motion();
     test_ai();

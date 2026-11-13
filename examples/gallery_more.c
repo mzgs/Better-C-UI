@@ -621,6 +621,11 @@ static void page_social(cui_ctx *ui) {
     };
     cui_ticker(ui, "tick", tick, 6);
 
+    section(ui, "Video player", "Frame preview and transport. Your app supplies decoded frames and audio.");
+    static cui_video video = { .aspect = 1.6f, .position = 76, .duration = 222, .volume = 0.7f };
+    video.frame = after;
+    cui_video_player(ui, "video", &video, .width = CUI_FILL, .height = 280);
+
     section(ui, "Carousel", "Drag, flick, scroll sideways or use the arrows and dots.");
     cui_carousel(ui, "tour", 4, &slide, .height = 200, .auto_advance = 6) {
         static const char *titles[] = { "Faster exports", "ARM64 runners", "Shortcuts everywhere", "Smaller downloads" };

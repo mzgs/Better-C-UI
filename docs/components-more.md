@@ -1485,6 +1485,26 @@ Each `cui_ticker_item` is a label, a value as text, a change in percent and `low
 
 ## Media
 
+### Video player
+
+A video surface with play/pause, seeking, volume, mute and a fullscreen request. This is UI only: the app supplies a frame texture, playback clock, audio and any decoding. It works with either CUI renderer and adds no media framework dependencies.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/video-player-dark.png"><img src="images/components/video-player.png" alt="Video surface with transport controls"></picture>
+
+[`examples/media_ui.c`](../examples/media_ui.c) is a standalone UI preview with video controls and a now-playing card. Build with `cmake --build build --target media_ui`, then run `./build/examples/media_ui` (`build/examples/Debug/media_ui.exe` on Windows with a multi-configuration generator). It does not open media files or play sound; the controls update their state without advancing a playback clock.
+
+```c
+static cui_video video = { .position = 76, .duration = 222, .volume = 0.7f };
+int events = cui_video_player(ui, "film", &video, .width = CUI_FILL, .height = 300);
+/* Forward CUI_PLAYER_* input events to your app's playback engine. */
+```
+
+The app owns decoding, audio, the playback clock and the texture. Copy its current `frame`, `aspect`, `position` and `duration` into `cui_video` before each call. Upload decoded RGBA frames with your renderer's `texture_update` callback (or create a texture with `cui_image_create`), and request a redraw when a frame arrives. Call renderer functions on the UI thread. The control never destroys the texture or advances `position`; a texture of 0 shows an empty surface. `aspect` defaults to 16:9 and fits the frame without cropping or stretching. `height` is the surface height in points (270 by default); the controls add height below it. The default width is 480 points and shrinks with its parent. Controls wrap on narrow layouts; the timeline stays left to right in RTL interfaces. Use `.no_controls = true` for just the video surface and build custom controls with CUI buttons and sliders; surface keyboard input still returns the same events.
+
+The call returns a bitmask: `CUI_PLAYER_TOGGLE` writes `playing`, `CUI_PLAYER_SEEK` writes `position` in seconds, `CUI_PLAYER_VOLUME` writes `volume` in 0..1, and `CUI_PLAYER_MUTE` writes `muted`. Apply these changes to your playback engine. A volume of 0 is silent; mute preserves the volume setting. `CUI_PLAYER_FULLSCREEN` requests the opposite of `fullscreen`; the app changes its window and then reports the actual state in that field. The component does not change the window itself. A nonpositive or nonfinite duration disables seeking and shows `--:--`; invalid positions and volumes become 0, and finite values are clamped. With an unknown duration, the elapsed position is preserved. Time labels cap at 99:59:59. A `NULL` video builds nothing and returns 0. `.disabled = true` disables the surface and controls, as does an enclosing disabled scope.
+
+Keyboard: Tab reaches the video surface and each control. On the surface, Enter or Space toggles playback, Left/Right seek five seconds, Home/End seek to the start/end, Up/Down change volume by 5%, M toggles mute and F requests fullscreen. Each button also works with Enter or Space. The seek and volume sliders use arrows and Home/End. The UI never starts playback on its own; reduced motion removes the controls' feedback animation. The gallery and live scene are frame previews, not decoded video playback.
+
 ### Carousel
 
 A strip of slides the user drags or steps through, one at a time.

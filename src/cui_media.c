@@ -1,7 +1,113 @@
-/* Media and motion data: carousel, image compare, card stack, odometer and
- * ticker. */
+/* Media: video player, carousel, image compare and card stack. */
 #include "cui_internal.h"
 
+typedef struct { cui_texture frame; float aspect; bool focus; } cui__video_paint;
+
+static void cui__paint_video(cui_ctx *ui, cui_node *n, void *data) {
+    cui__video_paint *p = data;
+    cui_rect r = n->rect;
+    if (!p->frame) {
+        cui_draw_icon(ui, CUI_ICON_VIDEO, r, 32, CUI_C(ui, TEXT_MUTED));
+    } else {
+        float w = CUI_MIN(r.w, r.h * p->aspect), h = w / p->aspect;
+        cui_rect image = { r.x + (r.w - w) * 0.5f, r.y + (r.h - h) * 0.5f, w, h };
+        cui_draw_image(ui, p->frame, image, (cui_rect){ 0, 0, 1, 1 }, CUI_CORNERS(0), cui__rgba(255, 255, 255, 255));
+    }
+    if (p->focus) cui__draw_focus_ring(ui, cui__rect_inset(r, 3), CUI_CORNERS(0), 1);
+}
+
+static const char *cui__video_time(cui_ctx *ui, float seconds) {
+    /* shortcut: labels cap at 99:59:59; extend the format for multi-day media. */
+    int t = (int)cui__clampf(seconds, 0, 359999);
+    if (t >= 3600) return cui__frame_printf(ui, "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60);
+    return cui__frame_printf(ui, "%d:%02d", t / 60, t % 60);
+}
+
+static int cui__video_input(cui_ctx *ui, cui_id id, cui_video *v, bool seekable) {
+    cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE);
+    int result = 0;
+    if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
+    if (r.clicked || r.keyboard_activate) { v->playing = !v->playing; result |= CUI_PLAYER_TOGGLE; }
+    if (r.focused && !cui_is_disabled(ui)) {
+        float old = v->position;
+        if (seekable) {
+            if (cui_key_pressed(ui, CUI_KEY_LEFT)) v->position -= 5;
+            if (cui_key_pressed(ui, CUI_KEY_RIGHT)) v->position += 5;
+            if (cui_key_pressed(ui, CUI_KEY_HOME)) v->position = 0;
+            if (cui_key_pressed(ui, CUI_KEY_END)) v->position = v->duration;
+            v->position = cui__clampf(v->position, 0, v->duration);
+            if (old != v->position) result |= CUI_PLAYER_SEEK;
+        }
+        old = v->volume;
+        if (cui_key_pressed(ui, CUI_KEY_UP)) v->volume += 0.05f;
+        if (cui_key_pressed(ui, CUI_KEY_DOWN)) v->volume -= 0.05f;
+        v->volume = cui__clampf(v->volume, 0, 1);
+        if (old != v->volume) result |= CUI_PLAYER_VOLUME;
+        if (cui_key_pressed(ui, CUI_KEY_M)) { v->muted = !v->muted; result |= CUI_PLAYER_MUTE; }
+        if (cui_key_pressed(ui, CUI_KEY_F)) result |= CUI_PLAYER_FULLSCREEN;
+    }
+    return result;
+}
+
+int cui_video_player_ex(cui_ctx *ui, const char *id_str, cui_video *v, const cui_video_player_opts *o) {
+    cui_video_player_opts d = { 0 };
+    if (!o) o = &d;
+    if (!v) return 0;
+    bool seekable = isfinite(v->duration) && v->duration > 0;
+    v->position = isfinite(v->position) ? CUI_MAX(0, v->position) : 0;
+    if (seekable) v->position = CUI_MIN(v->position, v->duration);
+    v->volume = isfinite(v->volume) ? cui__clampf(v->volume, 0, 1) : 0;
+    cui_id id = cui_make_id(ui, id_str);
+    cui_push_disabled(ui, o->disabled);
+    cui_push_id(ui, id_str);
+    cui_id surface = cui_make_id(ui, "surface");
+    int result = cui__video_input(ui, surface, v, seekable);
+    int root = cui__node_new(ui, id);
+    cui_node *rn = &ui->nodes[root];
+    cui__soft_width(rn, o->width, 480);
+    rn->dir = CUI_COLUMN; rn->bg = CUI_C(ui, SURFACE);
+    rn->radius = CUI_CORNERS(ui->theme.radius_panel);
+    rn->flags |= CUI_NF_CLIP | CUI_NF_ADAPTIVE;
+    cui__open(ui, root);
+    int screen = cui__leaf(ui, surface, CUI_FILL, CUI_PX(o->height > 0 ? o->height : 270));
+    cui__video_paint *p = cui__frame_alloc(ui, sizeof *p);
+    p->frame = v->frame;
+    p->focus = ui->focus == surface && ui->focus_visible;
+    p->aspect = isfinite(v->aspect) && v->aspect > 0 ? v->aspect : 16.0f / 9;
+    ui->nodes[screen].bg = CUI_C(ui, SURFACE_MUTED);
+    ui->nodes[screen].opacity = cui_is_disabled(ui) ? CUI__DISABLED : 1;
+    ui->nodes[screen].paint = cui__paint_video; ui->nodes[screen].paint_data = p;
+    cui__mark_interactive(ui, screen, CUI_IF_FOCUSABLE);
+    cui__keep_ltr(ui, screen);
+    if (!o->no_controls) cui_column(ui, .width = CUI_FILL, .pad = 10, .gap = 6) {
+        int controls = cui__current(ui);
+        cui__keep_ltr(ui, controls);
+        float progress = seekable ? v->position / v->duration : 0;
+        if (cui_slider(ui, "##seek", &progress, 0, 1, .disabled = !seekable)) {
+            v->position = progress * v->duration; result |= CUI_PLAYER_SEEK;
+        }
+        cui_row(ui, .width = CUI_FILL, .gap = 6, .align = CUI_ALIGN_CENTER, .wrap = true) {
+            if (cui_button(ui, "##play", .icon = v->playing ? CUI_ICON_PAUSE : CUI_ICON_PLAY,
+                           .tooltip = v->playing ? "Pause" : "Play", .width = CUI_PX(ui->theme.control_md), .variant = CUI_BUTTON_GHOST)) {
+                v->playing = !v->playing; result |= CUI_PLAYER_TOGGLE;
+            }
+            cui_text(ui, cui__frame_printf(ui, "%s / %s", cui__video_time(ui, v->position), seekable ? cui__video_time(ui, v->duration) : "--:--"),
+                     .size = ui->theme.text_xs, .tabular = true, .color = CUI_COLOR_TEXT_SECONDARY);
+            if (cui_button(ui, "##mute", .icon = v->muted || v->volume == 0 ? CUI_ICON_VOLUME_X : CUI_ICON_VOLUME_2,
+                           .tooltip = v->muted ? "Unmute" : "Mute", .width = CUI_PX(ui->theme.control_md), .variant = CUI_BUTTON_GHOST)) {
+                v->muted = !v->muted; result |= CUI_PLAYER_MUTE;
+            }
+            if (cui_slider(ui, "##volume", &v->volume, 0, 1, .width = CUI_PX(80))) result |= CUI_PLAYER_VOLUME;
+            if (cui_button(ui, "##fullscreen", .icon = v->fullscreen ? CUI_ICON_MINIMIZE_2 : CUI_ICON_MAXIMIZE_2,
+                           .tooltip = v->fullscreen ? "Exit fullscreen" : "Enter fullscreen", .width = CUI_PX(ui->theme.control_md), .variant = CUI_BUTTON_GHOST)) result |= CUI_PLAYER_FULLSCREEN;
+        }
+    }
+    cui__close(ui);
+    cui_pop_id(ui);
+    cui_pop_disabled(ui);
+    ui->last_id = id;
+    return result;
+}
 
 /* ------------------------------------------------------------------------ */
 /* Carousel                                                                 */

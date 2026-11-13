@@ -58,6 +58,8 @@ if (cui_button(ui, "Quit")) cui_app_quit(NULL);
 
 File dialogs, opening links and screenshots are in [Getting started](getting-started.md#7-files-and-links).
 
+The [media UI example](../examples/media_ui.c) demonstrates video controls and a now-playing card. These components update UI state and return input events; the app supplies any playback engine. See [Video player](components-more.md#video-player).
+
 ## When frames happen
 
 A CUI app is event driven. A frame is drawn when there is input, while something animates, and when a component needs one (a blinking caret, a tooltip's delay, a toast about to leave). Otherwise the app sleeps and uses no CPU.

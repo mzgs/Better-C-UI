@@ -2154,8 +2154,31 @@ typedef struct cui_now_playing_opts {
     cui_size width;
     bool compact;              /* smaller artwork and padding, and no previous button */
 } cui_now_playing_opts;
-enum { CUI_PLAYER_TOGGLE = 1, CUI_PLAYER_PREV = 2, CUI_PLAYER_NEXT = 4, CUI_PLAYER_SEEK = 8 };
+enum { CUI_PLAYER_TOGGLE = 1, CUI_PLAYER_PREV = 2, CUI_PLAYER_NEXT = 4, CUI_PLAYER_SEEK = 8,
+       CUI_PLAYER_VOLUME = 16, CUI_PLAYER_MUTE = 32, CUI_PLAYER_FULLSCREEN = 64 };
 CUI_API int cui_now_playing_ex(cui_ctx *ui, const char *id, cui_now_playing *np, const cui_now_playing_opts *opts);
+
+/* Video surface and controls. The app owns decoding, audio, the frame texture
+ * and the playback clock; this component never opens files or advances time. */
+typedef struct cui_video {
+    cui_texture frame;        /* current frame or poster; 0 shows an empty surface */
+    float aspect;             /* frame width / height; 0 means 16:9; fitted without cropping */
+    float position, duration; /* seconds; duration <= 0 disables seeking */
+    float volume;             /* 0..1; zero is silent, independent of muted */
+    bool playing, muted;
+    bool fullscreen;          /* app's actual state; FULLSCREEN requests its opposite */
+} cui_video;
+typedef struct cui_video_player_opts {
+    int _;
+    cui_size width;
+    float height;             /* video surface height in points, default 270; controls below */
+    bool disabled;
+    bool no_controls;         /* surface only; playback input still works on the focused surface */
+} cui_video_player_opts;
+/* Writes position, volume, playing and muted on input; returns CUI_PLAYER_*
+ * flags. FULLSCREEN only requests a change: the app changes its window and
+ * updates fullscreen. NULL video returns 0 without building anything. */
+CUI_API int cui_video_player_ex(cui_ctx *ui, const char *id, cui_video *video, const cui_video_player_opts *opts);
 
 /* ------------------------------------------------------------------------ */
 /* AI interfaces                                                            */
@@ -4432,6 +4455,7 @@ CUI_API const cui_draw_data *cui_get_draw_data(cui_ctx *ui);
 #define cui_carousel(ui, id, count, index, ...) CUI__SCOPE(cui_carousel_begin((ui), (id), (count), (index), CUI__OPTS(cui_carousel_opts, __VA_ARGS__)), cui_carousel_end(ui))
 #define cui_carousel_slide(ui)              CUI__SCOPE(cui_carousel_slide_begin(ui), cui_carousel_slide_end(ui))
 #define cui_image_compare(ui, id, before, after, pos, ...) cui_image_compare_ex((ui), (id), (before), (after), (pos), CUI__OPTS(cui_compare_opts, __VA_ARGS__))
+#define cui_video_player(ui, id, video, ...) cui_video_player_ex((ui), (id), (video), CUI__OPTS(cui_video_player_opts, __VA_ARGS__))
 #define cui_card_stack_item(ui, depth)      CUI__SCOPE(cui_card_stack_item_begin((ui), (depth)), cui_card_stack_item_end(ui))
 #define cui_counter(ui, id, value, ...)     cui_counter_ex((ui), (id), (value), CUI__OPTS(cui_counter_opts, __VA_ARGS__))
 #define cui_ticker(ui, id, items, count, ...) cui_ticker_ex((ui), (id), (items), (count), CUI__OPTS(cui_ticker_opts, __VA_ARGS__))
