@@ -6,6 +6,7 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Added
 
+- **Local HTML5 video example**: `webview_video` has a Choose video button and an unrestricted native file dialog, including MKV selection, then opens the selected file in the browser's player. Playback support depends on the browser runtime. No sample video or server is needed. `cui_webview_navigate` now accepts `file:///` URLs; Cocoa grants local pages access to sibling assets. Includes chooser tests, a macOS playback smoke check and [run instructions](docs/integration.md#local-html5-video-example).
 - **WebView fills remaining height** with a negative `height`, like the code editor. The desktop example now stretches the browser to the bottom as the window resizes.
 - **WebView history**: Back and Forward buttons in the desktop example use the native browser history and disable when no entry is available. Apps can use `cui_webview_can_go_back`, `cui_webview_can_go_forward`, `cui_webview_go_back` and `cui_webview_go_forward`.
 - **WebView example** opens `https://www.google.com` on startup; the Local page button still loads the bundled HTML demo.

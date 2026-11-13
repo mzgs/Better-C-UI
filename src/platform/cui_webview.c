@@ -113,10 +113,13 @@ static bool cui__webview_submit(cui_webview_handle *view, const char *text, bool
 }
 
 bool cui_webview_navigate(cui_webview_handle *view, const char *url) {
-    if (!url || (strncmp(url, "https://", 8) && strncmp(url, "http://", 7) && strcmp(url, "about:blank"))) return false;
+    if (!url) return false;
+    bool file = !strncmp(url, "file:///", 8);
+    if (file && (!url[8] || url[8] == '/' || strchr(url, '\\'))) return false;
+    if (!file && strncmp(url, "https://", 8) && strncmp(url, "http://", 7) && strcmp(url, "about:blank")) return false;
     if (strcmp(url, "about:blank")) {
         const char *host = strstr(url, "://") + 3;
-        if (!*host || *host == '/' || *host == '?' || *host == '#') return false;
+        if (!file && (!*host || *host == '/' || *host == '?' || *host == '#')) return false;
         for (const unsigned char *p = (const unsigned char *)url; *p; p++)
             if (*p <= 0x20 || *p == 0x7f) return false;
     }

@@ -48,7 +48,13 @@ int main(void) {
     assert(!strcmp(((cui__webview *)v)->content, "<p>First</p>"));
     assert(cui_webview_navigate(v, "https://example.com/"));
     assert(!((cui__webview *)v)->html && wv_loaded == 0);
-    const char *bad[] = { "", "javascript:alert(1)", "file:///etc/passwd", "https://", "http:///x", "https://?x", "https://a/\n", "https://a/\xc0\xaf", "https://a/\xed\xa0\x80", "https://a/\xf4\x90\x80\x80", "https://a/\xff" };
+    const char *files[] = { "file:///tmp/video/index.html", "file:///C:/Video%20demo/index.html", "file:///tmp/\xc3\xb6rnek.html" };
+    for (size_t i = 0; i < sizeof files / sizeof *files; i++) {
+        assert(cui_webview_navigate(v, files[i]));
+        assert(!strcmp(((cui__webview *)v)->content, files[i]) && !((cui__webview *)v)->html);
+    }
+    assert(wv_loaded == 0); /* file navigation is also queued during startup */
+    const char *bad[] = { "", "javascript:alert(1)", "file://host/video.html", "file://relative", "file:///", "file:////host/video.html", "file:///C:\\video.html", "file:///tmp/\n", "file:///tmp/\xff", "https://", "http:///x", "https://?x", "https://a/\n", "https://a/\xc0\xaf", "https://a/\xed\xa0\x80", "https://a/\xf4\x90\x80\x80", "https://a/\xff" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) assert(!cui_webview_navigate(v, bad[i]));
     assert(!cui_webview_set_html(v, "\xf0\x80\x80\x80"));
     assert(!cui_webview_set_html(v, "\xe2\x82"));
@@ -67,6 +73,8 @@ int main(void) {
     assert(cui_webview_go_forward(v) && wv_history_at == 1);
     assert(cui_webview_set_html(v, "<p>Merhaba \xef\xbf\xbd \xf0\x9f\x8c\x8d</p>"));
     assert(wv_loaded == 1);
+    assert(cui_webview_navigate(v, "file:///tmp/video/index.html"));
+    assert(wv_loaded == 2 && cui_webview_get_status(v) == CUI_WEBVIEW_READY);
     wv_frame(&app, v, false, false, false);
     assert(wv_visible && v->rect.w == 334 && v->rect.h == 118);
     for (int height = 240; height <= 480; height += 240) {

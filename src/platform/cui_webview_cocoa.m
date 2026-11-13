@@ -49,6 +49,8 @@ bool cui__webview_native_load(cui__webview *v) {
     if (!text) return false;
     if (v->html) return [web loadHTMLString:text baseURL:nil] != nil;
     NSURL *url = [NSURL URLWithString:text];
+    /* Local HTML needs read access to sibling media, not the whole filesystem. */
+    if (url.isFileURL) return [web loadFileURL:url allowingReadAccessToURL:url.URLByDeletingLastPathComponent] != nil;
     return url && [web loadRequest:[NSURLRequest requestWithURL:url]] != nil;
 }
 

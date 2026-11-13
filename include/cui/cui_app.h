@@ -90,7 +90,9 @@ CUI_API cui_webview_handle *cui_app_webview_create(cui_app *app);
 CUI_API void cui_webview_destroy(cui_webview_handle *view);
 CUI_API cui_webview_status cui_webview_get_status(const cui_webview_handle *view);
 /* Copies UTF-8 content; while starting, the latest request is queued.
- * navigate accepts absolute http://, https:// and about:blank URLs only.
+ * navigate accepts absolute http://, https://, file:/// and about:blank URLs.
+ * File URLs use forward slashes and URL-escaped paths, with no host name.
+ * On Cocoa, local pages may read assets in their containing directory.
  * set_html uses no local-file base URL. No native script bridge is installed.
  * true means accepted, not successfully loaded; the engine handles network
  * and certificate errors. Never bypass certificate validation. */

@@ -126,6 +126,37 @@ For a single-file build, define `CUI_WEBVIEW` when compiling the implementation,
 
 Run `python3 tests/webview_history.py ./build-webview/tests/cui_webview_smoke` on macOS or Linux to also check Back and Forward between two local HTTP pages. The script serves only on loopback, uses Python's standard library, and needs no Internet connection.
 
+### Local HTML5 video example
+
+Build and run the local video player from the repository root:
+
+```sh
+cmake -S . -B build-webview -DCMAKE_BUILD_TYPE=Debug -DCUI_WEBVIEW=ON
+cmake --build build-webview --target webview_video
+./build-webview/examples/webview_video
+```
+
+On Windows with Visual Studio, build with `--config Debug` and run `build-webview\examples\Debug\webview_video.exe`. The [platform runtime requirements](#native-webview-setup) above also apply.
+
+Press **Choose video** to open the native file dialog, select a video, then use the browser's playback controls. The dialog has no file-type filter, so MKV and any other file can be selected; actual container and codec support depends on the browser runtime. Cancel keeps the current video. Choose another file to replace it. On Linux, the existing file-dialog API requires `zenity` or `kdialog`.
+
+The example converts the selected absolute path into an escaped `file:///` URL and navigates directly to it. The browser generates its HTML5 video page. No bundled video, HTML asset, source-checkout path, server or CUI decoder is needed. The path buffer accepts up to 4095 UTF-8 bytes. Host-name/UNC file URLs are unsupported. Tab reaches the chooser and the browser controls; Ctrl+Tab returns from the browser to CUI. Submission failures show a CUI message; media decoding and load errors use the browser's own interface.
+
+The chooser test checks cancellation, file replacement, submission failure and escaped POSIX/Windows paths without opening a dialog. It can also render the empty state in light and dark:
+
+```sh
+cmake --build build-webview --target cui_test_webview_video
+mkdir -p /tmp/cui-video-shots
+./build-webview/tests/cui_test_webview_video /tmp/cui-video-shots
+```
+
+On macOS, an explicit real-window check uses a video you provide to verify native controls, play/pause and seeking:
+
+```sh
+cmake --build build-webview --target cui_webview_video_smoke
+./build-webview/tests/cui_webview_video_smoke /path/to/video.mp4
+```
+
 ## Threads
 
 A `cui_ctx` is not thread safe; use it from one thread. You may create several contexts (for several windows) and use each from its own thread. The software renderer parallelizes internally.
