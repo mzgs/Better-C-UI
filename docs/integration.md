@@ -158,6 +158,8 @@ python3 tests/webview_features.py ./build-webview/tests/cui_webview_features
 
 This checks script results, page messages and rejected iframe messages, page state/progress/errors, history URL changes, user-agent override/reset, actual HTTP headers, cookie clearing, Reload/Stop, destruction with a script pending, and waking an idle app for a delayed page message. The launcher isolates test browser data with temporary XDG directories on Linux, a unique application identifier on macOS, and a temporary executable path/profile on Windows; its cookie test clears that test store. It is an explicit desktop test rather than a headless CTest entry. Render the example layout separately with `./build-webview/tests/cui_webview_features --shots /tmp/cui-shots` after creating the output directory; append `360` to check the narrow layout.
 
+The same check exercises navigation policy for API requests, links, frames, redirects and history, detaching the handler, destruction from a policy callback, document-start injection before inline page scripts, main-frame-only injection, HTML loading, reload persistence and registering an additional script without changing the current document. Use `cui_webview_set_navigation_handler` for allow/cancel decisions and `cui_webview_add_startup_script` for document-start code. Wait for a `READY` engine and successful registration completion before navigating; see the [API guide](components-more.md#web-view) for callback and redirect limits.
+
 ### Local HTML5 video example
 
 Build and run the local video player from the repository root:

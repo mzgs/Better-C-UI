@@ -16,6 +16,20 @@ import uuid
 
 class FeaturePages(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/redirect":
+            self.send_response(302)
+            self.send_header("Location", "/denied")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if self.path == "/denied":
+            body = b"<!doctype html><script>window.deniedDocument=true;</script>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path == "/broken":
             self.connection.shutdown(socket.SHUT_RDWR)
             self.connection.close()
@@ -27,8 +41,10 @@ class FeaturePages(http.server.BaseHTTPRequestHandler):
                       self.headers.get("User-Agent") == "CUI-WebView-Test/1")
         body = ("<!doctype html><meta charset='utf-8'><title>WebView features</title>"
                 "<h1>WebView features</h1><script>window.testHeaders=" + json.dumps(headers_ok) + ";"
+                "window.startupAtParse=window.startupCount;"
                 "window.cui.postMessage('from-page');</script>"
                 "<iframe srcdoc=\"<script>"
+                "window.top.iframeStartup=!!window.startupCount;"
                 "try{window.webkit.messageHandlers.cui.postMessage('from-iframe')}catch(e){};"
                 "try{window.chrome.webview.postMessage('from-iframe')}catch(e){};"
                 "window.top.postMessage({__cui:'from-iframe'},'*');"

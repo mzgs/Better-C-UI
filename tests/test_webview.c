@@ -20,6 +20,20 @@ void cui__webview_native_wake(cui__webview *v) { (void)v; }
 
 static int wv_scripts, wv_agents, wv_controls, wv_results, wv_events;
 static bool wv_stopped, wv_destroy_on_event;
+static int wv_startups, wv_navigations;
+static bool wv_destroy_on_navigation;
+static bool wv_navigation(cui_webview_handle *view, const char *url, void *user) {
+    assert(user == &wv_navigations); wv_navigations++;
+    if (wv_destroy_on_navigation) cui_webview_destroy(view);
+    return !strcmp(url, "https://example.com/allowed");
+}
+bool cui__webview_native_startup_script(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user) {
+    assert(!strcmp(script, "if(window===window.top){\nwindow.test=1;// comment\n}"));
+    if (wv_fail) return false;
+    wv_startups++;
+    cui__webview_result(v, callback, "null", NULL, user);
+    return true;
+}
 bool cui__webview_native_eval(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user) {
     assert(!strcmp(script, "1+2")); wv_scripts++;
     cui__webview_result(v, callback, "3", NULL, user);
@@ -64,6 +78,16 @@ int main(void) {
     cui_set_viewport(app.ui, 360, 240, 2);
     cui_webview_handle *v = cui_app_webview_create(&app);
     assert(v && cui_webview_get_status(v) == CUI_WEBVIEW_STARTING && wv_created == 1);
+    assert(!cui_webview_add_startup_script(v, "window.test=1;// comment", wv_result, "null"));
+    assert(!cui_webview_add_startup_script(NULL, "1", NULL, NULL));
+    assert(cui__webview_decide_navigation((cui__webview *)v, "https://example.com/any"));
+    cui_webview_set_navigation_handler(v, wv_navigation, &wv_navigations);
+    assert(cui__webview_decide_navigation((cui__webview *)v, "https://example.com/allowed"));
+    assert(!cui__webview_decide_navigation((cui__webview *)v, "https://example.com/blocked") && wv_navigations == 2);
+    assert(!cui__webview_decide_navigation((cui__webview *)v, NULL));
+    assert(!cui__webview_decide_navigation((cui__webview *)v, "\xff") && wv_navigations == 2);
+    cui_webview_set_navigation_handler(v, NULL, NULL);
+    assert(cui__webview_decide_navigation((cui__webview *)v, "https://example.com/blocked"));
     assert(!cui_webview_can_go_back(NULL) && !cui_webview_can_go_forward(NULL));
     assert(!cui_webview_go_back(NULL) && !cui_webview_go_forward(NULL));
     assert(!cui_webview_go_back(v) && !cui_webview_go_forward(v));
@@ -114,6 +138,11 @@ int main(void) {
     wv_frame(&app, v, false, false, false);
     assert(!wv_visible); /* asynchronous startup */
     v->status = CUI_WEBVIEW_READY;
+    assert(!cui_webview_add_startup_script(v, NULL, NULL, NULL));
+    assert(!cui_webview_add_startup_script(v, "\xff", NULL, NULL));
+    assert(!cui_webview_add_startup_script(v, "\xc0\xaf", NULL, NULL));
+    assert(cui_webview_add_startup_script(v, "window.test=1;// comment", wv_result, "null"));
+    assert(wv_startups == 1 && wv_results == 1); wv_results = 0;
     assert(cui_webview_eval(v, "1+2", wv_result, "3") && wv_scripts == 1 && wv_results == 1);
     assert(!cui_webview_eval(v, "\xff", wv_result, "3"));
     assert(cui_webview_clear_cookies(v, wv_result, "null") && wv_results == 2);
@@ -172,6 +201,7 @@ int main(void) {
     cui__webview_claim_focus((cui__webview *)v);
     assert(app.ui->focus == v->id && !app.ui->focus_visible);
     wv_fail = true;
+    assert(!cui_webview_add_startup_script(v, "window.test=1;// comment", wv_result, "null") && wv_results == 2);
     assert(!cui_webview_set_user_agent(v, "Rejected") && !((cui__webview *)v)->user_agent);
     assert(!cui_webview_reload(v) && !cui_webview_stop(v));
     assert(!cui_webview_clear_cookies(v, wv_result, "null") && wv_results == 2);
@@ -186,15 +216,19 @@ int main(void) {
     cui_webview_set_event_handler(v, wv_event, &wv_events); wv_destroy_on_event = true;
     cui__webview_emit((cui__webview *)v, CUI_WEBVIEW_MESSAGE, "about:blank", "destroy", 1, 0);
     assert(v->dead); /* event callbacks may invalidate their handle */
+    assert(!cui_webview_add_startup_script(v, "window.test=1;// comment", NULL, NULL));
+    assert(!cui__webview_decide_navigation((cui__webview *)v, "https://example.com/allowed"));
     assert(!cui_webview_eval(v, "1+2", wv_result, "3") && !cui_webview_set_user_agent(v, NULL));
     assert(cui_webview_get_status(v) == CUI_WEBVIEW_UNAVAILABLE);
     assert(!cui_webview_can_go_back(v) && !cui_webview_go_forward(v));
     cui_end_frame(app.ui); app.webviews.sync(&app);
     assert(wv_destroyed == 1 && !app.webviews.head);
-    assert(cui_app_webview_create(&app));
+    v = cui_app_webview_create(&app); assert(v);
+    cui_webview_set_navigation_handler(v, wv_navigation, &wv_navigations); wv_destroy_on_navigation = true;
+    assert(!cui__webview_decide_navigation((cui__webview *)v, "https://example.com/allowed") && v->dead);
     app.webviews.destroy(&app);
     assert(wv_destroyed == 2);
     cui_destroy(app.ui);
-    puts("webview: content, UTF-8, scripts, headers, settings, events, placement and lifecycle checks passed");
+    puts("webview: content, UTF-8, scripts, navigation policy, startup scripts, headers, settings, events, placement and lifecycle checks passed");
     return 0;
 }

@@ -65,6 +65,21 @@ static void cui__webview_gtk_message(WebKitUserContentManager *manager, WebKitJa
     g_free(message);
 }
 
+static gboolean cui__webview_gtk_policy(WebKitWebView *web, WebKitPolicyDecision *decision,
+    WebKitPolicyDecisionType type, gpointer data) {
+    (void)web;
+    const char *url;
+    if (type == WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) {
+        WebKitNavigationAction *action = webkit_navigation_policy_decision_get_navigation_action(WEBKIT_NAVIGATION_POLICY_DECISION(decision));
+        url = webkit_uri_request_get_uri(webkit_navigation_action_get_request(action));
+    } else if (type == WEBKIT_POLICY_DECISION_TYPE_RESPONSE) {
+        url = webkit_uri_response_get_uri(webkit_response_policy_decision_get_response(WEBKIT_RESPONSE_POLICY_DECISION(decision)));
+    } else return FALSE;
+    if (cui__webview_decide_navigation(data, url)) return FALSE;
+    webkit_policy_decision_ignore(decision);
+    return TRUE;
+}
+
 void *cui__webview_native_create(cui__webview *v) {
     if (!gdk_display_get_default()) gdk_set_allowed_backends("x11");
     if (!gtk_init_check(NULL, NULL) || !GDK_IS_X11_DISPLAY(gdk_display_get_default())) return NULL;
@@ -90,6 +105,7 @@ void *cui__webview_native_create(cui__webview *v) {
     webkit_user_content_manager_add_script(manager, bridge); webkit_user_script_unref(bridge);
     g_signal_connect(manager, "script-message-received::cui", G_CALLBACK(cui__webview_gtk_message), v);
     g_signal_connect(g->web, "load-changed", G_CALLBACK(cui__webview_gtk_load), v);
+    g_signal_connect(g->web, "decide-policy", G_CALLBACK(cui__webview_gtk_policy), v);
     g_signal_connect(g->web, "load-failed", G_CALLBACK(cui__webview_gtk_failed), v);
     g_signal_connect(g->web, "notify::uri", G_CALLBACK(cui__webview_gtk_changed), v);
     g_signal_connect(g->web, "notify::estimated-load-progress", G_CALLBACK(cui__webview_gtk_changed), v);
@@ -130,6 +146,17 @@ bool cui__webview_native_load(cui__webview *v) {
         webkit_web_view_load_request(WEBKIT_WEB_VIEW(g->web), request);
         g_object_unref(request);
     } else webkit_web_view_load_uri(WEBKIT_WEB_VIEW(g->web), v->content);
+    return true;
+}
+
+bool cui__webview_native_startup_script(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user) {
+    cui__webview_gtk *g = v->native;
+    WebKitUserScript *startup = webkit_user_script_new(script, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,
+        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL);
+    if (!startup) return false;
+    webkit_user_content_manager_add_script(webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(g->web)), startup);
+    webkit_user_script_unref(startup);
+    cui__webview_result(v, callback, "null", NULL, user);
     return true;
 }
 

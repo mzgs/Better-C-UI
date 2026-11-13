@@ -219,6 +219,17 @@ static void cui__webview_redraw(cui__webview *v) {
     if (wake) cui__webview_native_wake(v);
 }
 
+bool cui__webview_decide_navigation(cui__webview *v, const char *url) {
+    if (v->surface.dead || !cui__webview_utf8(url)) return false;
+    if (!v->navigation_handler) return true;
+    char *copy = cui__webview_copy(url);
+    if (!copy) return false;
+    cui__webview_redraw(v);
+    bool allow = v->navigation_handler(&v->surface, copy, v->navigation_user);
+    free(copy);
+    return allow && !v->surface.dead;
+}
+
 void cui__webview_result(cui__webview *v, cui_webview_result_fn callback, const char *json, const char *error, void *user) {
     if (!v->surface.dead && callback) {
         cui__webview_redraw(v);
@@ -250,6 +261,37 @@ void cui__webview_emit(cui__webview *v, cui_webview_event_type type, const char 
     free(event_url); free(event_message);
 }
 #endif
+
+void cui_webview_set_navigation_handler(cui_webview_handle *view, cui_webview_navigation_fn handler, void *user) {
+#ifdef CUI_WEBVIEW
+    if (view && !view->dead) {
+        cui__webview *v = (cui__webview *)view;
+        v->navigation_handler = handler; v->navigation_user = user;
+    }
+#else
+    (void)view; (void)handler; (void)user;
+#endif
+}
+
+bool cui_webview_add_startup_script(cui_webview_handle *view, const char *script, cui_webview_result_fn callback, void *user) {
+#ifdef CUI_WEBVIEW
+    if (cui_webview_get_status(view) != CUI_WEBVIEW_READY || !cui__webview_utf8(script)) return false;
+    static const char prefix[] = "if(window===window.top){\n", suffix[] = "\n}";
+    size_t len = strlen(script);
+    if (len > SIZE_MAX - sizeof prefix - sizeof suffix) return false;
+    char *guarded = malloc(sizeof prefix - 1 + len + sizeof suffix);
+    if (!guarded) return false;
+    memcpy(guarded, prefix, sizeof prefix - 1);
+    memcpy(guarded + sizeof prefix - 1, script, len);
+    memcpy(guarded + sizeof prefix - 1 + len, suffix, sizeof suffix);
+    bool ok = cui__webview_native_startup_script((cui__webview *)view, guarded, callback, user);
+    free(guarded);
+    return ok;
+#else
+    (void)view; (void)script; (void)callback; (void)user;
+    return false;
+#endif
+}
 
 bool cui_webview_eval(cui_webview_handle *view, const char *script, cui_webview_result_fn callback, void *user) {
 #ifdef CUI_WEBVIEW

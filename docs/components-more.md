@@ -1542,6 +1542,28 @@ Create a handle once, then place it at most once per frame, always in its app's 
 
 `cui_webview_navigate(view, url)` accepts absolute `http://`, `https://`, `file:///` and `about:blank` URLs. Local file URLs have no host name, use forward slashes, and escape path characters such as spaces (`%20`), `#` (`%23`) and `%` (`%25`). For example, `file:///path/to/index.html` or `file:///C:/Video%20demo/index.html`. On Cocoa, local pages receive read access to their containing directory so sibling assets can load. Load trusted local pages; other engines apply their own file-origin rules. `cui_webview_set_html(view, html)` loads a UTF-8 string without a local-file base URL. Both copy their input, reject malformed UTF-8, and return whether submission was accepted; the latest request is queued during startup. Certificate validation remains enabled. Web pages can run scripts, use the network and store browser data according to the native engine's defaults. The initial URL restriction is not a navigation sandbox for links or scripts within a page.
 
+**Navigation policy.** Install `cui_webview_set_navigation_handler(view, handler, user)` before loading content, including while the engine is starting. The callback receives `(view, url, user)` and returns true to allow a document navigation or false to cancel it. It covers API navigation, page links/scripts, history and child-frame navigation. Native engines may invoke it more than once for a load; treat each call independently. Passing NULL restores native defaults. A successful `cui_webview_navigate` still means submission was accepted, even if the policy later cancels it.
+
+To open a link externally, copy its URL into app state, return false, then call `cui_app_open_url` from the frame callback. Do not navigate or destroy the app inside the policy callback. Destroying its view is allowed and cancels that navigation. URLs are borrowed only for the duration of the callback.
+
+This is document navigation control, not a network or JavaScript sandbox. Redirect destinations may be checked only after the engine requests them, before the document commits. Popups, subresource requests, `history.pushState` and fragment changes are outside the policy. Keep validating page-message origins and actions separately.
+
+**Startup JavaScript.** `cui_webview_add_startup_script` registers a copied script for future main-frame documents at document start, before the page's own scripts. Wait until the engine is `READY`; on Windows registration completes asynchronously. Navigate from the successful completion callback to ensure registration precedes the new page:
+
+```c
+static void startup_registered(cui_webview_handle *view, const char *json,
+                               const char *error, void *user) {
+    (void)json;
+    if (!error) cui_webview_navigate(view, (const char *)user);
+}
+
+/* Once the engine is READY. The URL must live until the callback runs. */
+cui_webview_add_startup_script(view, "window.appVersion='1';",
+    startup_registered, "https://example.com/");
+```
+
+Registrations persist until the view is destroyed and apply to new URL/HTML documents and reloads. They do not run immediately in the current document; history may restore a cached document without rerunning scripts. Scripts run in the page world inside a main-frame guard block; use `window` properties for values the page needs. They are visible to page code. Combine dependent code into one registration: ordering between registrations and the message bridge is engine-dependent. Completion success (`json="null"`, no error) confirms registration, not JavaScript syntax or successful execution. An immediate false return means rejected with no callback; completion can run before return and is suppressed after destruction. A NULL completion callback is allowed.
+
 **JavaScript and page messages.** `cui_webview_eval` executes JavaScript in the main page and delivers its JSON result to a callback. Wait for `CUI_WEBVIEW_LOAD_FINISHED` before accessing a newly loaded document. It requires a `READY` engine, rejects malformed UTF-8, and does not await JavaScript promises. Undefined becomes `"null"`; values the engine cannot serialize may produce `"null"` or a native error. Native execution errors pass an error string and a NULL JSON result; WebView2 also returns `"null"` for JavaScript exceptions, so use an explicit `try/catch` result when distinguishing those matters.
 
 ```c
@@ -1575,7 +1597,7 @@ Request headers are copied and apply to that HTTP(S) navigation, rather than bei
 
 Callbacks run on the app thread and can arrive outside a CUI frame. Events and completed results request a redraw and wake an idle native app. Store results in app state and build the UI in the normal frame callback. Copy strings you need after a callback; load-info strings last until the next event. A callback may invalidate its view with `cui_webview_destroy`; pending script/cookie callbacks are suppressed after destruction. Use `cui_app_quit`, rather than destroying the app from inside a callback. An API returning false does not schedule a completion callback; cookie completion can run before `cui_webview_clear_cookies` returns.
 
-The [desktop example](../examples/webview.c) includes Run JavaScript, a page-to-C message button in Local page, loading progress, Reload/Stop, user-agent input and Clear cookies. This renderer-only preview shows its layout with the native browser unavailable:
+The [desktop example](../examples/webview.c) includes Run JavaScript, a page-to-C message button in Local page, loading progress, Reload/Stop, user-agent input and Clear cookies. It registers `window.cuiDemoStartup` before the initial navigation; Local page sets `document.documentElement.dataset.startup` from that value and has a link that the policy blocks. This renderer-only preview shows its layout with the native browser unavailable:
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/webview-features-dark.png"><img src="images/components/webview-features.png" alt="WebView example with JavaScript input, browser settings and navigation controls"></picture>
 

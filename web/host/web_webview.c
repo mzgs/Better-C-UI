@@ -10,6 +10,8 @@ bool cui_webview_navigate_ex(cui_webview_handle *view, const char *url, const cu
 void cui_webview_set_event_handler(cui_webview_handle *view, cui_webview_event_fn handler, void *user) { (void)view; (void)handler; (void)user; }
 cui_webview_load_info cui_webview_get_load_info(const cui_webview_handle *view) { (void)view; return (cui_webview_load_info){ .url = "", .error = "" }; }
 bool cui_webview_eval(cui_webview_handle *view, const char *script, cui_webview_result_fn callback, void *user) { (void)view; (void)script; (void)callback; (void)user; return false; }
+void cui_webview_set_navigation_handler(cui_webview_handle *view, cui_webview_navigation_fn handler, void *user) { (void)view; (void)handler; (void)user; }
+bool cui_webview_add_startup_script(cui_webview_handle *view, const char *script, cui_webview_result_fn callback, void *user) { (void)view; (void)script; (void)callback; (void)user; return false; }
 bool cui_webview_set_user_agent(cui_webview_handle *view, const char *user_agent) { (void)view; (void)user_agent; return false; }
 bool cui_webview_reload(cui_webview_handle *view) { (void)view; return false; }
 bool cui_webview_stop(cui_webview_handle *view) { (void)view; return false; }

@@ -9,6 +9,20 @@
 @end
 
 @implementation CUIWebView
+- (void)webView:(WKWebView *)web decidePolicyForNavigationAction:(WKNavigationAction *)action
+    decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    (void)web;
+    bool allow = self.owner && !self.owner->surface.dead &&
+        (!action.targetFrame || cui__webview_decide_navigation(self.owner, action.request.URL.absoluteString.UTF8String));
+    decisionHandler(allow ? WKNavigationActionPolicyAllow : WKNavigationActionPolicyCancel);
+}
+- (void)webView:(WKWebView *)web decidePolicyForNavigationResponse:(WKNavigationResponse *)response
+    decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
+    (void)web;
+    /* Check the final URL too: HTTP redirects can bypass the action delegate. */
+    bool allow = self.owner && cui__webview_decide_navigation(self.owner, response.response.URL.absoluteString.UTF8String);
+    decisionHandler(allow ? WKNavigationResponsePolicyAllow : WKNavigationResponsePolicyCancel);
+}
 - (void)webView:(WKWebView *)web didStartProvisionalNavigation:(WKNavigation *)navigation {
     self.activeNavigation = navigation;
     if (self.owner) cui__webview_emit(self.owner, CUI_WEBVIEW_LOAD_STARTED, web.URL.absoluteString.UTF8String, NULL, 0, 0);
@@ -146,6 +160,16 @@ bool cui__webview_native_eval(cui__webview *v, const char *script, cui_webview_r
 bool cui__webview_native_user_agent(cui__webview *v) {
     CUIWebView *web = (__bridge CUIWebView *)v->native;
     web.customUserAgent = v->user_agent ? [NSString stringWithUTF8String:v->user_agent] : nil;
+    return true;
+}
+
+bool cui__webview_native_startup_script(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user) {
+    CUIWebView *web = (__bridge CUIWebView *)v->native;
+    WKUserScript *startup = [[WKUserScript alloc] initWithSource:[NSString stringWithUTF8String:script]
+        injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES];
+    if (!startup) return false;
+    [web.configuration.userContentController addUserScript:startup];
+    cui__webview_result(v, callback, "null", NULL, user);
     return true;
 }
 

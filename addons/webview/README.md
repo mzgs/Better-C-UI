@@ -14,3 +14,8 @@ and the [API guide](../../docs/components-more.md#web-view). The add-on shares
 internal frame/app structures with CUI and must use the same version and text
 shaping configuration. CMake handles those flags; the amalgamated distribution
 emits separate `cui_webview.h` and `cui_webview.c` files.
+
+Use `cui_webview_set_navigation_handler` to allow or cancel document navigation.
+Use `cui_webview_add_startup_script` to register main-frame JavaScript for future
+documents; wait for its completion callback before navigating. See the API guide
+for callback lifetime, redirect and page-world restrictions.

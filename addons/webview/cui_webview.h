@@ -16,6 +16,8 @@ typedef struct cui__webview {
     int header_count;
     cui_webview_event_fn handler;
     void *handler_user;
+    cui_webview_navigation_fn navigation_handler;
+    void *navigation_user;
     cui_webview_load_info load;
 } cui__webview;
 
@@ -32,6 +34,8 @@ bool cui__webview_native_user_agent(cui__webview *view);
 bool cui__webview_native_control(cui__webview *view, bool stop);
 bool cui__webview_native_clear_cookies(cui__webview *view, cui_webview_result_fn callback, void *user);
 void cui__webview_native_wake(cui__webview *view);
+bool cui__webview_native_startup_script(cui__webview *view, const char *script, cui_webview_result_fn callback, void *user);
+bool cui__webview_decide_navigation(cui__webview *view, const char *url);
 void cui__webview_result(cui__webview *view, cui_webview_result_fn callback, const char *json, const char *error, void *user);
 void cui__webview_emit(cui__webview *view, cui_webview_event_type type, const char *url,
     const char *message, float progress, int error_code);

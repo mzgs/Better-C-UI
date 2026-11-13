@@ -5,7 +5,7 @@
 
 typedef struct {
     cui_webview_handle *view;
-    bool attempted, hidden, disabled;
+    bool attempted, startup_requested, hidden, disabled;
     char url[512], script[512], user_agent[256], result[512];
 } webview_demo;
 
@@ -18,6 +18,8 @@ static const char webview_html[] =
     "<label>Your name <input placeholder='Type here'></label> "
     "<button onclick='document.getElementById(\"result\").textContent=\"JavaScript works.\"'>Try JavaScript</button>"
     "<button onclick='window.cui.postMessage(\"Hello from the page\")'>Send message to C</button>"
+    "<p><a href='https://example.invalid/blocked'>Try a blocked link</a></p>"
+    "<script>document.documentElement.dataset.startup=window.cuiDemoStartup?'yes':'no';</script>"
     "<p id='result' aria-live='polite'>Tab moves between the page controls.</p>"
     "<p>Ctrl+Tab returns to the surrounding CUI controls.</p></html>";
 
@@ -40,13 +42,32 @@ static void webview_cookies(cui_webview_handle *view, const char *json, const ch
     snprintf(demo->result, sizeof demo->result, "%s", error ? error : "Cookies cleared");
 }
 
+static bool webview_navigation(cui_webview_handle *view, const char *url, void *user) {
+    (void)view;
+    webview_demo *demo = user;
+    if (strcmp(url, "https://example.invalid/blocked")) return true;
+    snprintf(demo->result, sizeof demo->result, "Blocked link: %s", url);
+    return false;
+}
+static void webview_startup(cui_webview_handle *view, const char *json, const char *error, void *user) {
+    (void)json;
+    webview_demo *demo = user;
+    if (error) snprintf(demo->result, sizeof demo->result, "Startup script: %s", error);
+    else cui_webview_navigate(view, demo->url);
+}
+
 static void webview_frame(cui_ctx *ui, void *user) {
     webview_demo *demo = user;
     if (!demo->attempted) {
         demo->attempted = true;
         demo->view = cui_app_webview_create(NULL);
         cui_webview_set_event_handler(demo->view, webview_event, demo);
-        cui_webview_navigate(demo->view, demo->url);
+        cui_webview_set_navigation_handler(demo->view, webview_navigation, demo);
+    }
+    if (!demo->startup_requested && cui_webview_get_status(demo->view) == CUI_WEBVIEW_READY) {
+        demo->startup_requested = true;
+        if (!cui_webview_add_startup_script(demo->view, "window.cuiDemoStartup=true;", webview_startup, demo))
+            snprintf(demo->result, sizeof demo->result, "Could not register startup script");
     }
     cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .pad = 16, .gap = 12, .bg = CUI_COLOR_BACKGROUND) {
         cui_heading(ui, "Web view", 3);

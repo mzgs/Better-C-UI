@@ -10,11 +10,22 @@
 #undef main
 
 typedef struct {
-    bool loaded, result_done, result_ok;
+    bool loaded, result_done, result_ok, blocked, destroy_navigation;
+    int policies;
     int started, progress, finished, errors, messages, canceled;
     const char *expected;
 } features_check;
 static bool features_idle;
+
+static bool features_navigation(cui_webview_handle *view, const char *url, void *user) {
+    features_check *check = user;
+    check->policies++;
+    if (strstr(url, "/destroy") && check->destroy_navigation) {
+        check->blocked = true; cui_webview_destroy(view); return true;
+    }
+    if (strstr(url, "/denied")) { check->blocked = true; return false; }
+    return true;
+}
 
 static void features_event(cui_webview_handle *view, const cui_webview_event *event, void *user) {
     (void)view;
@@ -94,7 +105,15 @@ int main(int argc, char **argv) {
     assert(view);
     features_check check = {0};
     cui_webview_set_event_handler(view, features_event, &check);
+    cui_webview_set_navigation_handler(view, features_navigation, &check);
     assert(cui_webview_set_user_agent(view, "CUI-WebView-Test/1"));
+    for (int i = 0; i < 1800 && cui_webview_get_status(view) == CUI_WEBVIEW_STARTING && features_frame(app, view); i++) {}
+    assert(cui_webview_get_status(view) == CUI_WEBVIEW_READY);
+    check.expected = "null";
+    assert(cui_webview_add_startup_script(view,
+        "window.startupCount=(window.startupCount||0)+1;window.startupEarly=document.readyState==='loading';// trailing comment",
+        features_result, &check));
+    features_wait(app, view, &check.result_done); assert(check.result_ok);
     cui_webview_header header = { "X-CUI-Test", "cui-headers" };
     cui_webview_request_opts request = { .headers = &header, .header_count = 1 };
     char url[1024];
@@ -102,10 +121,12 @@ int main(int argc, char **argv) {
     assert(cui_webview_navigate_ex(view, url, &request));
     features_wait(app, view, &check.loaded);
     assert(check.started && check.progress && check.finished && !check.errors);
+    assert(check.policies);
     assert(cui_webview_get_status(view) == CUI_WEBVIEW_READY);
     cui_webview_load_info info = cui_webview_get_load_info(view);
     assert(info.state == CUI_WEBVIEW_LOADED && info.progress == 1 && strstr(info.url, "/features"));
     features_eval(app, view, &check, "window.testHeaders && navigator.userAgent==='CUI-WebView-Test/1'", "true");
+    features_eval(app, view, &check, "window.startupAtParse===1 && window.startupEarly && window.startupCount===1 && !window.iframeStartup", "true");
     features_eval(app, view, &check, "1+2", "3");
     features_eval(app, view, &check, "document.body.dataset.reply='from-C';document.body.dataset.reply==='from-C'", "true");
     features_eval(app, view, &check, "throw new Error('intentional test')", NULL);
@@ -123,17 +144,67 @@ int main(int argc, char **argv) {
     features_eval(app, view, &check, "navigator.userAgent!=='CUI-WebView-Test/1'", "true");
     check.loaded = false; assert(cui_webview_reload(view));
     features_wait(app, view, &check.loaded); assert(check.finished >= 2);
+    features_eval(app, view, &check, "window.startupAtParse===1 && window.startupCount===1", "true");
     assert(cui_webview_stop(view));
+    check.result_done = check.result_ok = false; check.expected = "null";
+    assert(cui_webview_add_startup_script(view, "window.secondStartup=true;", features_result, &check));
+    features_wait(app, view, &check.result_done); assert(check.result_ok);
+    features_eval(app, view, &check, "typeof window.secondStartup==='undefined'", "true");
     check.loaded = false;
+    snprintf(url, sizeof url, "%s/features?second", argv[1]);
+    assert(cui_webview_navigate(view, url)); features_wait(app, view, &check.loaded);
+    features_eval(app, view, &check, "window.secondStartup && window.startupAtParse===1 && !window.iframeStartup", "true");
+    /* Both API navigation and page-created links/frames must consult policy. */
+    check.blocked = false;
+    snprintf(url, sizeof url, "%s/denied", argv[1]);
+    assert(cui_webview_navigate(view, url)); features_wait(app, view, &check.blocked);
+    features_eval(app, view, &check, "location.pathname==='/features'", "true");
+    check.blocked = false;
+    features_eval(app, view, &check, "var a=document.createElement('a');a.href='/denied';document.body.appendChild(a);a.click();true", "true");
+    features_wait(app, view, &check.blocked);
+    features_eval(app, view, &check, "location.pathname==='/features'", "true");
+    check.blocked = false;
+    features_eval(app, view, &check, "var f=document.createElement('iframe');f.src='/denied';document.body.appendChild(f);true", "true");
+    features_wait(app, view, &check.blocked);
+    check.blocked = false;
+    snprintf(url, sizeof url, "%s/redirect", argv[1]);
+    assert(cui_webview_navigate(view, url)); features_wait(app, view, &check.blocked);
+    for (int i = 0; i < 30 && features_frame(app, view); i++) {}
+    features_eval(app, view, &check, "!window.deniedDocument", "true");
+    /* Detaching restores native behavior. */
+    cui_webview_set_navigation_handler(view, NULL, NULL);
+    check.loaded = false;
+    snprintf(url, sizeof url, "%s/denied", argv[1]);
+    assert(cui_webview_navigate(view, url)); features_wait(app, view, &check.loaded);
+    features_eval(app, view, &check, "window.deniedDocument===true && window.secondStartup", "true");
+    cui_webview_set_navigation_handler(view, features_navigation, &check);
+    check.loaded = false;
+    assert(cui_webview_go_back(view)); features_wait(app, view, &check.loaded);
+    check.blocked = false;
+    assert(cui_webview_go_forward(view)); features_wait(app, view, &check.blocked);
+    check.loaded = false;
+    assert(cui_webview_set_html(view, "<!doctype html><script>window.htmlStartup=window.startupCount;</script>"));
+    features_wait(app, view, &check.loaded);
+    features_eval(app, view, &check, "window.htmlStartup===1 && window.secondStartup", "true");
+    check.loaded = false;
+    int previous_errors = check.errors;
     snprintf(url, sizeof url, "%s/broken", argv[1]);
     assert(cui_webview_navigate(view, url)); features_wait(app, view, &check.loaded);
     info = cui_webview_get_load_info(view);
-    assert(check.errors && info.state == CUI_WEBVIEW_LOAD_FAILED && info.error_code && *info.error);
+    assert(check.errors > previous_errors && info.state == CUI_WEBVIEW_LOAD_FAILED && info.error_code && *info.error);
     assert(cui_webview_get_status(view) == CUI_WEBVIEW_READY); /* page errors do not kill the engine */
     assert(cui_webview_eval(view, "42", features_canceled, &check));
+    assert(cui_webview_add_startup_script(view, "window.pending=true;", features_canceled, &check));
+    int completed = check.canceled;
     cui_webview_destroy(view);
     for (int i = 0; i < 30 && features_frame(app, NULL); i++) {}
-    assert(check.canceled == 0);
+    assert(check.canceled == completed);
+    view = cui_app_webview_create(app); assert(view);
+    check.blocked = false; check.destroy_navigation = true;
+    cui_webview_set_navigation_handler(view, features_navigation, &check);
+    snprintf(url, sizeof url, "%s/destroy", argv[1]);
+    assert(cui_webview_navigate(view, url)); features_wait(app, NULL, &check.blocked);
+    for (int i = 0; i < 30 && features_frame(app, NULL); i++) {}
     /* Reuse the host window while testing successive browser views. */
     features_idle = true;
     view = cui_app_webview_create(app);
@@ -143,6 +214,6 @@ int main(int argc, char **argv) {
     assert(cui_webview_set_html(view, "<!doctype html><script>setTimeout(function(){window.cui.postMessage('wake')},1500)</script>"));
     features_wait(app, view, &awake);
     cui_app_destroy(app);
-    puts("webview features: scripts/results, main-frame messages, load/progress/URL/errors, user agent, headers, cookies, reload/stop, pending destruction and idle wake passed");
+    puts("webview features: scripts/results, navigation policy, document-start scripts, main-frame messages, load/progress/URL/errors, user agent, headers, cookies, reload/stop, pending destruction and idle wake passed");
     return 0;
 }

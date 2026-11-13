@@ -17,7 +17,7 @@
 
 enum {
     CUI__WV_WIN_START = 1 << 0, CUI__WV_WIN_FINISH = 1 << 1, CUI__WV_WIN_SOURCE = 1 << 2,
-    CUI__WV_WIN_PROGRESS = 1 << 3, CUI__WV_WIN_MESSAGE = 1 << 4
+    CUI__WV_WIN_PROGRESS = 1 << 3, CUI__WV_WIN_MESSAGE = 1 << 4, CUI__WV_WIN_FRAME = 1 << 5
 };
 
 typedef struct {
@@ -25,6 +25,7 @@ typedef struct {
     ICoreWebView2CreateCoreWebView2ControllerCompletedHandler controller_handler;
     ICoreWebView2AcceleratorKeyPressedEventHandler key_handler;
     ICoreWebView2NavigationStartingEventHandler start_handler;
+    ICoreWebView2NavigationStartingEventHandler frame_handler;
     ICoreWebView2NavigationCompletedEventHandler finish_handler;
     ICoreWebView2SourceChangedEventHandler source_handler;
     ICoreWebView2ContentLoadingEventHandler progress_handler;
@@ -41,7 +42,7 @@ typedef struct {
     char *navigation_url;
     unsigned events;
     EventRegistrationToken start_token, finish_token, source_token, progress_token, message_token;
-    EventRegistrationToken key_token;
+    EventRegistrationToken key_token, frame_token;
     bool key_registered;
 } cui__webview_win32;
 
@@ -115,6 +116,24 @@ CUI__WEBVIEW_HANDLER(message, ICoreWebView2WebMessageReceivedEventHandler, messa
 CUI__WEBVIEW_HANDLER(script, ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler, script_handler)
 #undef CUI__WEBVIEW_HANDLER
 
+/* Same COM interface as start_handler, but a separate callback identity. */
+static cui__webview_win32 *cui__wv_frame_owner(ICoreWebView2NavigationStartingEventHandler *self) {
+    return (cui__webview_win32 *)((char *)self - offsetof(cui__webview_win32, frame_handler));
+}
+static HRESULT STDMETHODCALLTYPE cui__wv_frame_query(ICoreWebView2NavigationStartingEventHandler *self, REFIID id, void **out) {
+    static const GUID unknown = {0, 0, 0, {0xc0, 0, 0, 0, 0, 0, 0, 0x46}};
+    if (!out) return E_POINTER;
+    *out = NULL;
+    if (!IsEqualGUID(id, &unknown) && !IsEqualGUID(id, &IID_ICoreWebView2NavigationStartingEventHandler)) return E_NOINTERFACE;
+    *out = self; InterlockedIncrement(&cui__wv_frame_owner(self)->refs); return S_OK;
+}
+static ULONG STDMETHODCALLTYPE cui__wv_frame_addref(ICoreWebView2NavigationStartingEventHandler *self) {
+    return (ULONG)InterlockedIncrement(&cui__wv_frame_owner(self)->refs);
+}
+static ULONG STDMETHODCALLTYPE cui__wv_frame_release(ICoreWebView2NavigationStartingEventHandler *self) {
+    return cui__webview_win_release(cui__wv_frame_owner(self));
+}
+
 static HRESULT STDMETHODCALLTYPE cui__wv_key_invoke(ICoreWebView2AcceleratorKeyPressedEventHandler *self,
     ICoreWebView2Controller *sender, ICoreWebView2AcceleratorKeyPressedEventArgs *args) {
     (void)sender;
@@ -146,12 +165,28 @@ static HRESULT STDMETHODCALLTYPE cui__wv_start_invoke(ICoreWebView2NavigationSta
     (void)sender;
     cui__webview_win32 *w = cui__wv_start_owner(self);
     if (!w->owner) return S_OK;
-    ICoreWebView2NavigationStartingEventArgs_get_NavigationId(args, &w->navigation);
     LPWSTR wide = NULL;
     ICoreWebView2NavigationStartingEventArgs_get_Uri(args, &wide);
     char *url = cui__webview_win_utf8(wide); CoTaskMemFree(wide);
+    if (!cui__webview_decide_navigation(w->owner, url)) {
+        ICoreWebView2NavigationStartingEventArgs_put_Cancel(args, TRUE);
+        free(url); return S_OK;
+    }
+    ICoreWebView2NavigationStartingEventArgs_get_NavigationId(args, &w->navigation);
     free(w->navigation_url); w->navigation_url = url;
     cui__webview_emit(w->owner, CUI_WEBVIEW_LOAD_STARTED, url, NULL, 0, 0);
+    return S_OK;
+}
+static HRESULT STDMETHODCALLTYPE cui__wv_frame_invoke(ICoreWebView2NavigationStartingEventHandler *self,
+    ICoreWebView2 *sender, ICoreWebView2NavigationStartingEventArgs *args) {
+    (void)sender;
+    cui__webview_win32 *w = cui__wv_frame_owner(self);
+    LPWSTR wide = NULL;
+    ICoreWebView2NavigationStartingEventArgs_get_Uri(args, &wide);
+    char *url = cui__webview_win_utf8(wide); CoTaskMemFree(wide);
+    if (!w->owner || !cui__webview_decide_navigation(w->owner, url))
+        ICoreWebView2NavigationStartingEventArgs_put_Cancel(args, TRUE);
+    free(url);
     return S_OK;
 }
 static HRESULT STDMETHODCALLTYPE cui__wv_finish_invoke(ICoreWebView2NavigationCompletedEventHandler *self,
@@ -212,6 +247,8 @@ static HRESULT STDMETHODCALLTYPE cui__wv_script_invoke(ICoreWebView2AddScriptToE
 static bool cui__webview_win_events(cui__webview_win32 *w) {
     if (FAILED(ICoreWebView2_add_NavigationStarting(w->web, &w->start_handler, &w->start_token))) return false;
     w->events |= CUI__WV_WIN_START;
+    if (FAILED(ICoreWebView2_add_FrameNavigationStarting(w->web, &w->frame_handler, &w->frame_token))) return false;
+    w->events |= CUI__WV_WIN_FRAME;
     if (FAILED(ICoreWebView2_add_NavigationCompleted(w->web, &w->finish_handler, &w->finish_token))) return false;
     w->events |= CUI__WV_WIN_FINISH;
     if (FAILED(ICoreWebView2_add_SourceChanged(w->web, &w->source_handler, &w->source_token))) return false;
@@ -271,6 +308,8 @@ static CONST_VTBL ICoreWebView2AcceleratorKeyPressedEventHandlerVtbl cui__wv_key
 
 static CONST_VTBL ICoreWebView2NavigationStartingEventHandlerVtbl cui__wv_start_vtable = {
     cui__wv_start_query, cui__wv_start_addref, cui__wv_start_release, cui__wv_start_invoke };
+static CONST_VTBL ICoreWebView2NavigationStartingEventHandlerVtbl cui__wv_frame_vtable = {
+    cui__wv_frame_query, cui__wv_frame_addref, cui__wv_frame_release, cui__wv_frame_invoke };
 static CONST_VTBL ICoreWebView2NavigationCompletedEventHandlerVtbl cui__wv_finish_vtable = {
     cui__wv_finish_query, cui__wv_finish_addref, cui__wv_finish_release, cui__wv_finish_invoke };
 static CONST_VTBL ICoreWebView2SourceChangedEventHandlerVtbl cui__wv_source_vtable = {
@@ -291,6 +330,7 @@ void *cui__webview_native_create(cui__webview *v) {
     w->controller_handler.lpVtbl = &cui__wv_ctrl_vtable;
     w->key_handler.lpVtbl = &cui__wv_key_vtable;
     w->start_handler.lpVtbl = &cui__wv_start_vtable;
+    w->frame_handler.lpVtbl = &cui__wv_frame_vtable;
     w->finish_handler.lpVtbl = &cui__wv_finish_vtable;
     w->source_handler.lpVtbl = &cui__wv_source_vtable;
     w->progress_handler.lpVtbl = &cui__wv_progress_vtable;
@@ -332,6 +372,7 @@ void cui__webview_native_destroy(cui__webview *v) {
     }
     if (w->web) {
         if (w->events & CUI__WV_WIN_START) ICoreWebView2_remove_NavigationStarting(w->web, w->start_token);
+        if (w->events & CUI__WV_WIN_FRAME) ICoreWebView2_remove_FrameNavigationStarting(w->web, w->frame_token);
         if (w->events & CUI__WV_WIN_FINISH) ICoreWebView2_remove_NavigationCompleted(w->web, w->finish_token);
         if (w->events & CUI__WV_WIN_SOURCE) ICoreWebView2_remove_SourceChanged(w->web, w->source_token);
         if (w->events & CUI__WV_WIN_PROGRESS) ICoreWebView2_remove_ContentLoading(w->web, w->progress_token);
@@ -413,6 +454,7 @@ void cui__webview_native_pump(void) {}
 
 typedef struct {
     ICoreWebView2ExecuteScriptCompletedHandler handler;
+    ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler startup_handler;
     LONG refs;
     cui__webview_win32 *host;
     cui_webview_result_fn callback;
@@ -422,8 +464,11 @@ static HRESULT STDMETHODCALLTYPE cui__wv_eval_query(ICoreWebView2ExecuteScriptCo
     static const GUID unknown = {0, 0, 0, {0xc0, 0, 0, 0, 0, 0, 0, 0x46}};
     if (!out) return E_POINTER;
     *out = NULL;
-    if (!IsEqualGUID(id, &unknown) && !IsEqualGUID(id, &IID_ICoreWebView2ExecuteScriptCompletedHandler)) return E_NOINTERFACE;
-    *out = self; InterlockedIncrement(&((cui__webview_win_eval *)self)->refs); return S_OK;
+    if (IsEqualGUID(id, &unknown) || IsEqualGUID(id, &IID_ICoreWebView2ExecuteScriptCompletedHandler)) *out = self;
+    else if (IsEqualGUID(id, &IID_ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler))
+        *out = &((cui__webview_win_eval *)self)->startup_handler;
+    else return E_NOINTERFACE;
+    InterlockedIncrement(&((cui__webview_win_eval *)self)->refs); return S_OK;
 }
 static ULONG STDMETHODCALLTYPE cui__wv_eval_addref(ICoreWebView2ExecuteScriptCompletedHandler *self) {
     return (ULONG)InterlockedIncrement(&((cui__webview_win_eval *)self)->refs);
@@ -447,16 +492,43 @@ static HRESULT STDMETHODCALLTYPE cui__wv_eval_invoke(ICoreWebView2ExecuteScriptC
 static CONST_VTBL ICoreWebView2ExecuteScriptCompletedHandlerVtbl cui__wv_eval_vtable = {
     cui__wv_eval_query, cui__wv_eval_addref, cui__wv_eval_release, cui__wv_eval_invoke };
 
-bool cui__webview_native_eval(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user) {
+static cui__webview_win_eval *cui__wv_startup_owner(ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler *self) {
+    return (cui__webview_win_eval *)((char *)self - offsetof(cui__webview_win_eval, startup_handler));
+}
+static HRESULT STDMETHODCALLTYPE cui__wv_startup_query(ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler *self, REFIID id, void **out) {
+    return cui__wv_eval_query(&cui__wv_startup_owner(self)->handler, id, out);
+}
+static ULONG STDMETHODCALLTYPE cui__wv_startup_addref(ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler *self) {
+    return cui__wv_eval_addref(&cui__wv_startup_owner(self)->handler);
+}
+static ULONG STDMETHODCALLTYPE cui__wv_startup_release(ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler *self) {
+    return cui__wv_eval_release(&cui__wv_startup_owner(self)->handler);
+}
+static HRESULT STDMETHODCALLTYPE cui__wv_startup_invoke(ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler *self, HRESULT error, LPCWSTR id) {
+    (void)id;
+    return cui__wv_eval_invoke(&cui__wv_startup_owner(self)->handler, error, L"null");
+}
+static CONST_VTBL ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandlerVtbl cui__wv_startup_vtable = {
+    cui__wv_startup_query, cui__wv_startup_addref, cui__wv_startup_release, cui__wv_startup_invoke };
+
+static bool cui__webview_win_script(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user, bool startup) {
     cui__webview_win32 *w = v->native;
     WCHAR *text = cui__webview_win_wide(script);
     cui__webview_win_eval *job = calloc(1, sizeof *job);
     if (!text || !job) { free(text); free(job); return false; }
     job->handler.lpVtbl = &cui__wv_eval_vtable; job->refs = 1; job->host = w; job->callback = callback; job->user = user;
+    job->startup_handler.lpVtbl = &cui__wv_startup_vtable;
     InterlockedIncrement(&w->refs);
-    HRESULT error = ICoreWebView2_ExecuteScript(w->web, text, &job->handler);
+    HRESULT error = startup ? ICoreWebView2_AddScriptToExecuteOnDocumentCreated(w->web, text, &job->startup_handler) :
+        ICoreWebView2_ExecuteScript(w->web, text, &job->handler);
     free(text); cui__wv_eval_release(&job->handler);
     return SUCCEEDED(error);
+}
+bool cui__webview_native_eval(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user) {
+    return cui__webview_win_script(v, script, callback, user, false);
+}
+bool cui__webview_native_startup_script(cui__webview *v, const char *script, cui_webview_result_fn callback, void *user) {
+    return cui__webview_win_script(v, script, callback, user, true);
 }
 bool cui__webview_native_user_agent(cui__webview *v) {
     cui__webview_win32 *w = v->native;

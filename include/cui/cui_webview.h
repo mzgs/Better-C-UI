@@ -41,6 +41,29 @@ typedef struct cui_webview_load_info {
 } cui_webview_load_info;
 typedef void (*cui_webview_event_fn)(cui_webview_handle *view, const cui_webview_event *event, void *user);
 typedef void (*cui_webview_result_fn)(cui_webview_handle *view, const char *json, const char *error, void *user);
+typedef bool (*cui_webview_navigation_fn)(cui_webview_handle *view, const char *url, void *user);
+/* Return true to allow a document navigation, false to cancel it. NULL restores
+ * native defaults. May be installed while STARTING. Called synchronously on the
+ * app thread for frame navigations, including links, scripts and history; may
+ * run more than once per load. URL lives only during the callback. A callback
+ * may destroy the view, which cancels navigation. Do not navigate or destroy
+ * the app inside it; queue those actions for the frame callback. To open a
+ * link externally, copy the URL, cancel, then call cui_app_open_url in a frame.
+ * Popups, subresources and same-document URL changes are outside this policy.
+ * Engines may check redirect destinations only after requesting them, before
+ * committing the document. This is not a network or JavaScript sandbox. */
+CUI_WEBVIEW_API void cui_webview_set_navigation_handler(cui_webview_handle *view, cui_webview_navigation_fn handler, void *user);
+/* Adds a script for every future main-frame document at document start, before
+ * page scripts, in the page's JavaScript world. Requires READY. Copies script;
+ * registrations last until destruction and do not run in the current document.
+ * Uses a main-frame guard block: use window properties to share values with the
+ * page. Combine dependent code in one script; ordering between registrations
+ * and the message bridge is engine-dependent. Registration is asynchronous on
+ * Windows: navigate from the successful completion callback (json="null").
+ * Callback may run before return; false means rejected with no callback.
+ * NULL callback is allowed; callbacks are suppressed after destruction.
+ * Success confirms registration, not JavaScript syntax or execution. */
+CUI_WEBVIEW_API bool cui_webview_add_startup_script(cui_webview_handle *view, const char *script, cui_webview_result_fn callback, void *user);
 /* Callbacks run on the app thread, outside or inside a CUI frame. Event/result
  * strings live only during the callback. A callback may destroy its handle;
  * use cui_app_quit rather than destroying the app inside a callback.
