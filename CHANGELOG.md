@@ -4,6 +4,10 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ## Unreleased
 
+### Fixed
+
+- Video seek-bar dragging no longer repeats seeks while the pointer is held still and the playback clock updates, preventing repeated footage after scrubbing.
+
 ### Changed
 
 - **Tree-sitter is a separate add-on** in `addons/tree_sitter/`: link `cui::tree_sitter` (installed packages request `COMPONENTS tree_sitter`). Editor/code-block options use `.highlighter = cui_tree_sitter_highlighter(document)` in place of `.tree_sitter`. The core exposes a generic `cui_code_highlighter` hook and has no Tree-sitter dependency, including when the add-on is built. Amalgamated and pkg-config distributions provide separate add-on artifacts.

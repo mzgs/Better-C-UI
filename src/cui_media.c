@@ -52,6 +52,7 @@ void cui_webview_ex(cui_ctx *ui, const char *id_str, cui_webview_handle *view, c
     cui_pop_disabled(ui);
 }
 
+typedef struct { float seek; bool scrubbing; } cui__video_state;
 typedef struct { cui_texture frame; float aspect; bool focus; } cui__video_paint;
 
 static void cui__paint_video(cui_ctx *ui, cui_node *n, void *data) {
@@ -133,10 +134,15 @@ int cui_video_player_ex(cui_ctx *ui, const char *id_str, cui_video *v, const cui
     if (!o->no_controls) cui_column(ui, .width = CUI_FILL, .pad = 10, .gap = 6) {
         int controls = cui__current(ui);
         cui__keep_ltr(ui, controls);
-        float progress = seekable ? v->position / v->duration : 0;
-        if (cui_slider(ui, "##seek", &progress, 0, 1, .disabled = !seekable)) {
-            v->position = progress * v->duration; result |= CUI_PLAYER_SEEK;
-        }
+        cui__video_state *st = cui_state(ui, id, sizeof *st);
+        if (!ui->mdown[0] || !seekable || cui_is_disabled(ui)) st->scrubbing = false;
+        /* Compare held input to its last target, not the asynchronous playback clock. */
+        float progress = st->scrubbing ? st->seek : seekable ? v->position / v->duration : 0;
+        bool sought = cui_slider(ui, "##seek", &progress, 0, 1, .disabled = !seekable);
+        st->scrubbing = ui->mdown[0] && ui->active == ui->last_id && seekable && !cui_is_disabled(ui);
+        st->seek = progress;
+        if (sought || st->scrubbing) v->position = progress * v->duration;
+        if (sought) result |= CUI_PLAYER_SEEK;
         cui_row(ui, .width = CUI_FILL, .gap = 6, .align = CUI_ALIGN_CENTER, .wrap = true) {
             if (cui_button(ui, "##play", .icon = v->playing ? CUI_ICON_PAUSE : CUI_ICON_PLAY,
                            .tooltip = v->playing ? "Pause" : "Play", .width = CUI_PX(ui->theme.control_md), .variant = CUI_BUTTON_GHOST)) {

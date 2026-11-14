@@ -4217,6 +4217,30 @@ static void test_video(void) {
     cui_rect r = rect_of(ui, a.id);
     click_at(ui, build_video, &a, r.x + r.w * 0.75f, r.y + 201);
     CHECK(a.video.position > 85 && a.video.position < 95);
+    /* Backend clock updates must not repeat a stationary drag's seek. */
+    cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+    run(ui, build_video, &a, 1);
+    cui_input_mouse_move(ui, r.x + r.w * 0.5f, r.y + 201);
+    a.events = 0;
+    run(ui, build_video, &a, 1);
+    CHECK(a.events & CUI_PLAYER_SEEK);
+    float scrubbed = a.video.position;
+    for (int i = 0; i < 5; i++) {
+        a.video.position = scrubbed + (i % 2 ? -2 : 0.1f);
+        a.events = 0;
+        run(ui, build_video, &a, 1);
+        CHECK(!(a.events & CUI_PLAYER_SEEK));
+        CHECK_NEAR(a.video.position, scrubbed, 0.001);
+    }
+    cui_input_mouse_move(ui, r.x + r.w * 0.6f, r.y + 201);
+    run(ui, build_video, &a, 1);
+    CHECK((a.events & CUI_PLAYER_SEEK) && a.video.position > scrubbed);
+    float resumed = a.video.position + 0.1f;
+    a.video.position = resumed; a.events = 0;
+    cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+    run(ui, build_video, &a, 1);
+    CHECK(!(a.events & CUI_PLAYER_SEEK));
+    CHECK_NEAR(a.video.position, resumed, 0.001);
     /* Changing a button's icon must keep keyboard focus on that button. */
     key(ui, build_video, &a, CUI_KEY_TAB, 0);
     key(ui, build_video, &a, CUI_KEY_ENTER, 0);

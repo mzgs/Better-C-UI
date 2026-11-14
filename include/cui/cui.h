@@ -2223,7 +2223,8 @@ typedef struct cui_video_player_opts {
     bool no_controls;         /* surface only; playback input still works on the focused surface */
 } cui_video_player_opts;
 /* Writes position, volume, playing and muted on input; returns CUI_PLAYER_*
- * flags. FULLSCREEN only requests a change: the app changes its window and
+ * flags. A held seek drag keeps its target; clock updates alone do not seek.
+ * FULLSCREEN only requests a change: the app changes its window and
  * updates fullscreen. NULL video returns 0 without building anything. */
 CUI_API int cui_video_player_ex(cui_ctx *ui, const char *id, cui_video *video, const cui_video_player_opts *opts);
 
