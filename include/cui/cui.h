@@ -2205,7 +2205,8 @@ enum { CUI_PLAYER_TOGGLE = 1, CUI_PLAYER_PREV = 2, CUI_PLAYER_NEXT = 4, CUI_PLAY
 CUI_API int cui_now_playing_ex(cui_ctx *ui, const char *id, cui_now_playing *np, const cui_now_playing_opts *opts);
 
 /* Video surface and controls. The app owns decoding, audio, the frame texture
- * and the playback clock; this component never opens files or advances time. */
+ * and the playback clock; this component never opens files or advances time.
+ * Optional libmpv playback is in cui_mpv.h (link cui::video). */
 typedef struct cui_video {
     cui_texture frame;        /* current frame or poster; 0 shows an empty surface */
     float aspect;             /* frame width / height; 0 means 16:9; fitted without cropping */

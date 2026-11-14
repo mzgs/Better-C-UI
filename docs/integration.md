@@ -2,6 +2,81 @@
 
 `cui_app` is optional. The core of CUI is a pure library: you give it input and a viewport size, it gives you vertices. That makes it easy to put CUI inside a game engine, an existing app or a custom window, on any graphics API.
 
+## Optional libmpv playback
+
+Enable `CUI_VIDEO=ON`, include `<cui/cui_mpv.h>` and link `cui::video`. This separate static add-on requires the app layer and **libmpv client API 2.0+ (mpv 0.35+)**. Supply libmpv yourself; CUI never downloads it or links it into the core. CMake discovers `MPV_INCLUDE_DIR` and `MPV_LIBRARY`, with pkg-config hints when available. Installed consumers use `find_package(cui REQUIRED COMPONENTS video)`. For pkg-config use `cui-video`; for the amalgamated distribution compile the emitted `cui_mpv.c` separately and link libmpv.
+
+```sh
+# macOS: brew install mpv
+# Debian/Ubuntu: sudo apt install libmpv-dev
+cmake -S . -B build-video -DCMAKE_BUILD_TYPE=Debug -DCUI_VIDEO=ON
+cmake --build build-video --parallel
+./build-video/examples/video /path/to/movie.mkv
+```
+
+On **macOS**, the default build also runs the `video_bundle` target and creates a self-contained `build-video/examples/video.app`. It requires CMake 3.16+ and the Xcode command-line tools. The build machine still needs the libmpv development installation; people running the completed `.app` do not need Homebrew or a separate libmpv installation.
+
+```sh
+cmake --build build-video --target video_bundle --parallel
+open build-video/examples/video.app
+# Or pass a file/URL directly to the bundled executable:
+./build-video/examples/video.app/Contents/MacOS/video /path/to/movie.mkv
+```
+
+Copy the whole `.app`. `cmake/BundleVideo.cmake` gathers transitive libraries, embeds them under `Contents/Frameworks`, rewrites Mach-O load paths, verifies the dependency closure and re-signs the changed binaries with ad-hoc signatures. It builds in a staging directory before replacing the previous generated bundle. The terminal executable remains available and uses the development libraries. The bundle includes CUI/font notices and available installed Homebrew dependency license files under `Contents/Resources/licenses`; the distribution licenses of the actual runtime still apply.
+
+The complete app is larger than libmpv alone because FFmpeg, codec and subtitle libraries are included too. Size and minimum macOS version depend on the installed dependency builds. This packages the current architecture; it does not create a universal app. Ad-hoc signing enables local execution; public distribution still needs your Developer ID signing and notarization. Rebuild `video_bundle` after updating dependencies.
+
+With Python 3 available, `ctest --test-dir build-video -R cui_test_video_bundle --output-on-failure` audits every embedded load path and signature, relocates the app to a path with spaces, then launches both renderers with Homebrew file access denied. This is a native desktop test. No player code or core dependencies change for bundling.
+
+On Windows supply matching libmpv development headers and its import library, and distribute its runtime DLL/dependencies with the application. Codec/container support depends on that libmpv/FFmpeg build. MKV, MP4, MOV and WebM are typical supported containers; an extension alone cannot guarantee its tracks are decodable. mpv defaults to GPL; LGPL builds exist. Check the licenses of the actual runtime and dependencies you distribute. The CUI wrapper remains MIT licensed.
+
+```c
+#include <cui/cui_mpv.h>
+
+int error = 0;
+cui_mpv *player = cui_mpv_create(app, &error);
+if (!player) { /* report cui_mpv_error_string(error) */ }
+else {
+    error = cui_mpv_load(player, path_or_url);  /* starts playback asynchronously */
+    while (error >= 0 && cui_app_frame(app)) {
+        cui_ctx *ui = cui_app_ui(app);
+        float scale = cui_dpi_scale(ui);
+        cui_mpv_update(player, (int)(480 * scale), (int)(270 * scale));
+        cui_video video = *cui_mpv_state(player);
+        int events = cui_video_player(ui, "movie", &video, .height = 270);
+        error = cui_mpv_apply(player, &video, events);
+        /* Handle CUI_PLAYER_FULLSCREEN in your window integration.
+         * Read cui_mpv_last_error(player) for asynchronous load/playback errors. */
+    }
+    cui_mpv_destroy(player);       /* before cui_app_destroy(app) */
+}
+```
+
+Call all player APIs on the app's UI/GL thread. Copy the borrowed state before passing it to `cui_video_player`; the player owns its frame texture. `cui_mpv_apply` handles toggle, seek, volume and mute. Play after EOF seeks back to the beginning. Fullscreen follows the existing UI component contract: it is a request for the host window to implement. The example reports that request; it does not change native window mode.
+
+Performance behavior:
+
+- **GPU output:** one reusable RGBA texture and FBO at the displayed size, with no CPU readback or RGBA upload on this path. `hwdec=auto` requests supported hardware decoding. Actual decoder interop depends on the OS, codec and GL context; fallback decoding can use CPU or copy-back. In particular the native X11 backend uses GLX, while direct VA-API interop usually needs EGL; native Win32 WGL is also more restricted than ANGLE. GPU output does not promise zero-copy decoding on every backend.
+- **Software fallback:** `hwdec=auto-copy`, one retained output buffer plus the software renderer's texture, both at displayed size. Pointer and stride are aligned to 64 bytes; uploads happen only after rendering a new frame or resizing. This path costs substantially more CPU and memory bandwidth than OpenGL. Prefer a smaller output surface when software rendering.
+- **Scheduling:** libmpv callbacks wake the native event loop. No continuous mode, timer polling or per-frame property queries are needed. Requests use asynchronous libmpv calls; observed properties supply position, duration and transport state. Once a paused frame is settled, update does not render/upload it again. UI input/animations can still wake CUI independently.
+- **Memory:** forward demuxer cache is configured for 16 MiB, backward cache for 4 MiB, with two seconds of read-ahead. These are demuxer settings, not a total RAM cap: decoder reference frames, imported surfaces, subtitles, audio and protocol buffers add memory. High-bitrate/network media can need different buffering policies in a future extended API.
+- **Visibility/lifetime:** continue calling update while a player exists so its event queue drains. Either output dimension <= 0 drops the output texture/buffer and discards pending video frames while audio/time continue. Pause explicitly if hidden playback should stop. Resolution changes allocate once; equal-sized updates reuse storage. Destroy stops and joins libmpv callbacks before releasing resources; the app, renderer and current GL context must still exist.
+
+The add-on disables user mpv configuration, scripts, external URL extractors, built-in input and mpv's on-screen controls. Direct media URLs work; arbitrary video website pages and DRM playback are outside this add-on.
+
+Tests with libmpv installed:
+
+```sh
+ctest --test-dir build-video --output-on-failure
+# Native renderer/texture orientation check (requires a desktop):
+ffmpeg -f lavfi -i 'color=c=red:s=160x96:r=24:d=3,drawbox=x=0:y=48:w=160:h=48:color=green:t=fill' -c:v libx264 -pix_fmt yuv420p video-check.mkv
+./build-video/tests/cui_mpv_smoke video-check.mkv /tmp/video-gl.png
+CUI_RENDERER=software ./build-video/tests/cui_mpv_smoke video-check.mkv /tmp/video-sw.png
+```
+
+`cui_test_mpv` creates a tiny Y4M fixture at runtime and checks decoded pixels, controls, seeking/replay, resizing, aligned buffer reuse, hidden output, invalid inputs, failed loading and destruction during loading. It needs no window or audio device. The explicit native smoke test checks both orientation and paused-frame reuse through the actual app renderer.
+
 ## The core loop
 
 ```c

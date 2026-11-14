@@ -511,6 +511,8 @@ void cui__plat_set_size(cui_app *app, int width, int height) {
 
 void *cui__plat_native(cui_app *app) { return cui__w(app)->hwnd; }
 
+void cui__plat_wakeup(cui_app *app) { PostMessageW(cui__w(app)->hwnd, WM_NULL, 0, 0); }
+
 void cui__plat_wait(cui_app *app, double timeout) {
     if (timeout != 0) {
         /* QS_ALLINPUT without QS_RAWINPUT: CUI does not register for raw input, and Wine

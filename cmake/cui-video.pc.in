@@ -1,0 +1,11 @@
+prefix=${pcfiledir}/../..
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: cui-video
+Description: Optional libmpv playback for CUI
+Version: @PROJECT_VERSION@
+Requires: cui
+Requires.private: mpv >= 2.0
+Cflags: -I${includedir}
+Libs: -L${libdir} -lcui_video

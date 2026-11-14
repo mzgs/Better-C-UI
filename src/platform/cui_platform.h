@@ -45,7 +45,7 @@ struct cui_app {
 bool cui__plat_init(cui_app *app);
 void cui__plat_shutdown(cui_app *app);
 bool cui__plat_gl_create(cui_app *app, bool vsync);
-void *cui__plat_gl_proc(const char *name);
+CUI_API void *cui__plat_gl_proc(const char *name);
 void cui__plat_gl_swap(cui_app *app);
 double cui__plat_refresh_hz(cui_app *app);   /* refresh rate of the window's display, 0 when unknown */
 void cui__plat_gl_release(cui_app *app);   /* drop the GL context: the window goes on with software pictures */
@@ -54,6 +54,7 @@ void cui__plat_present(cui_app *app, const void *bgra, int w, int h, int stride)
  * backend cannot, and the whole buffer is shown instead */
 bool cui__plat_present_part(cui_app *app, const void *bgra, int w, int h, int stride, int x, int y, int pw, int ph);
 void cui__plat_wait(cui_app *app, double timeout);   /* < 0 waits for the next event */
+void cui__plat_wakeup(cui_app *app);                 /* thread-safe; app must outlive caller */
 void cui__plat_metrics(cui_app *app, float *w, float *h, float *scale, int *fb_w, int *fb_h);
 void cui__plat_set_title(cui_app *app, const char *title);
 void cui__plat_set_size(cui_app *app, int w, int h);

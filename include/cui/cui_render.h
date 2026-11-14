@@ -61,6 +61,10 @@ typedef struct cui_gl_renderer cui_gl_renderer;
 CUI_API cui_gl_renderer *cui_gl_create(cui_gl_loader loader);
 CUI_API void cui_gl_destroy(cui_gl_renderer *r);
 CUI_API cui_renderer_iface cui_gl_iface(cui_gl_renderer *r);
+/* Borrowed GL_TEXTURE_2D name for a live texture owned by this renderer, or 0.
+ * For rendering into an RGBA8 texture via an FBO; never delete the GL name.
+ * Call on the renderer's GL thread. The name expires with the CUI texture. */
+CUI_API unsigned int cui_gl_texture_name(const cui_gl_renderer *r, cui_texture texture);
 /* Renders into the currently bound framebuffer. Set clear to false when
  * drawing the UI on top of your own scene. */
 CUI_API void cui_gl_render(cui_gl_renderer *r, const cui_draw_data *dd, bool clear);

@@ -212,6 +212,14 @@ static void cui__sdl_event(cui_app *app, SDL_Event *e) {
     }
 }
 
+void cui__plat_wakeup(cui_app *app) {
+    (void)app;
+    SDL_Event event;
+    memset(&event, 0, sizeof event);
+    event.type = SDL_USEREVENT;
+    SDL_PushEvent(&event);
+}
+
 void cui__plat_wait(cui_app *app, double timeout) {
     SDL_Event e;
     if (timeout != 0) {

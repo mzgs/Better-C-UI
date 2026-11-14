@@ -121,6 +121,7 @@ void cui_app_destroy(cui_app *app) {
 cui_app *cui__app_or_current(cui_app *app) { return app ? app : cui__current_app; }
 
 cui_ctx *cui_app_ui(cui_app *app) { app = cui__app_or_current(app); return app ? app->ui : NULL; }
+void cui_app_wakeup(cui_app *app) { if (app) cui__plat_wakeup(app); }
 void cui_app_quit(cui_app *app) { app = cui__app_or_current(app); if (app) app->running = false; }
 bool cui_app_is_software(cui_app *app) { app = cui__app_or_current(app); return app && app->software; }
 void *cui_app_native_window(cui_app *app) { app = cui__app_or_current(app); return app ? cui__plat_native(app) : NULL; }

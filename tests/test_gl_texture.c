@@ -63,6 +63,12 @@ int main(void) {
     fail_alloc = false;
     CHECK(cui__gl_tex_create(&r, 4, 4, CUI_TEXTURE_RGBA8, NULL) == 17);
     CHECK(r.tex_cap >= 17 && r.tex_count == 17);
+    CHECK(cui_gl_texture_name(&r, 1) == 1);
+    CHECK(cui_gl_texture_name(NULL, 1) == 0);
+    CHECK(cui_gl_texture_name(&r, 0) == 0);
+    CHECK(cui_gl_texture_name(&r, (cui_texture)SIZE_MAX) == 0);
+    r.tex[1].id = 0;
+    CHECK(cui_gl_texture_name(&r, 2) == 0);
     unsigned char pixels[68] = {0};
     cui__gl_tex_update(&r, 1, -1, 0, 4, 4, pixels, 16);
     cui__gl_tex_update(&r, 1, 0, 0, 5, 4, pixels, 20);

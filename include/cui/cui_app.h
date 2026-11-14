@@ -62,6 +62,9 @@ CUI_API void cui_app_destroy(cui_app *app);
  * called. */
 CUI_API bool cui_app_frame(cui_app *app);
 CUI_API cui_ctx *cui_app_ui(cui_app *app);
+/* Wakes an event-driven app from any thread. Pass a concrete, live app; stop
+ * and join callback/worker threads before destroying it. Does not touch UI state. */
+CUI_API void cui_app_wakeup(cui_app *app);
 
 /* Creates the app, calls frame() until the window closes, destroys it. */
 CUI_API int cui_app_run(const cui_app_desc *desc, void (*frame)(cui_ctx *ui, void *user), void *user);

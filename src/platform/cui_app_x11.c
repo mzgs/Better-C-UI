@@ -14,6 +14,8 @@
 #include <sys/select.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 
 typedef struct __GLXFBConfigRec *GLXFBConfig_;
 typedef struct __GLXcontextRec *GLXContext_;
@@ -52,6 +54,7 @@ typedef const char *(*PFN_glXQueryExtensionsString)(Display *, int);
 
 typedef struct {
     Display *dpy;
+    int wake_fd[2];
     int screen;
     Window win;
     Colormap cmap;
@@ -152,6 +155,13 @@ bool cui__plat_init(cui_app *app) {
     XInitThreads();
     x->dpy = XOpenDisplay(NULL);
     if (!x->dpy) { free(x); app->plat = NULL; return false; }
+    if (pipe(x->wake_fd) != 0) { XCloseDisplay(x->dpy); free(x); app->plat = NULL; return false; }
+    if (ConnectionNumber(x->dpy) >= FD_SETSIZE || x->wake_fd[0] >= FD_SETSIZE || x->wake_fd[1] >= FD_SETSIZE ||
+        fcntl(x->wake_fd[0], F_SETFL, O_NONBLOCK) < 0 || fcntl(x->wake_fd[1], F_SETFL, O_NONBLOCK) < 0 ||
+        fcntl(x->wake_fd[0], F_SETFD, FD_CLOEXEC) < 0 || fcntl(x->wake_fd[1], F_SETFD, FD_CLOEXEC) < 0) {
+        close(x->wake_fd[0]); close(x->wake_fd[1]);
+        XCloseDisplay(x->dpy); free(x); app->plat = NULL; return false;
+    }
     x->screen = DefaultScreen(x->dpy);
     x->scale = cui__x11_dpi_scale(x->dpy);
     Window root = RootWindow(x->dpy, x->screen);
@@ -193,7 +203,10 @@ bool cui__plat_init(cui_app *app) {
     x->height = (int)(app->desc.height * x->scale);
     x->win = XCreateWindow(x->dpy, root, 0, 0, (unsigned)x->width, (unsigned)x->height, 0, x->depth, InputOutput, x->visual,
                            CWColormap | CWBorderPixel | CWBackPixel | CWEventMask, &swa);
-    if (!x->win) { XCloseDisplay(x->dpy); free(x); app->plat = NULL; return false; }
+    if (!x->win) {
+        close(x->wake_fd[0]); close(x->wake_fd[1]);
+        XCloseDisplay(x->dpy); free(x); app->plat = NULL; return false;
+    }
     x->wm_protocols = XInternAtom(x->dpy, "WM_PROTOCOLS", False);
     x->wm_delete = XInternAtom(x->dpy, "WM_DELETE_WINDOW", False);
     x->net_wm_name = XInternAtom(x->dpy, "_NET_WM_NAME", False);
@@ -277,6 +290,7 @@ void cui__plat_shutdown(cui_app *app) {
     XDestroyWindow(x->dpy, x->win);
     XFreeColormap(x->dpy, x->cmap);
     XCloseDisplay(x->dpy);
+    close(x->wake_fd[0]); close(x->wake_fd[1]);
     free(x->clip_owned);
     free(x->clip_read);
     free(x);
@@ -698,6 +712,14 @@ static void cui__x11_event(cui_app *app, XEvent *ev) {
     }
 }
 
+void cui__plat_wakeup(cui_app *app) {
+    /* A full pipe already holds a wakeup; callbacks never wait on the UI. */
+    char byte = 0;
+    ssize_t written;
+    do { written = write(cui__x(app)->wake_fd[1], &byte, 1); } while (written < 0 && errno == EINTR);
+    (void)written;
+}
+
 void cui__plat_wait(cui_app *app, double timeout) {
     cui__x11 *x = cui__x(app);
     XFlush(x->dpy);
@@ -706,14 +728,17 @@ void cui__plat_wait(cui_app *app, double timeout) {
         fd_set set;
         FD_ZERO(&set);
         FD_SET(fd, &set);
+        FD_SET(x->wake_fd[0], &set);
         struct timeval tv, *ptv = NULL;
         if (timeout > 0) {
             tv.tv_sec = (long)timeout;
             tv.tv_usec = (long)((timeout - (double)tv.tv_sec) * 1e6);
             ptv = &tv;
         }
-        select(fd + 1, &set, NULL, NULL, ptv);
+        select(CUI_MAX(fd, x->wake_fd[0]) + 1, &set, NULL, NULL, ptv);
     }
+    char bytes[128];
+    while (read(x->wake_fd[0], bytes, sizeof bytes) > 0) {}
     while (XPending(x->dpy)) {
         XEvent ev;
         XNextEvent(x->dpy, &ev);

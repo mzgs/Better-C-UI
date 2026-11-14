@@ -27,6 +27,7 @@ The optional native browser is emitted separately as cui_webview.h + cui_webview
 Compile and link it explicitly with the matching core and the platform browser SDK.
 The Tree-sitter add-on is emitted as cui_tree_sitter.h + cui_tree_sitter.c; compile
 it separately and link the runtime and your chosen grammar.
+The libmpv add-on is emitted as cui_mpv.h + cui_mpv.c; compile separately and link libmpv.
 """
 import os
 import re
@@ -185,6 +186,17 @@ def build_tree_sitter(header_seen):
     return header.text(), source.text()
 
 
+def build_video(header_seen):
+    header = Emitter()
+    header.seen = set(header_seen)
+    header.file("include/cui/cui_mpv.h")
+    source = Emitter()
+    source.seen = set(header.seen)
+    source("#ifdef CUI_NO_APP\n#error \"The video add-on requires the app layer\"\n#endif\n")
+    source.file("addons/video/cui_mpv.c")
+    return header.text(), source.text()
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "build", "amalgamation")
     os.makedirs(out, exist_ok=True)
@@ -211,7 +223,12 @@ def main():
         f.write(banner("optional Tree-sitter add-on header") + '#include "cui.h"\n' + ts_header)
     with open(os.path.join(out, "cui_tree_sitter.c"), "w", encoding="utf-8") as f:
         f.write(banner("optional Tree-sitter add-on") + POSIX + '#include "cui_tree_sitter.h"\n' + ts_source)
-    for name in ["cui.h", "cui.c", "cui_single.h", "cui_webview.h", "cui_webview.c", "cui_tree_sitter.h", "cui_tree_sitter.c"]:
+    video_header, video_source = build_video(he.seen)
+    with open(os.path.join(out, "cui_mpv.h"), "w", encoding="utf-8") as f:
+        f.write(banner("optional libmpv add-on header") + '#include "cui.h"\n' + video_header)
+    with open(os.path.join(out, "cui_mpv.c"), "w", encoding="utf-8") as f:
+        f.write(banner("optional libmpv add-on") + POSIX + '#include "cui_mpv.h"\n' + video_source)
+    for name in ["cui.h", "cui.c", "cui_single.h", "cui_webview.h", "cui_webview.c", "cui_tree_sitter.h", "cui_tree_sitter.c", "cui_mpv.h", "cui_mpv.c"]:
         p = os.path.join(out, name)
         print(f"  {name:13} {os.path.getsize(p) // 1024:6d} KB  {p}")
 

@@ -45,6 +45,7 @@ cc -O1 -DCUI_SOAK_NO_X11 -DSOAK_APP='"../examples/mail.c"' -I include -I src tes
 
 ## Rules
 
+- **Video stays optional.** `CUI_VIDEO` builds `cui::video` in `addons/video/` against app-supplied libmpv. The core never includes or links libmpv. Keep callbacks thread-safe: only wake the app; UI/GL work and asynchronous controls run on the UI thread. Destroy players before their app/renderer. Test playback, resize, pause/replay, hidden output and failed loading with both renderers when changing this add-on.
 - **Keep changes focused.** Preserve unrelated work. Use C99, 4 spaces, same-line braces, `cui_` public names and `cui__` internal names. Do not add default dependencies beyond the OS and vendored `third_party/`; `CUI_TREE_SITTER` builds a separate `cui::tree_sitter` add-on using an app-supplied runtime. Keep the core independent of add-on dependencies. Test optional backend changes with `-DCUI_TREE_SITTER=ON` in a separate build. `CUI_TREE_SITTER_DEMO` separately downloads the pinned GPUI Kit grammars for the demo only.
 - **Search before you write a helper.** Shared logic lives once in `cui_internal.h`: `CUI_C` for theme colors, `cui__emphasis` for the selected or active color, `cui__fs` for font sizes, `CUI__T_*` and `CUI__SPRING_*` for motion, `cui__draw_text_at` for text placed by a point. Do not copy a helper into another file.
 - **Follow the component outline** in `docs/architecture.md`: options struct with a zero default, `_ex` function plus macro in `cui.h`, one state struct, paint data in frame memory, theme tokens instead of raw colors.

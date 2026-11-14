@@ -402,6 +402,16 @@ void cui__plat_set_size(cui_app *app, int w, int h) {
 
 void *cui__plat_native(cui_app *app) { return (__bridge void *)cui__p(app).window; }
 
+void cui__plat_wakeup(cui_app *app) {
+    (void)app;
+    @autoreleasepool {
+        NSEvent *event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+            location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0
+            context:nil subtype:0 data1:0 data2:0];
+        [NSApp postEvent:event atStart:NO];
+    }
+}
+
 void cui__plat_wait(cui_app *app, double timeout) {
     @autoreleasepool {
         NSDate *until = timeout < 0 ? [NSDate distantFuture] : [NSDate dateWithTimeIntervalSinceNow:timeout];

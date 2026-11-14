@@ -14,6 +14,10 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Added
 
+- **Self-contained macOS video example**: the default video-enabled build also creates `examples/video.app`, bundling libmpv and its transitive runtime libraries, rewriting load paths and applying local ad-hoc signatures. Available Homebrew dependency license notices are included. End users do not need Homebrew; the terminal executable still uses the development installation.
+
+- **Optional libmpv playback add-on** (`CUI_VIDEO=ON`, `cui::video`): files and URLs, including MKV, with asynchronous playback controls, hardware decoding where supported, direct OpenGL texture output, aligned software fallback, bounded demuxer read-ahead and event-driven wakeups. Includes a `video` example and real decoding/render checks. The core has no libmpv dependency. See [setup](docs/integration.md#optional-libmpv-playback).
+
 - **GPUI Kit grammar Tree-sitter demo** (`CUI_TREE_SITTER_DEMO=ON`) with GPUI Kit’s full parser set (37 language entries from 34 version-pinned crates), generated baseline queries, a searchable language picker, per-language drafts and a parser/query self-check. The bundle is confined to the demo; core and add-on size are unchanged. Embedded-language injections and local-variable analysis are not included.
 
 - **Optional Tree-sitter highlighting** for code editors and code blocks (`CUI_TREE_SITTER=ON`), using app-supplied grammars and queries, retained syntax trees, automatic edit detection and same-frame colors. The default remains the built-in lexer. Includes query validation, fallback diagnostics and setup documentation.

@@ -60,6 +60,8 @@ File dialogs, opening links and screenshots are in [Getting started](getting-sta
 
 The [media UI example](../examples/media_ui.c) demonstrates video controls and a now-playing card. These components update UI state and return input events; the app supplies any playback engine. See [Video player](components-more.md#video-player).
 
+For actual media playback, enable `CUI_VIDEO=ON` and run the [video example](../examples/video.c): `./build/examples/video movie.mkv`. It uses the separate `cui::video` libmpv add-on with file/URL input, transport controls, hardware decoding when supported and renderer-sized output. See [setup](integration.md#optional-libmpv-playback).
+
 ## When frames happen
 
 A CUI app is event driven. A frame is drawn when there is input, while something animates, and when a component needs one (a blinking caret, a tooltip's delay, a toast about to leave). Otherwise the app sleeps and uses no CPU.
@@ -123,10 +125,10 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=MinSizeRel
 cmake --build build
 ```
 
-The result is one executable. The library, the fonts and the icons are inside it, so there is nothing to install beside it.
+For apps using only the core, the result is one executable with the library, fonts and icons inside it. Optional add-ons can require additional runtime libraries.
 
 - **Windows:** the app has no console window. Add an icon and version details with your own `.rc` file, as for any Windows program.
-- **macOS:** the build gives a plain executable. To get an app with an icon in the Dock, set `MACOSX_BUNDLE` on your target and supply an `Info.plist`, as for any CMake app. An unsigned app is stopped by Gatekeeper on other people's machines until you sign and notarize it.
+- **macOS:** examples normally build plain executables. The video-enabled build also produces `examples/video.app` with libmpv and its runtime dependencies bundled, so its users do not need Homebrew. See [video packaging](integration.md#optional-libmpv-playback). For your own app, set `MACOSX_BUNDLE` and supply an `Info.plist`; sign and notarize it for public distribution.
 - **Linux:** the app needs `libX11` at run time, which desktop systems have (through XWayland on Wayland). OpenGL is loaded when it is present, and the software renderer is used when it is not, so the app also starts on a machine with no GPU driver.
 
 CUI is MIT licensed. The fonts and icons inside your executable have their own licenses, which ask you to keep their notices: ship [THIRD_PARTY.md](../THIRD_PARTY.md) and the license files it names with your app, or build with your own fonts (`CUI_NO_DEFAULT_FONTS`, see [Getting started](getting-started.md#options)).

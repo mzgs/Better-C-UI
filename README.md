@@ -114,6 +114,10 @@ Better-C-UI is a good fit for a desktop tool, an editor, a dashboard or a game's
 
 The optional [native WebView add-on](docs/integration.md#native-webview-setup) is built separately with `CUI_WEBVIEW=ON`. Link `cui::webview` and include `<cui/cui_webview.h>` to embed web content. Ordinary `cui::cui` applications keep their existing dependencies.
 
+The optional [libmpv playback add-on](docs/integration.md#optional-libmpv-playback) uses `CUI_VIDEO=ON` and `cui::video`. It supplies video/audio playback for the existing controls, with direct GPU texture output, software fallback and event-driven scheduling. Try `./build/examples/video movie.mkv`; libmpv is app-supplied and stays outside the core.
+
+On macOS the video-enabled build also creates `build/examples/video.app`, bundling libmpv and its runtime dependencies. Copy the whole `.app` to run without Homebrew. Rebuild it with `cmake --build build --target video_bundle`; packaging requires CMake 3.16+.
+
 The [optional Tree-sitter add-on](docs/integration.md#optional-tree-sitter-highlighting) adds grammar-based editor and code-block highlighting with `CUI_TREE_SITTER=ON` and the separate `cui::tree_sitter` target. Applications supply the runtime, grammars and queries; the built-in highlighter stays the default. Enable `CUI_TREE_SITTER_DEMO` for a [native editor with GPUI Kit’s grammar set and a language picker](examples/tree_sitter/README.md).
 
 ## Install

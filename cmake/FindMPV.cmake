@@ -1,0 +1,15 @@
+# libmpv's installed pkg-config version is the client API version.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(PC_MPV QUIET mpv>=2.0)
+endif()
+find_path(MPV_INCLUDE_DIR NAMES mpv/client.h HINTS ${PC_MPV_INCLUDE_DIRS})
+find_library(MPV_LIBRARY NAMES mpv libmpv mpv-2 HINTS ${PC_MPV_LIBRARY_DIRS})
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(MPV REQUIRED_VARS MPV_INCLUDE_DIR MPV_LIBRARY)
+mark_as_advanced(MPV_INCLUDE_DIR MPV_LIBRARY)
+if(MPV_FOUND AND NOT TARGET MPV::MPV)
+    add_library(MPV::MPV UNKNOWN IMPORTED GLOBAL)
+    set_target_properties(MPV::MPV PROPERTIES IMPORTED_LOCATION "${MPV_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${MPV_INCLUDE_DIR}")
+endif()

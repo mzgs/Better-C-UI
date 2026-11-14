@@ -364,6 +364,11 @@ static void cui__gl_tex_destroy(void *user, cui_texture tex) {
 
 bool cui_gl_is_software(const cui_gl_renderer *r) { return r && r->software; }
 
+unsigned int cui_gl_texture_name(const cui_gl_renderer *r, cui_texture texture) {
+    if (!r || !texture || texture > (cui_texture)r->tex_count) return 0;
+    return r->tex[(size_t)texture - 1].id;
+}
+
 cui_renderer_iface cui_gl_iface(cui_gl_renderer *r) {
     cui_renderer_iface i;
     memset(&i, 0, sizeof i);

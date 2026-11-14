@@ -1565,6 +1565,10 @@ Each `cui_ticker_item` is a label, a value as text, a change in percent and `low
 
 A video surface with play/pause, seeking, volume, mute and a fullscreen request. This is UI only: the app supplies a frame texture, playback clock, audio and any decoding. It works with either CUI renderer and adds no media framework dependencies.
 
+For actual file/URL playback, enable the separate **libmpv add-on** (`CUI_VIDEO=ON`, `cui::video`). It supplies decoding, audio, timing and a renderer-owned frame texture for this same component. See [setup and usage](integration.md#optional-libmpv-playback) and [`examples/video.c`](../examples/video.c). The existing gallery and `media_ui` preview remain dependency-free.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/video-playback-dark.png"><img src="images/components/video-playback.png" alt="libmpv playback with video surface and transport controls"></picture>
+
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/video-player-dark.png"><img src="images/components/video-player.png" alt="Video surface with transport controls"></picture>
 
 [`examples/media_ui.c`](../examples/media_ui.c) is a standalone UI preview with video controls and a now-playing card. Build with `cmake --build build --target media_ui`, then run `./build/examples/media_ui` (`build/examples/Debug/media_ui.exe` on Windows with a multi-configuration generator). It does not open media files or play sound; the controls update their state without advancing a playback clock.

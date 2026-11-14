@@ -22,6 +22,18 @@ cui_example(todo todo.c)
 cui_example(caffeine caffeine.c)
 cui_example(stress stress.c)
 cui_example(media_ui media_ui.c)
+if(CUI_VIDEO)
+    cui_example(video video.c)
+    set_property(TARGET video PROPERTY LINK_LIBRARIES cui::video)
+    if(APPLE)
+        add_custom_target(video_bundle ALL
+            COMMAND ${CMAKE_COMMAND} "-DEXECUTABLE=$<TARGET_FILE:video>"
+                "-DVERSION=${PROJECT_VERSION}" -P "${PROJECT_SOURCE_DIR}/cmake/BundleVideo.cmake"
+            DEPENDS video
+            COMMENT "Bundling video.app and its runtime libraries"
+            VERBATIM)
+    endif()
+endif()
 if(CUI_WEBVIEW)
     cui_example(webview webview.c)
     set_property(TARGET webview PROPERTY LINK_LIBRARIES cui::webview)

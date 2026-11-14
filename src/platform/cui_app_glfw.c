@@ -192,6 +192,8 @@ void cui__plat_set_title(cui_app *app, const char *title) { glfwSetWindowTitle(c
 void cui__plat_set_size(cui_app *app, int w, int h) { glfwSetWindowSize(cui__g(app)->win, w, h); }
 void *cui__plat_native(cui_app *app) { return cui__g(app)->win; }
 
+void cui__plat_wakeup(cui_app *app) { (void)app; glfwPostEmptyEvent(); }
+
 void cui__plat_wait(cui_app *app, double timeout) {
     (void)app;
     if (timeout < 0) glfwWaitEvents();
