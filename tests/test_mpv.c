@@ -6,6 +6,9 @@ static int mpv_test_option(mpv_handle *mpv, const char *name, const char *value)
 #include "../addons/video/cui_mpv.c"
 #undef cui_app_wakeup
 #undef mpv_set_option_string
+#define main cui_mpv_demo_main
+#include "../examples/video.c"
+#undef main
 #ifdef _WIN32
 #include <windows.h>
 #include <direct.h>
@@ -17,6 +20,7 @@ static int mpv_test_option(mpv_handle *mpv, const char *name, const char *value)
 void cui_mpv_test_wakeup(cui_app *app) { (void)app; }
 static int mpv_test_option(mpv_handle *mpv, const char *name, const char *value) {
     int error = mpv_set_option_string(mpv, name, value);
+    if (!strcmp(name, "vo") && error >= 0) error = mpv_set_option_string(mpv, "ao", "null");
     /* Exercise builds without Lua/plugins, while disabling them in real libmpv. */
     if (!strcmp(name, "osc") || !strcmp(name, "ytdl") || !strcmp(name, "load-scripts"))
         return MPV_ERROR_OPTION_NOT_FOUND;
@@ -44,7 +48,153 @@ static bool mpv_test_fixture(const char *path) {
     return fclose(file) == 0 && ok;
 }
 
+static int64_t mpv_test_selected(cui_mpv *p, cui_mpv_track_type type) {
+    int count = 0;
+    const cui_mpv_track *tracks = cui_mpv_tracks(p, type, &count);
+    for (int i = 0; i < count; i++) if (tracks[i].selected) return tracks[i].id;
+    return CUI_MPV_TRACK_OFF;
+}
+
+static void mpv_test_wait_track(cui_mpv *p, cui_mpv_track_type type, int64_t id) {
+    for (int i = 0; i < 300; i++) {
+        cui_mpv_update(p, 320, 192);
+        if (mpv_test_selected(p, type) == id) break;
+        mpv_test_delay();
+    }
+    CHECK(mpv_test_selected(p, type) == id);
+}
+
+static void mpv_test_track_metadata(void) {
+    mpv_node values[] = { { .u.int64 = 7, .format = MPV_FORMAT_INT64 },
+        { .u.string = "audio", .format = MPV_FORMAT_STRING } };
+    char *keys[] = { "id", "type" };
+    mpv_node_list map = { 2, values, keys };
+    mpv_node track = { .u.list = &map, .format = MPV_FORMAT_NODE_MAP };
+    mpv_node_list list = { 1, &track, NULL };
+    mpv_node array = { .u.list = &list, .format = MPV_FORMAT_NODE_ARRAY };
+    cui_mpv p = {0};
+    cui__mpv_track_list(&p, &array);
+    int count = 0;
+    const cui_mpv_track *tracks = cui_mpv_tracks(&p, CUI_MPV_AUDIO, &count);
+    CHECK(count == 1 && tracks[0].id == 7 && !strcmp(tracks[0].label, "Audio track 7"));
+    CHECK(!*tracks[0].language && !tracks[0].external);
+    CHECK(!cui_mpv_tracks(NULL, CUI_MPV_AUDIO, &count) && count == 0);
+    CHECK(!cui_mpv_tracks(&p, (cui_mpv_track_type)-1, &count) && count == 0);
+    list.values = NULL;
+    cui__mpv_track_list(&p, &array);
+    CHECK(p.error == MPV_ERROR_PROPERTY_FORMAT && p.tracks == tracks);
+    cui__mpv_track_list(&p, NULL);
+    CHECK(!p.tracks && !p.track_count[0] && !p.track_count[1]);
+}
+
+static void mpv_test_tracks(cui_mpv *p, const char *directory) {
+    CHECK(cui_mpv_load(p, CUI_TEST_VIDEO_TRACKS) == 0);
+    int audio_count = 0, subtitle_count = 0;
+    for (int i = 0; i < 300; i++) {
+        cui_mpv_update(p, 320, 192);
+        cui_mpv_tracks(p, CUI_MPV_AUDIO, &audio_count);
+        cui_mpv_tracks(p, CUI_MPV_SUBTITLE, &subtitle_count);
+        if (audio_count == 2 && subtitle_count == 2 && p->video.position > 0.05f) break;
+        mpv_test_delay();
+    }
+    CHECK(audio_count == 2 && subtitle_count == 2 && cui_mpv_last_error(p) == 0);
+    if (audio_count != 2 || subtitle_count != 2 || !p->pixels) return;
+    const cui_mpv_track *audio = cui_mpv_tracks(p, CUI_MPV_AUDIO, NULL);
+    const cui_mpv_track *subs = cui_mpv_tracks(p, CUI_MPV_SUBTITLE, NULL);
+    CHECK(!strcmp(audio[0].language, "eng") && !strcmp(audio[1].language, "jpn"));
+    CHECK(strstr(audio[0].label, "English audio") && strstr(audio[1].label, "jpn"));
+    CHECK(!strcmp(subs[1].language, "fra") && strstr(subs[1].label, "Français"));
+    int64_t english = audio[0].id, japanese = audio[1].id, french = subs[1].id;
+    CHECK(cui_mpv_select_track(p, CUI_MPV_AUDIO, japanese) == 0);
+    mpv_test_wait_track(p, CUI_MPV_AUDIO, japanese);
+    CHECK(cui_mpv_select_track(p, CUI_MPV_AUDIO, english) == 0);
+    mpv_test_wait_track(p, CUI_MPV_AUDIO, english);
+    cui_video edited = *cui_mpv_state(p);
+    edited.playing = false;
+    CHECK(cui_mpv_apply(p, &edited, CUI_PLAYER_TOGGLE) == 0);
+    for (int i = 0; i < 100 && p->video.playing; i++) { cui_mpv_update(p, 320, 192); mpv_test_delay(); }
+    CHECK(!p->video.playing);
+    CHECK(cui_mpv_select_track(p, CUI_MPV_SUBTITLE, CUI_MPV_TRACK_OFF) == 0);
+    mpv_test_wait_track(p, CUI_MPV_SUBTITLE, CUI_MPV_TRACK_OFF);
+    for (int i = 0; i < 10; i++) { cui_mpv_update(p, 320, 192); mpv_test_delay(); }
+    unsigned char baseline[320 * 192 * 4];
+    memcpy(baseline, p->pixels, sizeof baseline);
+    CHECK(cui_mpv_select_track(p, CUI_MPV_SUBTITLE, french) == 0);
+    mpv_test_wait_track(p, CUI_MPV_SUBTITLE, french);
+    bool subtitles_drawn = false;
+    for (int i = 0; i < 100 && !subtitles_drawn; i++) {
+        cui_mpv_update(p, 320, 192);
+        subtitles_drawn = memcmp(baseline, p->pixels, sizeof baseline) != 0;
+        mpv_test_delay();
+    }
+    CHECK(subtitles_drawn && !p->video.playing);
+    CHECK(cui_mpv_select_track(p, CUI_MPV_SUBTITLE, CUI_MPV_TRACK_OFF) == 0);
+    mpv_test_wait_track(p, CUI_MPV_SUBTITLE, CUI_MPV_TRACK_OFF);
+    bool restored = false;
+    for (int i = 0; i < 100 && !restored; i++) {
+        cui_mpv_update(p, 320, 192);
+        restored = memcmp(baseline, p->pixels, sizeof baseline) == 0;
+        mpv_test_delay();
+    }
+    CHECK(restored);
+    const cui_mpv_track *stable = cui_mpv_tracks(p, CUI_MPV_AUDIO, NULL);
+    CHECK(!cui_mpv_update(p, 320, 192));
+    CHECK(cui_mpv_tracks(p, CUI_MPV_AUDIO, NULL) == stable);
+    /* Build the actual example's selectors, then use keyboard input to open one. */
+    cui_ctx *ui = p->app->ui;
+    cui_set_viewport(ui, 360, 240, 1);
+    for (int frame = 0; frame < 3; frame++) {
+        cui_begin_frame(ui, 1.0f / 60);
+        CHECK(video_track_select(ui, "audio", p, CUI_MPV_AUDIO) == 0);
+        CHECK(video_track_select(ui, "subtitles", p, CUI_MPV_SUBTITLE) == 0);
+        cui_end_frame(ui);
+    }
+    ui->focus = cui_make_id(ui, "audio"); ui->focus_visible = true;
+    const cui_key keys[] = { CUI_KEY_DOWN, CUI_KEY_DOWN, CUI_KEY_ENTER };
+    for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
+        cui_input_key(ui, keys[i], true, 0); cui_input_key(ui, keys[i], false, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        CHECK(video_track_select(ui, "audio", p, CUI_MPV_AUDIO) == 0);
+        CHECK(video_track_select(ui, "subtitles", p, CUI_MPV_SUBTITLE) == 0);
+        cui_end_frame(ui);
+    }
+    mpv_test_wait_track(p, CUI_MPV_AUDIO, japanese);
+    char path[4200];
+    snprintf(path, sizeof path, "%s/cui external captions.srt", directory);
+    FILE *file = fopen(path, "wb");
+    CHECK(file != NULL);
+    if (!file) return;
+    CHECK(fputs("1\n00:00:00,000 --> 00:00:19,000\nExternal captions\n", file) >= 0);
+    CHECK(fclose(file) == 0);
+    CHECK(cui_mpv_load_subtitle(p, path) == 0);
+    for (int i = 0; i < 200; i++) {
+        cui_mpv_update(p, 320, 192);
+        subs = cui_mpv_tracks(p, CUI_MPV_SUBTITLE, &subtitle_count);
+        if (subtitle_count == 3 && subs[2].external && subs[2].selected) break;
+        mpv_test_delay();
+    }
+    CHECK(subtitle_count == 3 && subs[2].external && subs[2].selected);
+    CHECK(cui_mpv_load_subtitle(p, path) == 0);
+    for (int i = 0; i < 20; i++) { cui_mpv_update(p, 320, 192); mpv_test_delay(); }
+    cui_mpv_tracks(p, CUI_MPV_SUBTITLE, &subtitle_count);
+    CHECK(subtitle_count == 3 && cui_mpv_last_error(p) == 0);
+    CHECK(cui_mpv_select_track(p, CUI_MPV_SUBTITLE, CUI_MPV_TRACK_AUTO) == 0);
+    CHECK(cui_mpv_select_track(p, CUI_MPV_AUDIO, CUI_MPV_TRACK_AUTO) == 0);
+    CHECK(cui_mpv_select_track(p, CUI_MPV_AUDIO, 9999) < 0);
+    CHECK(cui_mpv_select_track(p, (cui_mpv_track_type)99, 1) < 0);
+    CHECK(cui_mpv_select_track(p, CUI_MPV_SUBTITLE, -2) < 0);
+    CHECK(cui_mpv_load_subtitle(p, NULL) < 0 && cui_mpv_load_subtitle(p, "") < 0);
+    CHECK(cui_mpv_load_subtitle(p, "cui-missing-subtitle.invalid.srt") == 0);
+    for (int i = 0; i < 200 && !cui_mpv_last_error(p); i++) { cui_mpv_update(p, 320, 192); mpv_test_delay(); }
+    CHECK(cui_mpv_last_error(p) < 0);
+    CHECK(cui_mpv_load_subtitle(p, path) == 0 && cui_mpv_last_error(p) == 0);
+    for (int i = 0; i < 20; i++) { cui_mpv_update(p, 320, 192); mpv_test_delay(); }
+    CHECK(cui_mpv_last_error(p) == 0 && mpv_test_selected(p, CUI_MPV_SUBTITLE) > 0);
+    CHECK(remove(path) == 0);
+}
+
 int main(void) {
+    mpv_test_track_metadata();
     char directory[4096], path[4200];
 #ifdef _WIN32
     CHECK(_getcwd(directory, sizeof directory) != NULL);
@@ -141,6 +291,7 @@ int main(void) {
         mpv_test_delay();
     }
     CHECK(p->video.playing && p->video.position > 0.05f && cui_mpv_last_error(p) == 0);
+    mpv_test_tracks(p, directory);
     /* Reload clears the error, and destruction while decoding joins callbacks. */
     CHECK(cui_mpv_load(p, path) == 0 && cui_mpv_last_error(p) == 0);
 cleanup:

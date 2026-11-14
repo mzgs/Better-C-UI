@@ -150,9 +150,9 @@ When a component grows past a screen or two, split it by phase rather than by li
 
 ## Changing code safely
 
-- **Tests:** `ctest` runs the unit and interaction tests, the render tests, the fuzzers and a short soak run. Run it with text shaping off and on (`-DCUI_TEXT_SHAPING=ON`) and under the sanitizers before a pull request.
-- **Screenshots:** `cui_screenshots` and `cui_component_shots` render every gallery page and component. For a change that should not look different, render before and after and compare the files byte for byte.
-- **Behavior fingerprint:** `tests/soak.c` drives an app with seeded input at a fixed time step, so runs are deterministic. With `--hash` it prints a fingerprint of every frame's draw data. A refactor that keeps behavior keeps the fingerprint; build an app against the old and the new library and compare:
+- **Tests:** follow [Validation scope](CONTRIBUTING.md#validation-scope): focused tests for isolated components/add-ons, full normal and text-shaping suites for shared code, and affected sanitizer tests for memory, parsing, text or layout changes.
+- **Screenshots:** `cui_screenshots` and `cui_component_shots` render gallery pages and components. Inspect the affected scenes. For a refactor that could affect rendering without changing appearance, render those scenes before and after and compare the files byte for byte.
+- **Behavior fingerprint:** for shared frame/layout/interaction refactors, use `tests/soak.c`, which drives an app with seeded input at a fixed time step, so runs are deterministic. With `--hash` it prints a fingerprint of every frame's draw data. A refactor that keeps behavior keeps the fingerprint; build an app against the old and the new library and compare:
 
   ```sh
   cc -O1 -DCUI_SOAK_NO_X11 -DSOAK_APP='"../examples/mail.c"' -I include -I src tests/soak.c build/libcui.a -lm -lpthread -ldl -o soak-mail

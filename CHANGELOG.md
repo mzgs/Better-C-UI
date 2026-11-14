@@ -14,6 +14,8 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Added
 
+- **Video audio/subtitle selection**: the libmpv add-on exposes cached language-labelled track lists, asynchronous audio/subtitle selection, automatic/default selection, subtitles off, and external subtitle loading without duplicates. The video example adds audio and subtitle menus plus an Open subtitle dialog. See [playback integration](docs/integration.md#optional-libmpv-playback).
+
 - **Self-contained macOS video example**: the default video-enabled build also creates `examples/video.app`, bundling libmpv and its transitive runtime libraries, rewriting load paths and applying local ad-hoc signatures. Available Homebrew dependency license notices are included. End users do not need Homebrew; the terminal executable still uses the development installation.
 
 - **Optional libmpv playback add-on** (`CUI_VIDEO=ON`, `cui::video`): files and URLs, including MKV, with asynchronous playback controls, hardware decoding where supported, direct OpenGL texture output, aligned software fallback, bounded demuxer read-ahead and event-driven wakeups. Includes a `video` example and real decoding/render checks. The core has no libmpv dependency. See [setup](docs/integration.md#optional-libmpv-playback).

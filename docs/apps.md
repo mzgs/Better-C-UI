@@ -60,7 +60,7 @@ File dialogs, opening links and screenshots are in [Getting started](getting-sta
 
 The [media UI example](../examples/media_ui.c) demonstrates video controls and a now-playing card. These components update UI state and return input events; the app supplies any playback engine. See [Video player](components-more.md#video-player).
 
-For actual media playback, enable `CUI_VIDEO=ON` and run the [video example](../examples/video.c): `./build/examples/video movie.mkv`. It uses the separate `cui::video` libmpv add-on with file/URL input, transport controls, hardware decoding when supported and renderer-sized output. See [setup](integration.md#optional-libmpv-playback).
+For actual media playback, enable `CUI_VIDEO=ON` and run the [video example](../examples/video.c): `./build/examples/video movie.mkv`. It uses the separate `cui::video` libmpv add-on with file/URL input, transport controls, audio language/track and subtitle selectors, external subtitle loading, hardware decoding when supported and renderer-sized output. See [setup](integration.md#optional-libmpv-playback).
 
 ## When frames happen
 

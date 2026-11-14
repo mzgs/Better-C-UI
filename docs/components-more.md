@@ -1567,6 +1567,8 @@ A video surface with play/pause, seeking, volume, mute and a fullscreen request.
 
 For actual file/URL playback, enable the separate **libmpv add-on** (`CUI_VIDEO=ON`, `cui::video`). It supplies decoding, audio, timing and a renderer-owned frame texture for this same component. See [setup and usage](integration.md#optional-libmpv-playback) and [`examples/video.c`](../examples/video.c). The existing gallery and `media_ui` preview remain dependency-free.
 
+The playback example includes audio language/track selection, embedded subtitle selection with Off/Automatic choices, and an Open subtitle dialog for external files. Apps can use `cui_mpv_tracks`, `cui_mpv_select_track` and `cui_mpv_load_subtitle` to add the same controls to their own layout; the base `cui_video_player` remains UI only.
+
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/video-playback-dark.png"><img src="images/components/video-playback.png" alt="libmpv playback with video surface and transport controls"></picture>
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/video-player-dark.png"><img src="images/components/video-player.png" alt="Video surface with transport controls"></picture>

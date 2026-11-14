@@ -10,6 +10,14 @@ extern "C" {
 #endif
 
 typedef struct cui_mpv cui_mpv;
+typedef enum cui_mpv_track_type { CUI_MPV_AUDIO = 0, CUI_MPV_SUBTITLE } cui_mpv_track_type;
+enum { CUI_MPV_TRACK_AUTO = -1, CUI_MPV_TRACK_OFF = 0 };
+typedef struct cui_mpv_track {
+    int64_t id;               /* positive libmpv ID, scoped to this track type and file */
+    const char *label;        /* title/language, or a numbered fallback; never NULL */
+    const char *language;     /* file's language tag, or "" when absent */
+    bool selected, external;
+} cui_mpv_track;
 
 /* UI-thread API. app (NULL = current app) and its renderer must outlive the
  * player. Destroy before cui_app_destroy, with the same GL context current.
@@ -36,7 +44,19 @@ CUI_MPV_API const cui_video *cui_mpv_state(const cui_mpv *player);
 /* Asynchronously apply CUI_PLAYER_TOGGLE/SEEK/VOLUME/MUTE from the component's
  * edited copy. Fullscreen remains the host window's responsibility. */
 CUI_MPV_API int cui_mpv_apply(cui_mpv *player, const cui_video *edited, int events);
-/* Last asynchronous/renderer error (0 = none), cleared by the next load.
+/* Cached audio/subtitle tracks, refreshed by update only when metadata changes.
+ * Borrowed array/strings until the next update/load/destroy; count may be NULL.
+ * NULL/empty on no tracks or invalid player/type. No libmpv calls or allocation. */
+CUI_MPV_API const cui_mpv_track *cui_mpv_tracks(const cui_mpv *player, cui_mpv_track_type type, int *count);
+/* Select a listed ID, AUTO (libmpv's default selection) or OFF. Asynchronous:
+ * selected flags report the actual result after update; errors use last_error.
+ * Pick audio languages using the track's language/label; IDs belong to one file. */
+CUI_MPV_API int cui_mpv_select_track(cui_mpv *player, cui_mpv_track_type type, int64_t id);
+/* Load and select an external subtitle file/URL asynchronously. Reopening the
+ * same path selects its existing track rather than adding a duplicate. Supports
+ * formats provided by libmpv (e.g. SRT/ASS/WebVTT); failures use last_error. */
+CUI_MPV_API int cui_mpv_load_subtitle(cui_mpv *player, const char *path);
+/* Last asynchronous/renderer error (0 = none), cleared by the next media or subtitle load.
  * The message is static libmpv text; never free it. NULL player is invalid. */
 CUI_MPV_API int cui_mpv_last_error(const cui_mpv *player);
 CUI_MPV_API const char *cui_mpv_error_string(int error);

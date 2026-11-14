@@ -42,6 +42,9 @@ struct cui_mpv {
     int width, height, error;
     bool paused, idle, eof, seekable;
     float duration;
+    cui_mpv_track *tracks;
+    int track_count[2];
+    int64_t selected_track[2];
 };
 
 static void cui__mpv_wakeup(void *user) {
@@ -130,7 +133,8 @@ static int cui__mpv_init(cui_mpv *p) {
         { "eof-reached", MPV_FORMAT_FLAG }, { "seekable", MPV_FORMAT_FLAG },
         { "time-pos", MPV_FORMAT_DOUBLE }, { "duration", MPV_FORMAT_DOUBLE },
         { "volume", MPV_FORMAT_DOUBLE }, { "mute", MPV_FORMAT_FLAG },
-        { "video-params/aspect", MPV_FORMAT_DOUBLE }
+        { "video-params/aspect", MPV_FORMAT_DOUBLE }, { "track-list", MPV_FORMAT_NODE },
+        { "aid", MPV_FORMAT_NODE }, { "sid", MPV_FORMAT_NODE }
     };
     for (size_t i = 0; i < sizeof properties / sizeof *properties; i++) {
         err = mpv_observe_property(p->mpv, i + 1, properties[i].name, properties[i].format);
@@ -175,6 +179,7 @@ void cui_mpv_destroy(cui_mpv *p) {
     }
     if (p->mpv) mpv_terminate_destroy(p->mpv);
     cui__mpv_release_output(p);
+    free(p->tracks);
     free(p);
 }
 
@@ -188,8 +193,111 @@ int cui_mpv_load(cui_mpv *p, const char *path) {
     return p->error;
 }
 
+typedef struct {
+    int64_t id;
+    int type;
+    const char *title, *language, *filename;
+    bool external;
+} cui__mpv_track_info;
+
+static bool cui__mpv_read_track(const mpv_node *node, cui__mpv_track_info *info) {
+    memset(info, 0, sizeof *info);
+    info->type = -1;
+    info->title = info->language = info->filename = "";
+    if (!node || node->format != MPV_FORMAT_NODE_MAP || !node->u.list || node->u.list->num < 0) return false;
+    const mpv_node_list *map = node->u.list;
+    if (map->num && (!map->keys || !map->values)) return false;
+    for (int i = 0; i < map->num; i++) {
+        const char *key = map->keys[i];
+        const mpv_node *value = &map->values[i];
+        if (!key) continue;
+        if (!strcmp(key, "id") && value->format == MPV_FORMAT_INT64) info->id = value->u.int64;
+        else if (!strcmp(key, "external") && value->format == MPV_FORMAT_FLAG) info->external = value->u.flag != 0;
+        else if (value->format == MPV_FORMAT_STRING && value->u.string) {
+            if (!strcmp(key, "type")) {
+                if (!strcmp(value->u.string, "audio")) info->type = CUI_MPV_AUDIO;
+                else if (!strcmp(value->u.string, "sub")) info->type = CUI_MPV_SUBTITLE;
+            } else if (!strcmp(key, "title")) info->title = value->u.string;
+            else if (!strcmp(key, "lang")) info->language = value->u.string;
+            else if (!strcmp(key, "external-filename")) info->filename = value->u.string;
+        }
+    }
+    if (!*info->title && info->external) {
+        const char *slash = strrchr(info->filename, '/'), *backslash = strrchr(info->filename, '\\');
+        if (backslash && (!slash || backslash > slash)) slash = backslash;
+        info->title = slash ? slash + 1 : info->filename;
+    }
+    return info->id > 0 && info->type >= 0;
+}
+
+static void cui__mpv_clear_tracks(cui_mpv *p) {
+    free(p->tracks); p->tracks = NULL;
+    p->track_count[0] = p->track_count[1] = 0;
+}
+
+static void cui__mpv_track_list(cui_mpv *p, const mpv_node *node) {
+    if (!node) { cui__mpv_clear_tracks(p); return; }
+    if (node->format != MPV_FORMAT_NODE_ARRAY || !node->u.list || node->u.list->num < 0 ||
+        (node->u.list->num && !node->u.list->values)) { p->error = MPV_ERROR_PROPERTY_FORMAT; return; }
+    const mpv_node_list *list = node->u.list;
+    int count[2] = { 0, 0 };
+    size_t bytes = 0;
+    for (int i = 0; i < list->num; i++) {
+        cui__mpv_track_info info;
+        if (!cui__mpv_read_track(&list->values[i], &info)) continue;
+        size_t title = strlen(info.title), language = strlen(info.language);
+        if (title > SIZE_MAX - bytes || language > (SIZE_MAX - bytes - title) / 2 ||
+            SIZE_MAX - bytes - title - language * 2 < 65) { p->error = MPV_ERROR_NOMEM; return; }
+        bytes += title + language * 2 + 65;
+        count[info.type]++;
+    }
+    size_t total = (size_t)count[0] + (size_t)count[1];
+    if (!total) {
+        free(p->tracks); p->tracks = NULL;
+        p->track_count[0] = p->track_count[1] = 0;
+        return;
+    }
+    if (total > (SIZE_MAX - bytes) / sizeof(cui_mpv_track)) { p->error = MPV_ERROR_NOMEM; return; }
+    cui_mpv_track *tracks = malloc(total * sizeof *tracks + bytes);
+    if (!tracks) { p->error = MPV_ERROR_NOMEM; return; }
+    char *text = (char *)(tracks + total);
+    int cursor[2] = { 0, count[0] };
+    for (int i = 0; i < list->num; i++) {
+        cui__mpv_track_info info;
+        if (!cui__mpv_read_track(&list->values[i], &info)) continue;
+        cui_mpv_track *track = &tracks[cursor[info.type]++];
+        track->id = info.id; track->external = info.external; track->selected = false;
+        track->language = text;
+        size_t language = strlen(info.language) + 1;
+        memcpy(text, info.language, language); text += language;
+        track->label = text;
+        size_t cap = strlen(info.title) + language + 63;
+        const char *prefix = *info.language ? " (" : "", *suffix = *info.language ? ")" : "";
+        int length;
+        if (*info.title) length = snprintf(text, cap, "%s%s%s%s", info.title, prefix, info.language, suffix);
+        else length = snprintf(text, cap, "%s %lld%s%s%s", info.type == CUI_MPV_AUDIO ? "Audio track" : "Subtitle track",
+            (long long)info.id, prefix, info.language, suffix);
+        if (length < 0 || (size_t)length >= cap) { free(tracks); p->error = MPV_ERROR_PROPERTY_FORMAT; return; }
+        text += (size_t)length + 1;
+    }
+    free(p->tracks);
+    p->tracks = tracks; p->track_count[0] = count[0]; p->track_count[1] = count[1];
+}
+
 static void cui__mpv_property(cui_mpv *p, const mpv_event_property *prop) {
-    if (!prop || !prop->data) return;
+    if (!prop) return;
+    if (!strcmp(prop->name, "track-list")) {
+        if (prop->format == MPV_FORMAT_NODE) cui__mpv_track_list(p, prop->data);
+        else if (prop->format == MPV_FORMAT_NONE) cui__mpv_track_list(p, NULL);
+        return;
+    }
+    if (!strcmp(prop->name, "aid") || !strcmp(prop->name, "sid")) {
+        int type = !strcmp(prop->name, "aid") ? CUI_MPV_AUDIO : CUI_MPV_SUBTITLE;
+        const mpv_node *node = prop->format == MPV_FORMAT_NODE ? prop->data : NULL;
+        p->selected_track[type] = node && node->format == MPV_FORMAT_INT64 ? node->u.int64 : CUI_MPV_TRACK_OFF;
+        return;
+    }
+    if (!prop->data) return;
     bool flag = prop->format == MPV_FORMAT_FLAG && *(int *)prop->data != 0;
     double value = prop->format == MPV_FORMAT_DOUBLE ? *(double *)prop->data : 0;
     if (!isfinite(value) || value > (double)FLT_MAX || value < -(double)FLT_MAX) value = 0;
@@ -211,6 +319,7 @@ static void cui__mpv_events(cui_mpv *p) {
         if (event->error < 0) p->error = event->error;
         if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) cui__mpv_property(p, event->data);
         else if (event->event_id == MPV_EVENT_START_FILE) {
+            cui__mpv_clear_tracks(p);
             p->error = 0;  /* a replacement starts after the previous file's end/error event */
             p->duration = p->video.position = 0;
             p->seekable = p->eof = false;
@@ -221,6 +330,9 @@ static void cui__mpv_events(cui_mpv *p) {
     }
     p->video.playing = !p->paused && !p->idle && !p->eof;
     p->video.duration = p->seekable ? p->duration : 0;
+    for (int type = 0, index = 0; type < 2; type++)
+        for (int i = 0; i < p->track_count[type]; i++, index++)
+            p->tracks[index].selected = p->tracks[index].id == p->selected_track[type];
 }
 
 static bool cui__mpv_output(cui_mpv *p, int width, int height) {
@@ -303,6 +415,42 @@ bool cui_mpv_update(cui_mpv *p, int width, int height) {
 const cui_video *cui_mpv_state(const cui_mpv *p) { return p ? &p->video : NULL; }
 int cui_mpv_last_error(const cui_mpv *p) { return p ? p->error : MPV_ERROR_INVALID_PARAMETER; }
 const char *cui_mpv_error_string(int error) { return mpv_error_string(error); }
+
+const cui_mpv_track *cui_mpv_tracks(const cui_mpv *p, cui_mpv_track_type type, int *count) {
+    if (count) *count = 0;
+    if (!p || (type != CUI_MPV_AUDIO && type != CUI_MPV_SUBTITLE) || !p->track_count[type]) return NULL;
+    if (count) *count = p->track_count[type];
+    return p->tracks + (type == CUI_MPV_SUBTITLE ? p->track_count[CUI_MPV_AUDIO] : 0);
+}
+
+int cui_mpv_select_track(cui_mpv *p, cui_mpv_track_type type, int64_t id) {
+    if (!p || (type != CUI_MPV_AUDIO && type != CUI_MPV_SUBTITLE) || id < CUI_MPV_TRACK_AUTO)
+        return MPV_ERROR_INVALID_PARAMETER;
+    int count = 0;
+    const cui_mpv_track *tracks = cui_mpv_tracks(p, type, &count);
+    if (id > 0) {
+        int i = 0;
+        while (i < count && tracks[i].id != id) i++;
+        if (i == count) return MPV_ERROR_INVALID_PARAMETER;
+    }
+    const char *property = type == CUI_MPV_AUDIO ? "aid" : "sid";
+    int error;
+    if (id > 0) error = mpv_set_property_async(p->mpv, 0, property, MPV_FORMAT_INT64, &id);
+    else {
+        const char *value = id == CUI_MPV_TRACK_AUTO ? "auto" : "no";
+        error = mpv_set_property_async(p->mpv, 0, property, MPV_FORMAT_STRING, &value);
+    }
+    if (error < 0) p->error = error;
+    return error;
+}
+
+int cui_mpv_load_subtitle(cui_mpv *p, const char *path) {
+    if (!p || !path || !*path) return MPV_ERROR_INVALID_PARAMETER;
+    const char *args[] = { "sub-add", path, "cached", NULL };
+    int error = mpv_command_async(p->mpv, 0, args);
+    p->error = error;
+    return error;
+}
 
 static int cui__mpv_seek(cui_mpv *p, double position) {
     mpv_node values[3] = { { .u.string = "seek", .format = MPV_FORMAT_STRING },

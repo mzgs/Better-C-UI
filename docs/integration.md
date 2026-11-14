@@ -55,6 +55,29 @@ else {
 
 Call all player APIs on the app's UI/GL thread. Copy the borrowed state before passing it to `cui_video_player`; the player owns its frame texture. `cui_mpv_apply` handles toggle, seek, volume and mute. Play after EOF seeks back to the beginning. Fullscreen follows the existing UI component contract: it is a request for the host window to implement. The example reports that request; it does not change native window mode.
 
+The example also has **Audio language / track**, **Subtitles** (including **Off** and **Automatic**) and **Open subtitle** controls. Track labels include the title and language tag when present; unnamed tracks get numbered labels. Its menus use the ordinary CUI select controls, so keyboard input, themes and reduced motion follow the rest of the UI. They wrap on narrow windows. These controls belong to the example; other apps can build their own controls with the same add-on API:
+
+```c
+#include <string.h>
+
+int count = 0;
+const cui_mpv_track *audio = cui_mpv_tracks(player, CUI_MPV_AUDIO, &count);
+for (int i = 0; i < count; i++) {
+    /* audio[i].label, .language and .selected describe the current file.
+     * Save the chosen ID, rather than retaining this pointer across update. */
+    if (!strcmp(audio[i].language, "jpn")) {
+        cui_mpv_select_track(player, CUI_MPV_AUDIO, audio[i].id);
+        break;
+    }
+}
+cui_mpv_select_track(player, CUI_MPV_SUBTITLE, CUI_MPV_TRACK_OFF);
+cui_mpv_load_subtitle(player, "/path/to/captions.srt");  /* loads and selects */
+```
+
+Use `cui_mpv_tracks(player, CUI_MPV_SUBTITLE, &count)` for embedded and external subtitles. The returned arrays and strings are borrowed until the next update/load/destroy; `selected` reports the actual backend selection after update, not a pending request. IDs are positive, scoped to their track type and current file. Pass a listed ID to `cui_mpv_select_track`; `CUI_MPV_TRACK_AUTO` requests default selection, and `CUI_MPV_TRACK_OFF` disables that type. Track selection chooses among the file's language-tagged tracks; it does not translate audio or subtitles.
+
+`cui_mpv_load_subtitle` supports subtitle files/URLs provided by the libmpv build, including SRT, ASS/SSA and WebVTT. It selects the loaded file; reopening the same path selects its cached track without adding a duplicate. Use a new path to load changed contents. Bad arguments fail immediately; missing/invalid files and backend selection errors arrive through `cui_mpv_last_error` after update. Starting a new media or subtitle load clears the previous error. Subtitle changes can redraw a paused frame without resuming playback. Track metadata is copied in one retained allocation only when it changes; UI queries do not call libmpv or allocate.
+
 Performance behavior:
 
 - **GPU output:** one reusable RGBA texture and FBO at the displayed size, with no CPU readback or RGBA upload on this path. `hwdec=auto` requests supported hardware decoding. Actual decoder interop depends on the OS, codec and GL context; fallback decoding can use CPU or copy-back. In particular the native X11 backend uses GLX, while direct VA-API interop usually needs EGL; native Win32 WGL is also more restricted than ANGLE. GPU output does not promise zero-copy decoding on every backend.
@@ -75,7 +98,12 @@ ffmpeg -f lavfi -i 'color=c=red:s=160x96:r=24:d=3,drawbox=x=0:y=48:w=160:h=48:co
 CUI_RENDERER=software ./build-video/tests/cui_mpv_smoke video-check.mkv /tmp/video-sw.png
 ```
 
-`cui_test_mpv` creates a tiny Y4M fixture at runtime and checks decoded pixels, controls, seeking/replay, resizing, aligned buffer reuse, hidden output, invalid inputs, failed loading and destruction during loading. It needs no window or audio device. The explicit native smoke test checks both orientation and paused-frame reuse through the actual app renderer.
+`cui_test_mpv` creates a tiny Y4M fixture at runtime and checks decoded pixels, controls, seeking/replay, resizing, aligned buffer reuse, hidden output, invalid inputs, failed loading and destruction during loading. The generated test-only `tests/fixtures/video-tracks.mkv` adds two audio languages and two subtitle tracks: tests switch tracks with the API and keyboard, check subtitle pixels while paused, load/reopen external SRT files and recover from a failed subtitle load. No window, sound device or FFmpeg executable is needed for CTest. See its [fixture notes](../tests/fixtures/README.md). The explicit native smoke test checks orientation and paused-frame reuse; passing a third argument after the screenshot path additionally verifies rendering and disabling an external subtitle on the actual renderer:
+
+```sh
+./build-video/tests/cui_mpv_smoke tests/fixtures/video-tracks.mkv /tmp/subtitle-gl.png captions.srt
+CUI_RENDERER=software ./build-video/tests/cui_mpv_smoke tests/fixtures/video-tracks.mkv /tmp/subtitle-sw.png captions.srt
+```
 
 ## The core loop
 

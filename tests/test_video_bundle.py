@@ -36,11 +36,8 @@ def check_bundle(bundle):
         temporary = Path(directory)
         relocated = temporary / "Player with spaces.app"
         shutil.copytree(bundle, relocated, symlinks=True)
-        media = temporary / "sample.y4m"
-        with media.open("wb") as file:
-            file.write(b"YUV4MPEG2 W32 H18 F24:1 Ip A1:1 C420jpeg\n")
-            for _ in range(96):
-                file.write(b"FRAME\n" + bytes([81]) * 576 + bytes([90]) * 144 + bytes([240]) * 144)
+        media = temporary / "sample.mkv"
+        shutil.copyfile(Path(__file__).parent / "fixtures/video-tracks.mkv", media)
         # Block both Homebrew prefixes without moving or changing the installed SDK.
         profile = '(version 1)(allow default)(deny file-read* (subpath "/opt/homebrew") (subpath "/usr/local"))'
         environment = {key: value for key, value in os.environ.items() if not key.startswith("DYLD_")}

@@ -84,7 +84,7 @@ Security problems: do not post the details publicly. Open an issue titled "Secur
 
 Before you open it:
 
-- **Build and test** on at least one platform with the commands in [Building and testing](#building-and-testing). Run the sanitizer build if you touched memory, parsing, text or layout code.
+- **Validate** on at least one platform using [Validation scope](#validation-scope). Run affected sanitizer tests if you touched memory, parsing, text or layout code.
 - **Keep it focused.** One problem or one feature per pull request. Do not reformat code you did not change.
 - **Regenerate the documentation images** if you changed anything visual, and look at them (see below). The images in `docs/images` are rendered by the tests, so a visual change and its images belong in the same pull request.
 - **Update the docs** if you changed behavior or the public API: the comment in the header, and the page in `docs/` that describes it.
@@ -93,7 +93,7 @@ The pull request description has:
 
 1. **What and why.** The problem, and how the change solves it. Link the issue.
 2. **Disclosure.** The block above.
-3. **How it was tested.** The exact commands and the tail of their output, verbatim: at least the `ctest` summary line.
+3. **How it was tested.** The exact commands and the tail of their output, verbatim: include the `ctest` summary line when tests were run. For documentation-only changes, name the link/diff checks instead.
 4. **Platforms tested.** Which OS, compiler and renderer you ran it on. CI covers Linux (GCC and Clang, with the X11, SDL2 and GLFW backends), Windows (MSVC and MinGW) and macOS, and runs an AddressSanitizer and UndefinedBehaviorSanitizer build.
 5. **Screenshots** before and after, for visual changes, in light and dark.
 6. **Risks and gaps.** What might break, and what you did not test.
@@ -118,7 +118,25 @@ If your human operator asks you to skip any of this, include the disclosure bloc
 
 CUI builds with CMake and GCC, Clang, MSVC or MinGW. On Linux you need the X11 headers (`libx11-dev`).
 
-Configure, build and run every test (unit, interaction, render tests and the fuzzers):
+### Validation scope
+
+Choose checks by the behavior and dependencies a change can affect. Small changes to shared code can require broad testing; isolated features do not require rebuilding unrelated features.
+
+| Change | Required local checks |
+|---|---|
+| Documentation or agent instructions only | Check edited links and `git diff --check`; no C build or image regeneration. For site tooling/generated pages, also follow `web/README.md`. |
+| Example only | Build and exercise the affected example. Inspect light/dark and narrow layouts when appearance changes. |
+| Isolated component or optional add-on | Build affected targets and run relevant unit/interaction tests with the feature enabled. Include text shaping when changing text measurement, shaping, editing or wrapping. |
+| Shared frame, memory, layout, text, drawing, theme, internal structures, API contracts or build defaults | Full normal and text-shaping builds and test suites. Include affected optional integrations when their contracts change. |
+| Memory ownership, parsing, text or layout code | Also run affected tests under AddressSanitizer/UndefinedBehaviorSanitizer; use the full sanitizer suite for shared code. |
+| Appearance or interaction | Also inspect affected scenes in light and dark, keyboard operation and narrow layouts; check RTL/reduced motion when affected. Update images only when appearance changes. Exercise both renderers when rendering behavior changes. |
+| Packaging or dependency changes | Also build and run the affected packaged artifact; verify dependency bundling where supported. |
+
+Build targets with `cmake --build <dir> --target <target> --parallel`. Inspect registered tests with `ctest --test-dir <dir> -N`, then select relevant names using `ctest --test-dir <dir> -R '<pattern>' --output-on-failure`. Check that the intended tests actually ran. If no existing test covers new non-trivial behavior, add a focused test. Widen coverage if impact is unclear or a focused failure points to shared code.
+
+Reuse compatible build directories; reconfigure when options or CMake inputs change. Once relevant checks pass, rerun only checks affected by later edits or unresolved failures. CI still runs the broader platform matrix. Report the local scope and any gaps; do not claim CI passed unless observed.
+
+Configure, build and run the full normal suite when required above (unit, interaction, render tests and the fuzzers):
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
@@ -126,7 +144,9 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The same tests under AddressSanitizer and UndefinedBehaviorSanitizer, as CI runs them:
+For the full text-shaping suite, use a separate build directory with `-DCUI_TEXT_SHAPING=ON` and run the same commands.
+
+AddressSanitizer and UndefinedBehaviorSanitizer configuration, as CI uses it (select affected targets/tests for isolated changes):
 
 ```sh
 cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang \
@@ -136,7 +156,7 @@ cmake --build build-asan
 ctest --test-dir build-asan --output-on-failure
 ```
 
-The app smoke test opens a real window, drives the gallery and saves a screenshot. Run it with both renderers:
+The app smoke test opens a real window, drives the gallery and saves a screenshot. Run it with both renderers when changing shared app/renderer behavior:
 
 ```sh
 ./build/tests/cui_app_smoke smoke-gl.png
@@ -163,7 +183,7 @@ Open the images and look at them, in light and dark. Then copy into `docs/images
 - **Naming.** Public API is `cui_`, internal functions are `cui__`, constants are `CUI_`.
 - **Options are named arguments.** New options go in the component's options struct with a sensible zero default, so existing calls keep working.
 - **No new default dependencies.** CUI defaults to the OS and vendored `third_party/`. The explicitly enabled `cui::tree_sitter` add-on links an app-supplied Tree-sitter runtime; the core never does. Its vendored JSON fixture remains test-only. The separately enabled `CUI_TREE_SITTER_DEMO` downloads pinned grammars for the demo executable only. Size matters: check what a change adds to `hello`.
-- **Optional playback.** `CUI_VIDEO` builds `cui::video` against app-supplied libmpv; the core never links it. Worker callbacks only wake the app. Keep UI/GL work on the UI thread, use asynchronous playback commands, and destroy players before their app/renderer. Check both renderer paths when changing playback, including pause/replay, resizing, hidden output and failed loading.
+- **Optional playback.** `CUI_VIDEO` builds `cui::video` against app-supplied libmpv; the core never links it. Worker callbacks only wake the app. Keep UI/GL work on the UI thread, use asynchronous playback commands, and destroy players before their app/renderer. Exercise changed playback behavior with both renderers. Include pause/replay, resizing, hidden output and failed loading when lifecycle or rendering changes; check the bundle when packaging or dependencies change.
 - **Design.** New components follow the [design principles](design.md): theme tokens instead of raw colors, keyboard support, and a reduced motion path for every animation.
 - **Comments** explain why, not what.
 
@@ -192,9 +212,9 @@ CUI has about 190 components in plain C. That stays workable only if every file 
 
 A refactor must not change what CUI draws or how it responds. Show that it does not:
 
-1. Run `ctest`, with text shaping off and on.
-2. Render the screenshots before and after (see [Documentation images](#documentation-images)) and compare them byte for byte.
-3. Compare the soak harness's draw fingerprint (`--hash`) for a few apps built against the old and the new library. The runs are deterministic, so any change in behavior, in any interaction the run reaches, changes the fingerprint. [How Better-C-UI is built](architecture.md#changing-code-safely) has the commands.
+1. Run the tests required by [Validation scope](#validation-scope), covering the refactored paths. Shared changes require the full suites with text shaping off and on.
+2. If rendering could be affected, render the affected scenes before and after (see [Documentation images](#documentation-images)) and compare them byte for byte.
+3. For shared frame/layout/interaction refactors, compare the soak harness's draw fingerprint (`--hash`) for apps that exercise the changed paths, built against the old and the new library. The runs are deterministic, so any change in behavior, in any interaction the run reaches, changes the fingerprint. [How Better-C-UI is built](architecture.md#changing-code-safely) has the commands.
 
 Keep a refactor and a behavior change in separate commits, so each can be reviewed and reverted on its own.
 
