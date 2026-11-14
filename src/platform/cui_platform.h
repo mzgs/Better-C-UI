@@ -58,6 +58,8 @@ void cui__plat_wakeup(cui_app *app);                 /* thread-safe; app must ou
 void cui__plat_metrics(cui_app *app, float *w, float *h, float *scale, int *fb_w, int *fb_h);
 void cui__plat_set_title(cui_app *app, const char *title);
 void cui__plat_set_size(cui_app *app, int w, int h);
+void cui__plat_set_fullscreen(cui_app *app, bool fullscreen);
+bool cui__plat_is_fullscreen(cui_app *app);
 void cui__plat_show(cui_app *app);
 void *cui__plat_native(cui_app *app);
 const char *cui__plat_name(void);

@@ -136,6 +136,18 @@ void cui_app_set_title(cui_app *app, const char *title) {
 
 void cui_app_set_size(cui_app *app, int w, int h) { app = cui__app_or_current(app); if (app) cui__plat_set_size(app, w, h); }
 
+void cui_app_set_fullscreen(cui_app *app, bool fullscreen) {
+    app = cui__app_or_current(app);
+    if (!app) return;
+    cui__plat_set_fullscreen(app, fullscreen);
+    cui_request_redraw(app->ui);
+}
+
+bool cui_app_is_fullscreen(cui_app *app) {
+    app = cui__app_or_current(app);
+    return app && cui__plat_is_fullscreen(app);
+}
+
 cui_vec2 cui_app_size(cui_app *app) {
     float w, h, s;
     int fw, fh;

@@ -19,6 +19,8 @@
 @property (nonatomic, strong) NSOpenGLContext *gl;
 @property (nonatomic, assign) cui_app *app;
 @property (nonatomic, assign) cui_cursor cursor;
+@property (nonatomic, assign) BOOL fullscreenTransition;
+@property (nonatomic, assign) BOOL fullscreenTarget;
 @end
 
 static void *cui__mac_libgl;
@@ -209,6 +211,32 @@ static cui_key cui__mac_key(NSEvent *e) {
 - (void)windowDidChangeBackingProperties:(NSNotification *)n { (void)n; if (self.gl) [self.gl update]; cui_request_redraw(self.app->ui); }
 - (void)windowDidBecomeKey:(NSNotification *)n { (void)n; cui_input_focus(self.app->ui, true); }
 - (void)windowDidResignKey:(NSNotification *)n { (void)n; cui_input_focus(self.app->ui, false); }
+- (void)windowWillEnterFullScreen:(NSNotification *)n {
+    (void)n;
+    if (!self.fullscreenTransition) self.fullscreenTarget = YES;
+    self.fullscreenTransition = YES;
+}
+- (void)windowWillExitFullScreen:(NSNotification *)n {
+    (void)n;
+    if (!self.fullscreenTransition) self.fullscreenTarget = NO;
+    self.fullscreenTransition = YES;
+}
+- (void)windowDidEnterFullScreen:(NSNotification *)n {
+    (void)n; self.fullscreenTransition = NO;
+    cui__plat_set_fullscreen(self.app, self.fullscreenTarget);
+    cui_request_redraw(self.app->ui);
+}
+- (void)windowDidExitFullScreen:(NSNotification *)n {
+    (void)n; self.fullscreenTransition = NO;
+    cui__plat_set_fullscreen(self.app, self.fullscreenTarget);
+    cui_request_redraw(self.app->ui);
+}
+- (void)windowDidFailToEnterFullScreen:(NSWindow *)w {
+    (void)w; self.fullscreenTransition = NO; cui_request_redraw(self.app->ui);
+}
+- (void)windowDidFailToExitFullScreen:(NSWindow *)w {
+    (void)w; self.fullscreenTransition = NO; cui_request_redraw(self.app->ui);
+}
 @end
 
 static CUIPlat *cui__p(cui_app *app) { return (__bridge CUIPlat *)app->plat; }
@@ -284,6 +312,7 @@ bool cui__plat_init(cui_app *app) {
         w.contentMinSize = NSMakeSize(app->desc.min_width, app->desc.min_height);
         w.acceptsMouseMovedEvents = YES;
         w.delegate = p;
+        w.collectionBehavior |= NSWindowCollectionBehaviorFullScreenPrimary;
         cui_color bg = app->ui->theme.colors[CUI_TOKEN_BACKGROUND];
         w.backgroundColor = [NSColor colorWithSRGBRed:bg.r / 255.0 green:bg.g / 255.0 blue:bg.b / 255.0 alpha:1];
         if (@available(macOS 10.14, *)) {
@@ -398,6 +427,18 @@ void cui__plat_set_title(cui_app *app, const char *title) {
 
 void cui__plat_set_size(cui_app *app, int w, int h) {
     [cui__p(app).window setContentSize:NSMakeSize(w, h)];
+}
+
+bool cui__plat_is_fullscreen(cui_app *app) {
+    return (cui__p(app).window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+}
+
+void cui__plat_set_fullscreen(cui_app *app, bool fullscreen) {
+    CUIPlat *p = cui__p(app);
+    p.fullscreenTarget = fullscreen;
+    if (p.fullscreenTransition || cui__plat_is_fullscreen(app) == fullscreen) return;
+    p.fullscreenTransition = YES;
+    [p.window toggleFullScreen:nil];
 }
 
 void *cui__plat_native(cui_app *app) { return (__bridge void *)cui__p(app).window; }

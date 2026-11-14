@@ -7,6 +7,7 @@ typedef struct {
     GLFWwindow *win;
     GLFWcursor *cursors[CUI_CURSOR_COUNT];
     cui_cursor cursor;
+    int windowed_x, windowed_y, windowed_w, windowed_h;
 } cui__glfw;
 
 static cui__glfw *cui__g(cui_app *app) { return app->plat; }
@@ -190,6 +191,32 @@ void cui__plat_metrics(cui_app *app, float *w, float *h, float *scale, int *fb_w
 
 void cui__plat_set_title(cui_app *app, const char *title) { glfwSetWindowTitle(cui__g(app)->win, title); }
 void cui__plat_set_size(cui_app *app, int w, int h) { glfwSetWindowSize(cui__g(app)->win, w, h); }
+bool cui__plat_is_fullscreen(cui_app *app) { return glfwGetWindowMonitor(cui__g(app)->win) != NULL; }
+void cui__plat_set_fullscreen(cui_app *app, bool fullscreen) {
+    cui__glfw *g = cui__g(app);
+    if (cui__plat_is_fullscreen(app) == fullscreen) return;
+    if (fullscreen) {
+        GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+        if (!monitor) return;
+        glfwGetWindowPos(g->win, &g->windowed_x, &g->windowed_y);
+        glfwGetWindowSize(g->win, &g->windowed_w, &g->windowed_h);
+        int count = 0;
+        double best = 0;
+        GLFWmonitor **monitors = glfwGetMonitors(&count);
+        for (int i = 0; i < count; i++) {
+            int x, y;
+            glfwGetMonitorPos(monitors[i], &x, &y);
+            const GLFWvidmode *mode = glfwGetVideoMode(monitors[i]);
+            if (!mode) continue;
+            int width = CUI_MAX(0, CUI_MIN(g->windowed_x + g->windowed_w, x + mode->width) - CUI_MAX(g->windowed_x, x));
+            int height = CUI_MAX(0, CUI_MIN(g->windowed_y + g->windowed_h, y + mode->height) - CUI_MAX(g->windowed_y, y));
+            double area = (double)width * height;
+            if (area > best) { best = area; monitor = monitors[i]; }
+        }
+        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+        if (mode) glfwSetWindowMonitor(g->win, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+    } else glfwSetWindowMonitor(g->win, NULL, g->windowed_x, g->windowed_y, g->windowed_w, g->windowed_h, GLFW_DONT_CARE);
+}
 void *cui__plat_native(cui_app *app) { return cui__g(app)->win; }
 
 void cui__plat_wakeup(cui_app *app) { (void)app; glfwPostEmptyEvent(); }

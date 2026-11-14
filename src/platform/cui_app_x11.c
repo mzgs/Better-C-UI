@@ -63,6 +63,8 @@ typedef struct {
     XIM im;
     XIC ic;
     Atom wm_delete, wm_protocols, net_wm_name, utf8_string, clipboard, targets, cui_sel, net_wm_icon_name;
+    Atom net_wm_state, net_wm_fullscreen;
+    bool fullscreen;
     Cursor cursors[CUI_CURSOR_COUNT];
     cui_cursor current_cursor;
     int width, height;     /* pixels */
@@ -198,7 +200,7 @@ bool cui__plat_init(cui_app *app) {
     cui_color bg = app->ui->theme.colors[CUI_TOKEN_BACKGROUND];
     swa.background_pixel = ((unsigned long)bg.r << 16) | ((unsigned long)bg.g << 8) | bg.b;
     swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask |
-                     PointerMotionMask | EnterWindowMask | LeaveWindowMask | StructureNotifyMask | FocusChangeMask;
+                     PointerMotionMask | EnterWindowMask | LeaveWindowMask | StructureNotifyMask | FocusChangeMask | PropertyChangeMask;
     x->width = (int)(app->desc.width * x->scale);
     x->height = (int)(app->desc.height * x->scale);
     x->win = XCreateWindow(x->dpy, root, 0, 0, (unsigned)x->width, (unsigned)x->height, 0, x->depth, InputOutput, x->visual,
@@ -211,6 +213,8 @@ bool cui__plat_init(cui_app *app) {
     x->wm_delete = XInternAtom(x->dpy, "WM_DELETE_WINDOW", False);
     x->net_wm_name = XInternAtom(x->dpy, "_NET_WM_NAME", False);
     x->net_wm_icon_name = XInternAtom(x->dpy, "_NET_WM_ICON_NAME", False);
+    x->net_wm_state = XInternAtom(x->dpy, "_NET_WM_STATE", False);
+    x->net_wm_fullscreen = XInternAtom(x->dpy, "_NET_WM_STATE_FULLSCREEN", False);
     x->utf8_string = XInternAtom(x->dpy, "UTF8_STRING", False);
     x->clipboard = XInternAtom(x->dpy, "CLIPBOARD", False);
     x->targets = XInternAtom(x->dpy, "TARGETS", False);
@@ -396,6 +400,23 @@ void cui__plat_set_size(cui_app *app, int w, int h) {
 }
 
 void *cui__plat_native(cui_app *app) { return (void *)(uintptr_t)cui__x(app)->win; }
+
+bool cui__plat_is_fullscreen(cui_app *app) { return cui__x(app)->fullscreen; }
+
+void cui__plat_set_fullscreen(cui_app *app, bool fullscreen) {
+    cui__x11 *x = cui__x(app);
+    XEvent event = {0};
+    event.xclient.type = ClientMessage;
+    event.xclient.window = x->win;
+    event.xclient.message_type = x->net_wm_state;
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = fullscreen ? 1 : 0; /* EWMH add/remove, never toggle */
+    event.xclient.data.l[1] = (long)x->net_wm_fullscreen;
+    event.xclient.data.l[3] = 1; /* application */
+    XSendEvent(x->dpy, RootWindow(x->dpy, x->screen), False,
+        SubstructureRedirectMask | SubstructureNotifyMask, &event);
+    XFlush(x->dpy);
+}
 
 static void cui__x11_set_cursor(void *user, cui_cursor c) {
     cui_app *app = user;
@@ -633,6 +654,22 @@ static void cui__x11_event(cui_app *app, XEvent *ev) {
         if (ev->xconfigure.width != x->width || ev->xconfigure.height != x->height) {
             x->width = ev->xconfigure.width;
             x->height = ev->xconfigure.height;
+            cui_request_redraw(ui);
+        }
+        break;
+    case PropertyNotify:
+        if (ev->xproperty.atom == x->net_wm_state) {
+            Atom type;
+            int format;
+            unsigned long count, remaining;
+            unsigned char *data = NULL;
+            x->fullscreen = false;
+            if (XGetWindowProperty(x->dpy, x->win, x->net_wm_state, 0, 1024, False, XA_ATOM,
+                &type, &format, &count, &remaining, &data) == Success && type == XA_ATOM && format == 32 && data) {
+                for (unsigned long i = 0; i < count; i++)
+                    if (((Atom *)data)[i] == x->net_wm_fullscreen) x->fullscreen = true;
+            }
+            if (data) XFree(data);
             cui_request_redraw(ui);
         }
         break;

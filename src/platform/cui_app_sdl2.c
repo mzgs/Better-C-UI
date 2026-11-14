@@ -128,6 +128,12 @@ void cui__plat_metrics(cui_app *app, float *w, float *h, float *scale, int *fb_w
 
 void cui__plat_set_title(cui_app *app, const char *title) { SDL_SetWindowTitle(cui__s(app)->win, title); }
 void cui__plat_set_size(cui_app *app, int w, int h) { SDL_SetWindowSize(cui__s(app)->win, w, h); }
+void cui__plat_set_fullscreen(cui_app *app, bool fullscreen) {
+    SDL_SetWindowFullscreen(cui__s(app)->win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+}
+bool cui__plat_is_fullscreen(cui_app *app) {
+    return (SDL_GetWindowFlags(cui__s(app)->win) & SDL_WINDOW_FULLSCREEN) != 0;
+}
 void *cui__plat_native(cui_app *app) { return cui__s(app)->win; }
 
 static cui_key cui__sdl_key(SDL_Keycode k) {

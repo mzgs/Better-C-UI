@@ -45,6 +45,9 @@ typedef struct {
     HCURSOR cursors[CUI_CURSOR_COUNT];
     cui_cursor cursor;
     bool in_size_move;
+    bool fullscreen;
+    LONG_PTR windowed_style;
+    WINDOWPLACEMENT windowed_placement;
     BITMAPINFO bmi;
     HANDLE timer;          /* timed waits: high resolution where Windows has it (10 1803 and later) */
 } cui__win32;
@@ -510,6 +513,30 @@ void cui__plat_set_size(cui_app *app, int width, int height) {
 }
 
 void *cui__plat_native(cui_app *app) { return cui__w(app)->hwnd; }
+
+bool cui__plat_is_fullscreen(cui_app *app) { return cui__w(app)->fullscreen; }
+
+void cui__plat_set_fullscreen(cui_app *app, bool fullscreen) {
+    cui__win32 *w = cui__w(app);
+    if (w->fullscreen == fullscreen) return;
+    if (fullscreen) {
+        MONITORINFO monitor = { .cbSize = sizeof monitor };
+        w->windowed_placement.length = sizeof w->windowed_placement;
+        if (!GetWindowPlacement(w->hwnd, &w->windowed_placement) ||
+            !GetMonitorInfoW(MonitorFromWindow(w->hwnd, MONITOR_DEFAULTTONEAREST), &monitor)) return;
+        w->windowed_style = GetWindowLongPtrW(w->hwnd, GWL_STYLE);
+        w->fullscreen = true;
+        SetWindowLongPtrW(w->hwnd, GWL_STYLE, w->windowed_style & ~WS_OVERLAPPEDWINDOW);
+        SetWindowPos(w->hwnd, HWND_TOP, monitor.rcMonitor.left, monitor.rcMonitor.top,
+            monitor.rcMonitor.right - monitor.rcMonitor.left, monitor.rcMonitor.bottom - monitor.rcMonitor.top,
+            SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    } else {
+        w->fullscreen = false;
+        SetWindowLongPtrW(w->hwnd, GWL_STYLE, w->windowed_style);
+        SetWindowPlacement(w->hwnd, &w->windowed_placement);
+        SetWindowPos(w->hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+}
 
 void cui__plat_wakeup(cui_app *app) { PostMessageW(cui__w(app)->hwnd, WM_NULL, 0, 0); }
 

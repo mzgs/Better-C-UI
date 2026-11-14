@@ -6,6 +6,8 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Fixed
 
+- The video example's fullscreen button now enters native fullscreen, shows an exit button, and supports Escape to restore the window. Added `cui_app_set_fullscreen` / `cui_app_is_fullscreen` for app hosts.
+
 - Video seek-bar dragging no longer repeats seeks while the pointer is held still and the playback clock updates, preventing repeated footage after scrubbing.
 
 ### Changed

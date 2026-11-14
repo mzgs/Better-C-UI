@@ -60,48 +60,56 @@ int main(int argc, char **argv) {
     }
     while (cui_app_frame(app)) {
         cui_ctx *ui = cui_app_ui(app);
+        bool fullscreen = cui_app_is_fullscreen(app);
+        if (fullscreen && cui_key_pressed(ui, CUI_KEY_ESCAPE)) cui_app_set_fullscreen(app, false);
         cui_vec2 viewport = cui_viewport_size(ui);
-        float height = fmaxf(120, viewport.y - 350), scale = cui_dpi_scale(ui);
+        float height = fmaxf(1, viewport.y - (fullscreen ? 84 : 350)), scale = cui_dpi_scale(ui);
+        if (!fullscreen) height = fmaxf(120, height);
         float aspect = cui_mpv_state(player)->aspect;
         if (!(aspect > 0)) aspect = 16.0f / 9;
-        float width = fminf(fmaxf(1, viewport.x - 32), height * aspect);
-        height = fminf(height, width / aspect);
+        float width = fminf(fmaxf(1, viewport.x - (fullscreen ? 0 : 32)), height * aspect);
+        if (!fullscreen) height = fminf(height, width / aspect);
         cui_mpv_update(player, (int)ceilf(width * scale), (int)ceilf(width / aspect * scale));
-        cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .pad = 16, .gap = 12,
-                   .scroll_y = true, .bg = CUI_COLOR_BACKGROUND) {
-            cui_heading(ui, "Video player", 2);
-            cui_row(ui, .width = CUI_FILL, .gap = 8, .align = CUI_ALIGN_END, .wrap = true) {
-                cui_input(ui, "source", path, sizeof path, .label = "File or URL", .width = CUI_FILL);
-                if (cui_button(ui, "Play source", .disabled = !*path)) error = cui_mpv_load(player, path);
-                if (cui_button(ui, "Open file")) {
-                    if (cui_app_file_dialog(app, &(cui_file_dialog_opts){ .title = "Open video" }, path, sizeof path))
-                        error = cui_mpv_load(player, path);
+        cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .pad = fullscreen ? 0 : 16, .gap = fullscreen ? 0 : 12,
+                   .scroll_y = !fullscreen, .bg = CUI_COLOR_BACKGROUND) {
+            if (!fullscreen) {
+                cui_heading(ui, "Video player", 2);
+                cui_row(ui, .width = CUI_FILL, .gap = 8, .align = CUI_ALIGN_END, .wrap = true) {
+                    cui_input(ui, "source", path, sizeof path, .label = "File or URL", .width = CUI_FILL);
+                    if (cui_button(ui, "Play source", .disabled = !*path)) error = cui_mpv_load(player, path);
+                    if (cui_button(ui, "Open file")) {
+                        if (cui_app_file_dialog(app, &(cui_file_dialog_opts){ .title = "Open video" }, path, sizeof path))
+                            error = cui_mpv_load(player, path);
+                    }
                 }
             }
             cui_video video = *cui_mpv_state(player);
+            video.fullscreen = fullscreen;
             int events = cui_video_player(ui, "video", &video, .width = CUI_FILL, .height = height);
+            if (events & CUI_PLAYER_FULLSCREEN) cui_app_set_fullscreen(app, !fullscreen);
             int applied = cui_mpv_apply(player, &video, events);
             if (applied < 0) error = applied;
-            cui_row(ui, .width = CUI_FILL, .gap = 12, .align = CUI_ALIGN_END, .wrap = true) {
-                cui_box(ui, .width = CUI_GROW(1), .min_width = 180) {
-                    int result = video_track_select(ui, "audio-track", player, CUI_MPV_AUDIO);
-                    if (result < 0) error = result;
+            if (!fullscreen) {
+                cui_row(ui, .width = CUI_FILL, .gap = 12, .align = CUI_ALIGN_END, .wrap = true) {
+                    cui_box(ui, .width = CUI_GROW(1), .min_width = 180) {
+                        int result = video_track_select(ui, "audio-track", player, CUI_MPV_AUDIO);
+                        if (result < 0) error = result;
+                    }
+                    cui_box(ui, .width = CUI_GROW(1), .min_width = 180) {
+                        int result = video_track_select(ui, "subtitle-track", player, CUI_MPV_SUBTITLE);
+                        if (result < 0) error = result;
+                    }
+                    if (cui_button(ui, "Open subtitle", .disabled = !video.frame)) {
+                        char subtitle[4096];
+                        if (cui_app_file_dialog(app, &(cui_file_dialog_opts){ .title = "Open subtitle",
+                            .filter_name = "Subtitles", .filter = "srt;ass;ssa;vtt;sub;idx" }, subtitle, sizeof subtitle))
+                            error = cui_mpv_load_subtitle(player, subtitle);
+                    }
                 }
-                cui_box(ui, .width = CUI_GROW(1), .min_width = 180) {
-                    int result = video_track_select(ui, "subtitle-track", player, CUI_MPV_SUBTITLE);
-                    if (result < 0) error = result;
-                }
-                if (cui_button(ui, "Open subtitle", .disabled = !video.frame)) {
-                    char subtitle[4096];
-                    if (cui_app_file_dialog(app, &(cui_file_dialog_opts){ .title = "Open subtitle",
-                        .filter_name = "Subtitles", .filter = "srt;ass;ssa;vtt;sub;idx" }, subtitle, sizeof subtitle))
-                        error = cui_mpv_load_subtitle(player, subtitle);
-                }
+                if (error >= 0) error = cui_mpv_last_error(player);
+                if (error < 0) cui_text(ui, cui_mpv_error_string(error), .color = CUI_COLOR_DANGER);
+                else cui_secondary(ui, "Space: play/pause. Left/Right: seek. Up/Down: volume. M: mute. F: fullscreen. Esc: exit fullscreen.");
             }
-            if (error >= 0) error = cui_mpv_last_error(player);
-            if (error < 0) cui_text(ui, cui_mpv_error_string(error), .color = CUI_COLOR_DANGER);
-            else cui_secondary(ui, events & CUI_PLAYER_FULLSCREEN ? "Fullscreen is a host-window request." :
-                "Space: play/pause. Left/Right: seek. Up/Down: volume. M: mute.");
         }
     }
     cui_mpv_destroy(player);

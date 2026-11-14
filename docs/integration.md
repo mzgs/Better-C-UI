@@ -44,16 +44,22 @@ else {
         float scale = cui_dpi_scale(ui);
         cui_mpv_update(player, (int)(480 * scale), (int)(270 * scale));
         cui_video video = *cui_mpv_state(player);
+        video.fullscreen = cui_app_is_fullscreen(app);
         int events = cui_video_player(ui, "movie", &video, .height = 270);
         error = cui_mpv_apply(player, &video, events);
-        /* Handle CUI_PLAYER_FULLSCREEN in your window integration.
-         * Read cui_mpv_last_error(player) for asynchronous load/playback errors. */
+        if (events & CUI_PLAYER_FULLSCREEN) cui_app_set_fullscreen(app, !video.fullscreen);
+        if (video.fullscreen && cui_key_pressed(ui, CUI_KEY_ESCAPE)) cui_app_set_fullscreen(app, false);
+        /* Read cui_mpv_last_error(player) for asynchronous load/playback errors. */
     }
     cui_mpv_destroy(player);       /* before cui_app_destroy(app) */
 }
 ```
 
-Call all player APIs on the app's UI/GL thread. Copy the borrowed state before passing it to `cui_video_player`; the player owns its frame texture. `cui_mpv_apply` handles toggle, seek, volume and mute. Play after EOF seeks back to the beginning. Fullscreen follows the existing UI component contract: it is a request for the host window to implement. The example reports that request; it does not change native window mode.
+Call all player APIs on the app's UI/GL thread. Copy the borrowed state before passing it to `cui_video_player`; the player owns its frame texture. `cui_mpv_apply` handles toggle, seek, volume and mute. Play after EOF seeks back to the beginning. Fullscreen is a host-window request: use the app APIs above, or your own window system. The example enters native fullscreen, hides source/track controls, keeps transport controls visible and exits using the button or Escape. `F` also toggles fullscreen when the video surface has keyboard focus.
+
+`cui_app_set_fullscreen` requests fullscreen on the UI thread and restores the window on exit. Read `cui_app_is_fullscreen` each frame so native window controls and asynchronous transitions are reflected. Cocoa uses native fullscreen Spaces, Win32 uses a borderless monitor-sized window, X11 uses EWMH, SDL2 uses desktop fullscreen, and GLFW uses the current display mode on the monitor containing most of the window. The OS/window manager can refuse a request.
+
+With a desktop available, `./build-video/tests/cui_video_fullscreen [media] [screenshot.png]` exercises the actual example's fullscreen button, exit button, Escape and restoration of the window size. Run it with both renderers; it is separate from headless CTest.
 
 The example also has **Audio language / track**, **Subtitles** (including **Off** and **Automatic**) and **Open subtitle** controls. Track labels include the title and language tag when present; unnamed tracks get numbered labels. Its menus use the ordinary CUI select controls, so keyboard input, themes and reduced motion follow the rest of the UI. They wrap on narrow windows. These controls belong to the example; other apps can build their own controls with the same add-on API:
 

@@ -77,6 +77,11 @@ CUI_API void cui_app_set_title(cui_app *app, const char *title);
 /* The window's size in logical points (the same units as cui_app_desc.width). */
 CUI_API void cui_app_set_size(cui_app *app, int width, int height);
 CUI_API cui_vec2 cui_app_size(cui_app *app);
+/* UI-thread native fullscreen request; restores the window on exit. Transitions
+ * may be asynchronous or refused by the OS/window manager. Query actual state
+ * after pumping frames; native window controls are reflected too. */
+CUI_API void cui_app_set_fullscreen(cui_app *app, bool fullscreen);
+CUI_API bool cui_app_is_fullscreen(cui_app *app);
 /* True when the software renderer is drawing (no usable OpenGL, or it was asked for). */
 CUI_API bool cui_app_is_software(cui_app *app);
 /* HWND, NSWindow*, X11 Window (cast to uintptr_t), SDL_Window* or GLFWwindow*. */

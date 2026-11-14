@@ -28,6 +28,8 @@ cui_app_destroy(app);
 
 `cui_app_frame` shows the previous frame, waits until there is something to do, and starts the next one. It returns false once the window is closed. The callback form also gives smooth live resizing on Windows and macOS: the content keeps redrawing while the user drags the window's edge.
 
+Use `cui_app_set_fullscreen(app, true)` to request native fullscreen and `false` to restore the window. `cui_app_is_fullscreen(app)` reports the actual state, including native window controls. Call these on the UI thread; the OS/window manager may complete the transition asynchronously or refuse it. Both take `NULL` for the current app.
+
 `cui_app_desc` sets up the window. Every field is optional:
 
 | Field | Meaning |
