@@ -131,7 +131,7 @@ static void page_overview(cui_ctx *ui, gallery *g) {
     cui_column(ui, .gap = 14, .pad_bottom = 8) {
         cui_heading(ui, "Components for C", 1);
         cui_text(ui, "Forms, tables, charts, planning boards and chat pieces that draw themselves the same way on Windows, macOS and Linux. Every one works from the keyboard.",
-                 .color = CUI_COLOR_TEXT_SECONDARY, .size = 15);
+                 .color = CUI_COLOR_TEXT_SECONDARY, .size = 15, .selectable = true);
         cui_row(ui, .gap = 8, .pad_top = 6, .wrap = true) {
             if (cui_button(ui, "Browse components", .variant = CUI_BUTTON_PRIMARY, .icon_right = CUI_ICON_ARROW_RIGHT)) g->page = PAGE_BUTTONS;
             if (cui_button(ui, "Open command palette", .variant = CUI_BUTTON_OUTLINE, .icon = CUI_ICON_COMMAND)) g->palette_open = true;
@@ -262,6 +262,8 @@ static void page_buttons(cui_ctx *ui, gallery *g) {
 }
 
 static void page_inputs(cui_ctx *ui, gallery *g) {
+    section(ui, "Selectable text", "Drag to select, then copy with Command+C or Ctrl+C.");
+    cui_text(ui, "Select this sentence, or use Tab, Shift+arrows and copy.", .selectable = true);
     section(ui, "Text fields", "Labels above, hints and errors below.");
     cui_card(ui, .gap = 16) {
         cui_box(ui, .dir = CUI_GRID, .columns = 2, .min_column_width = 260, .gap = 16) {

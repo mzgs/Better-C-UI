@@ -5053,6 +5053,136 @@ static void test_hex_view(void) {
     cui_destroy(ui);
 }
 
+/* display text selection ------------------------------------------------ */
+typedef struct {
+    const char *text;
+    bool markdown, disabled, no_selection, nowrap;
+    float width;
+    cui_direction direction;
+    cui_id id;
+    int links;
+} selection_test;
+
+static void build_selection(cui_ctx *ui, void *data) {
+    selection_test *t = data;
+    cui_column(ui, .pad = 20, .width = CUI_PX(t->width > 0 ? t->width + 40 : 340), .direction = t->direction) {
+        cui_push_disabled(ui, t->disabled);
+        if (t->markdown) {
+            cui_markdown_result r = cui_markdown(ui, "selection", t->text, .no_selection = t->no_selection);
+            if (r.link) t->links++;
+        } else cui_text(ui, t->text, .selectable = !t->no_selection, .nowrap = t->nowrap);
+        t->id = cui_last_id(ui);
+        cui_pop_disabled(ui);
+    }
+}
+
+static void selection_copy_all(cui_ctx *ui, selection_test *t) {
+    key(ui, build_selection, t, CUI_KEY_A, CUI_MOD_PRIMARY);
+    key(ui, build_selection, t, CUI_KEY_C, CUI_MOD_PRIMARY);
+}
+
+static void test_display_selection(void) {
+    printf("display selection: drag, keyboard, UTF-8, Markdown, links, clipping and changes\n");
+    cui_ctx *ui = new_ctx();
+    selection_test t = { .text = "Alpha beta gamma" };
+    run(ui, build_selection, &t, 3);
+    cui_rect r = cui_get_rect(ui, t.id);
+    drag2(ui, build_selection, &t, r.x, r.y + r.h / 2, r.x + r.w, r.y + r.h / 2, 4);
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, t.text) == 0);
+    key(ui, build_selection, &t, CUI_KEY_HOME, 0);
+    key(ui, build_selection, &t, CUI_KEY_RIGHT, CUI_MOD_SHIFT);
+    key(ui, build_selection, &t, CUI_KEY_RIGHT, CUI_MOD_SHIFT);
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, "Al") == 0);
+    key(ui, build_selection, &t, CUI_KEY_ESCAPE, 0);
+    snprintf(g_clip, sizeof g_clip, "unchanged");
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, "unchanged") == 0);
+
+    /* Changing content keeps an identity independent of its bytes. */
+    cui_id stable = t.id;
+    t.text = "\xc3\xa9\xe6\xbc\xa2\xf0\x9f\x98\x80 tail";
+    run(ui, build_selection, &t, 3);
+    CHECK(t.id == stable);
+    key(ui, build_selection, &t, CUI_KEY_HOME, 0);
+    key(ui, build_selection, &t, CUI_KEY_RIGHT, CUI_MOD_SHIFT);
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, "\xc3\xa9") == 0);
+    key(ui, build_selection, &t, CUI_KEY_RIGHT, CUI_MOD_SHIFT);
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, "\xc3\xa9\xe6\xbc\xa2") == 0);
+
+    t.text = "First line wraps onto another line with a narrow width.\nSecond paragraph.";
+    t.width = 110;
+    run(ui, build_selection, &t, 3);
+    r = cui_get_rect(ui, t.id);
+    drag2(ui, build_selection, &t, r.x, r.y + 5, r.x + r.w + 20, r.y + r.h + 20, 4);
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, t.text) == 0);
+
+    t.disabled = true;
+    run(ui, build_selection, &t, 2);
+    snprintf(g_clip, sizeof g_clip, "disabled");
+    selection_copy_all(ui, &t);
+    CHECK(strcmp(g_clip, "disabled") == 0);
+    t.disabled = false; t.text = "short";
+    run(ui, build_selection, &t, 2);
+    snprintf(g_clip, sizeof g_clip, "changed");
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, "changed") == 0);
+    key(ui, build_selection, &t, CUI_KEY_TAB, 0);
+    selection_copy_all(ui, &t);
+    CHECK(strcmp(g_clip, "short") == 0);
+    t.text = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d"; t.direction = CUI_DIRECTION_RTL; t.width = 300;
+    run(ui, build_selection, &t, 3);
+    r = cui_get_rect(ui, t.id);
+    drag2(ui, build_selection, &t, r.x, r.y + r.h / 2, r.x + r.w, r.y + r.h / 2, 4);
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, t.text) == 0);
+    t.text = "";
+    run(ui, build_selection, &t, 2);
+    selection_copy_all(ui, &t);   /* empty content has no dangling text or glyph offsets */
+    cui_destroy(ui);
+
+    ui = new_ctx();
+    t = (selection_test){ .markdown = true, .text = "# Release notes\n\nHello **world**, &amp; `code`.\n\n> Quoted text\n\n- One\n- Two\n\n```c\nint x = 1;\n```\n\n| Name | Value |\n|---|---|\n| alpha | **ready** |" };
+    run(ui, build_selection, &t, 3);
+    key(ui, build_selection, &t, CUI_KEY_TAB, 0);
+    selection_copy_all(ui, &t);
+    CHECK(strcmp(g_clip, "Release notes\nHello world, & code.\nQuoted text\nOne\nTwo\nint x = 1;\nName\tValue\nalpha\tready") == 0);
+    t.text = "```c\n\tvalue = 2;\n```";
+    run(ui, build_selection, &t, 3);
+    selection_copy_all(ui, &t);
+    CHECK(strcmp(g_clip, "\tvalue = 2;") == 0);
+    t.text = "Drag [this link](https://example.org) into text";
+    run(ui, build_selection, &t, 3);
+    r = cui_get_rect(ui, t.id);
+    float y = r.y + r.h / 2;
+    float start = r.x + cui_measure_text(ui, CUI_FONT_BODY, 13, "Drag ", -1).width + 2;
+    drag2(ui, build_selection, &t, start, y, r.x + r.w - 1, y, 4);
+    CHECK(t.links == 0);
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strstr(g_clip, "link into text") != NULL);
+    t.text = "**First** paragraph.\n\nSecond *paragraph*.";
+    run(ui, build_selection, &t, 3);
+    r = cui_get_rect(ui, t.id);
+    drag2(ui, build_selection, &t, r.x, r.y + 2, r.x + r.w, r.y + r.h - 2, 4);
+    key(ui, build_selection, &t, CUI_KEY_C, CUI_MOD_PRIMARY);
+    CHECK(strcmp(g_clip, "First paragraph.\nSecond paragraph.") == 0);
+    t.direction = CUI_DIRECTION_RTL;
+    t.text = "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d **world**";
+    run(ui, build_selection, &t, 3);
+    selection_copy_all(ui, &t);
+    CHECK(strcmp(g_clip, "\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d world") == 0);
+    t.no_selection = true;
+    run(ui, build_selection, &t, 2);
+    snprintf(g_clip, sizeof g_clip, "opted out");
+    selection_copy_all(ui, &t);
+    CHECK(strcmp(g_clip, "opted out") == 0);
+    cui_destroy(ui);
+}
+
 /* markdown view ---------------------------------------------------------- */
 
 typedef struct {
@@ -5178,9 +5308,10 @@ static void test_markdown(void) {
     cui_input_mouse_move(ui, r.x + 2, r.y + r.h / 2);
     md_frames(ui, &m, 2);
     CHECK(m.res.hovered_link == NULL);
-    /* the keyboard: Tab focuses the link, Enter activates it */
+    /* Tab visits the selectable view before wrapping back to its link. */
     m.links = 0;
     cui_input_key(ui, CUI_KEY_TAB, true, 0); md_frames(ui, &m, 1); cui_input_key(ui, CUI_KEY_TAB, false, 0); md_frames(ui, &m, 1);
+    key(ui, build_md, &m, CUI_KEY_TAB, 0);
     cui_input_key(ui, CUI_KEY_ENTER, true, 0); md_frames(ui, &m, 1); cui_input_key(ui, CUI_KEY_ENTER, false, 0); md_frames(ui, &m, 1);
     CHECK(m.links == 1);
     /* www. links report an http:// URL; a link wrapped over two lines is one link */
@@ -7219,6 +7350,7 @@ int main(void) {
     test_tree_table();
     test_tools();
     test_hex_view();
+    test_display_selection();
     test_markdown();
     test_code_editor();
     test_diff();

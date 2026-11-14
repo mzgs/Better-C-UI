@@ -527,7 +527,7 @@ typedef struct cui_text_opts {
     cui_text_align align;
     bool nowrap;               /* single line, ellipsis when it does not fit */
     bool tabular;              /* tabular numbers */
-    bool selectable;           /* reserved */
+    bool selectable;           /* drag/keyboard selection and copy; identity follows its position in the id scope */
     cui_size width;
     float line_height;         /* multiplier, default 1.45 */
     cui_direction direction;   /* inherited; AUTO examines this text */
@@ -1527,10 +1527,12 @@ CUI_API bool cui_json_view_ex(cui_ctx *ui, const char *id, const char *json, con
  * flickers between styles. An unclosed code fence always runs to the end.
  *
  * Links use the accent color with an underline that firms up on hover, show
- * their URL as a tooltip, take Tab focus and activate with Enter. Text is not
- * selectable (CUI text has no selection yet); code blocks have a copy button.
- * Parsing allocates only from the frame arena (about 16 bytes a line and a
- * few dozen per inline marker), so a long reply re-parses every frame. */
+ * their URL as a tooltip, take Tab focus and activate with Enter. Text is
+ * selectable by default: drag, Shift+arrows, Primary+A/C (Command on macOS,
+ * Ctrl elsewhere). Copy produces plain text; code blocks also have a copy button.
+ * Parsing uses the frame arena; selection retains plain text and visible glyph
+ * positions, and clears when the source changes. Each view selects independently.
+ * A long reply re-parses every frame. */
 typedef struct cui_markdown_opts {
     int _;
     cui_size width;            /* default fill */
@@ -1540,6 +1542,7 @@ typedef struct cui_markdown_opts {
     cui_color color;           /* body text color, default foreground; links then take it too, underlined */
     bool streaming;            /* text is still arriving */
     bool compact;              /* smaller headings and tighter spacing, for chat bubbles */
+    bool no_selection;         /* opt out of display text selection and its Tab stop */
 } cui_markdown_opts;
 typedef struct cui_markdown_result {
     const char *link;          /* URL of the link clicked (or activated with Enter) this frame, or NULL; frame memory */

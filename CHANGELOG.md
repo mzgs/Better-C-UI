@@ -12,6 +12,8 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Added
 
+- **Selectable text and Markdown**: `.selectable = true` enables selection on `cui_text`; Markdown supports it by default, with `.no_selection` to opt out. Drag or use the keyboard to select and copy plain text across formatted runs, paragraphs, code blocks and tables. Link clicks and task boxes keep their existing actions.
+
 - **WebView navigation policy and startup scripts**: allow or cancel document navigation from C, including page links and frame navigation; apps can queue cancelled links for opening externally. Register main-frame JavaScript at document start with completion callbacks, before page scripts. Includes a blocked-link example and native checks for redirects, reloads, injection timing and callback destruction. See [Web view](docs/components-more.md#web-view).
 - **WebView JavaScript and browser APIs**: execute scripts with JSON results, receive main-frame page messages, observe load/progress/URL/error events, reload/stop, set a user agent, attach per-navigation HTTP headers, and clear cookies. Includes callback cleanup after destruction, an expanded desktop example, previews and loopback feature checks for the native engines. See [Web view](docs/components-more.md#web-view).
 - **WebView local files**: `cui_webview_navigate` accepts `file:///` URLs; Cocoa grants local pages access to sibling assets.

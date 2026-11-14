@@ -55,6 +55,7 @@ Headings, body text, labels, links and inline code, with wrapping that avoids a 
 ```c
 cui_heading(ui, "Settings", 1);          /* 1..4: 36, 28, 22, 17 pt; Geist for 28 and up */
 cui_text(ui, "Body text wraps to the available width.");
+cui_text(ui, "Select and copy this text.", .selectable = true);
 cui_secondary(ui, "Supporting text in the secondary color.");
 cui_muted(ui, "Small, muted text.");
 cui_label(ui, "Medium weight label");
@@ -64,13 +65,15 @@ if (cui_link(ui, "Read the docs")) open_docs();
 cui_icon(ui, CUI_ICON_ZAP, 16, CUI_COLOR_ACCENT);
 ```
 
-`cui_text` options: `font` (`CUI_FONT_BODY`, `MEDIUM`, `DISPLAY`, `MONO`), `size`, `color`, `align`, `nowrap` (one line with an ellipsis), `tabular` (aligned digits), `width`, `line_height`.
+`cui_text` options: `font` (`CUI_FONT_BODY`, `MEDIUM`, `DISPLAY`, `MONO`), `size`, `color`, `align`, `nowrap` (one line with an ellipsis), `tabular` (aligned digits), `width`, `line_height`, `selectable`.
 
-Wrapped text breaks like a careful typesetter: when a paragraph would end on a single word under a full line, the lines are rebalanced so at least two words share the last line. The number of lines never changes, so layout does not move. A `nowrap` line that is cut short with an ellipsis shows its whole text in a tooltip when the pointer rests on it; the text stays non-interactive, so the row or card around it keeps its clicks.
+Wrapped text breaks like a careful typesetter: when a paragraph would end on a single word under a full line, the lines are rebalanced so at least two words share the last line. The number of lines never changes, so layout does not move. A `nowrap` line that is cut short with an ellipsis shows its whole text in a tooltip when the pointer rests on it; text stays non-interactive by default, so the row or card around it keeps its clicks.
 
 Hierarchy comes from size and color, not weight: CUI uses regular and medium only.
 
-Keyboard: text takes no focus. A link takes Tab, and Enter or Space follows it.
+Set `.selectable = true` to enable drag selection and copying. Tab focuses the text; Shift+Left/Right extends by a UTF-8 character, the platform word modifier moves by word, Home/End moves to the beginning/end, Primary+A selects all and Primary+C copies (Command on macOS, Ctrl elsewhere). Shift+click extends the selection, double-click selects a word, triple-click selects all, and Escape clears it. Wrapping preserves the original text when copied. Selection is scoped to one text call and clears when its text changes. Its identity follows its position in the current id scope, so use `cui_push_id` around repeated records. Plain text remains non-interactive by default. A link takes Tab, and Enter or Space follows it.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/text-selection-dark.png"><img src="images/components/text-selection.png" alt="Selectable text with a selection highlight"></picture>
 
 ## Button
 

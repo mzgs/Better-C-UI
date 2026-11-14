@@ -135,6 +135,229 @@ static void cui__paint_edit(cui_ctx *ui, cui_node *n, void *data) {
     ui->text_unshaped = unshaped;
 }
 
+/* Display selection keeps the last painted glyph map for next frame's input. */
+typedef struct { cui_rect rect; int start, end; bool rtl; cui_id link; } cui__selection_span;
+struct cui__selection {
+    cui_id id;
+    uint32_t source_hash;
+    int source_len;
+    char *text;
+    int len, cap, cursor, anchor;
+    cui__selection_span *spans;
+    int count, span_cap;
+    bool init, dragging, pending_link, disabled;
+    float press_x, press_y;
+};
+
+static void cui__selection_free(cui_ctx *ui, void *data) {
+    cui__selection *s = data;
+    cui__free(ui, s->text);
+    cui__free(ui, s->spans);
+}
+
+static int cui__selection_hit(const cui__selection *s, float x, float y) {
+    float best = 1e30f;
+    int pos = 0;
+    for (int k = 0; k < s->count; k++) {
+        const cui__selection_span *p = &s->spans[k];
+        cui_rect r = p->rect;
+        float dy = CUI_MAX(CUI_MAX(r.y - y, y - r.y - r.h), 0);
+        float dx = CUI_MAX(CUI_MAX(r.x - x, x - r.x - r.w), 0);
+        float d = dy * 100000.0f + dx;
+        if (d < best) {
+            best = d;
+            bool right = x >= r.x + r.w * 0.5f;
+            pos = right != p->rtl ? p->end : p->start;
+        }
+    }
+    return pos;
+}
+
+static void cui__selection_keys(cui_ctx *ui, cui__selection *s) {
+    bool shift = (ui->mods & CUI_MOD_SHIFT) != 0;
+    bool prim = (ui->mods & CUI_MOD_PRIMARY) != 0;
+#ifdef __APPLE__
+    bool word = (ui->mods & CUI_MOD_ALT) != 0;
+#else
+    bool word = (ui->mods & CUI_MOD_CTRL) != 0;
+#endif
+    int pos = s->cursor;
+    bool moved = false, selected = s->cursor != s->anchor;
+    for (int k = 0; k < ui->kpressed[CUI_KEY_LEFT]; k++) {
+        pos = !shift && selected ? CUI_MIN(s->cursor, s->anchor) :
+              word ? cui__edit_word_left(s->text, pos) : cui__utf8_prev(s->text, pos);
+        moved = true; selected = false;
+    }
+    for (int k = 0; k < ui->kpressed[CUI_KEY_RIGHT]; k++) {
+        pos = !shift && selected ? CUI_MAX(s->cursor, s->anchor) :
+              word ? cui__edit_word_right(s->text, s->len, pos) : cui__utf8_next(s->text, s->len, pos);
+        moved = true; selected = false;
+    }
+    if (cui_key_pressed(ui, CUI_KEY_UP) || cui_key_pressed(ui, CUI_KEY_DOWN)) {
+        for (int k = 0; k < s->count; k++) {
+            const cui__selection_span *p = &s->spans[k];
+            if (pos < p->start || (pos >= p->end && !(pos == s->len && pos == p->end))) continue;
+            bool end = pos == p->end;
+            float x = p->rect.x + (end != p->rtl ? p->rect.w : 0);
+            float y = p->rect.y + p->rect.h * (cui_key_pressed(ui, CUI_KEY_UP) ? -0.5f : 1.5f);
+            pos = cui__selection_hit(s, x, y); moved = true; break;
+        }
+    }
+    if (cui_key_pressed(ui, CUI_KEY_HOME)) { pos = 0; moved = true; }
+    if (cui_key_pressed(ui, CUI_KEY_END)) { pos = s->len; moved = true; }
+    if (moved) { s->cursor = pos; if (!shift) s->anchor = pos; }
+    if (prim && cui_key_pressed(ui, CUI_KEY_A)) { s->anchor = 0; s->cursor = s->len; }
+    if (cui_key_pressed(ui, CUI_KEY_ESCAPE)) s->anchor = s->cursor;
+    if (prim && cui_key_pressed(ui, CUI_KEY_C) && s->cursor != s->anchor && ui->platform.set_clipboard) {
+        int a = CUI_MIN(s->cursor, s->anchor), b = CUI_MAX(s->cursor, s->anchor);
+        ui->platform.set_clipboard(ui->platform.user, cui__frame_strdup(ui, s->text + a, b - a));
+    }
+}
+
+cui__selection *cui__selection_begin(cui_ctx *ui, cui_id id, const char *source, int len) {
+    cui_id sid = id ^ 0x5E1EC7u;
+    cui__selection *s = cui_state(ui, sid, sizeof *s);
+    if (!s->init) { s->init = true; cui_state_on_free(ui, sid, cui__selection_free); }
+    uint32_t hash = cui__hash(source, (size_t)len, 0);
+    if (hash != s->source_hash || len != s->source_len) {
+        s->cursor = s->anchor = 0; s->dragging = s->pending_link = false;
+        s->count = s->len = 0; s->source_hash = hash; s->source_len = len;
+    }
+    s->cursor = CUI_CLAMP(s->cursor, 0, s->len);
+    s->anchor = CUI_CLAMP(s->anchor, 0, s->len);
+    while (s->cursor > 0 && s->cursor < s->len && ((unsigned char)s->text[s->cursor] & 0xC0) == 0x80) s->cursor--;
+    while (s->anchor > 0 && s->anchor < s->len && ((unsigned char)s->text[s->anchor] & 0xC0) == 0x80) s->anchor--;
+    s->id = id; s->disabled = cui_is_disabled(ui);
+    cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE | CUI_IF_DRAG);
+    bool link_press = false;
+    if (!s->disabled && ui->hot_layer == ui->current_layer && ui->mpressed[0]) {
+        for (int k = 0; k < s->count; k++) {
+            if (s->spans[k].link && s->spans[k].link == ui->hot && cui__rect_contains(s->spans[k].rect, ui->mx, ui->my)) {
+                link_press = true; break;
+            }
+        }
+    }
+    if ((r.active && ui->mpressed[0]) || link_press) {
+        int pos = cui__selection_hit(s, ui->mx, ui->my);
+        s->cursor = pos;
+        if (!(ui->mods & CUI_MOD_SHIFT)) s->anchor = pos;
+        if (ui->click_count >= 2 && !link_press && s->len) {
+            s->anchor = cui__edit_word_left(s->text, pos);
+            if (pos < s->len && cui__edit_is_word((unsigned char)s->text[pos])) s->anchor = cui__edit_word_left(s->text, pos + 1);
+            s->cursor = cui__edit_word_right(s->text, s->len, pos);
+            if (ui->click_count >= 3) { s->anchor = 0; s->cursor = s->len; }
+        }
+        s->press_x = ui->mx; s->press_y = ui->my;
+        s->dragging = true; s->pending_link = link_press;
+    }
+    if (s->pending_link && ui->mdown[0] &&
+        (fabsf(ui->mx - s->press_x) > 3 || fabsf(ui->my - s->press_y) > 3)) {
+        ui->active = ui->focus = id; ui->focus_visible = false; s->pending_link = false;
+    }
+    if (s->dragging && !s->pending_link && ui->active == id && ui->mdown[0] && !ui->mpressed[0] && ui->click_count < 2)
+        s->cursor = cui__selection_hit(s, ui->mx, ui->my);
+    if (!ui->mdown[0]) s->dragging = s->pending_link = false;
+    if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_TEXT);
+    bool covered = false;
+    int z = 0;
+    for (int k = 0; k < ui->popup_count; k++) if (ui->popups[k].id == ui->current_layer) z = ui->popups[k].z;
+    for (int k = 0; k < ui->popup_count; k++) if (ui->popups[k].open && ui->popups[k].z > z) covered = true;
+    if (!s->disabled && ui->focus == id && !covered) cui__selection_keys(ui, s);
+    s->len = s->count = 0;
+    return s;
+}
+
+int cui__selection_append(cui_ctx *ui, cui__selection *s, const char *text, int len) {
+    if (!s) return 0;
+    if (len < 0) len = (int)strlen(text);
+    CUI__GROW(ui, s->text, s->len, s->cap, len + 1);
+    int offset = s->len;
+    memcpy(s->text + offset, text, (size_t)len);
+    s->len += len; s->text[s->len] = 0;
+    return offset;
+}
+
+void cui__selection_line(cui_ctx *ui, cui__selection *s, int offset, cui_font font, float size,
+                         const char *text, int len, cui_rect r, bool tabular, cui_id link) {
+    if (!s || s->disabled || len <= 0) return;
+    cui__text_cluster *clusters = cui__frame_alloc(ui, ((size_t)len + 1) * sizeof *clusters);
+    int count = cui__text_clusters(ui, font, size, text, len, tabular, clusters);
+    if (len == 1 && text[0] == '\t') { count = 1; clusters[0] = (cui__text_cluster){ 0, 1, 0, r.w, false }; }
+    cui_xform xf = ui->dl.xform_stack[ui->dl.xform_depth - 1];
+    cui_rect clip = ui->dl.clip_stack[ui->dl.clip_depth - 1];
+    clip.x /= ui->scale; clip.y /= ui->scale; clip.w /= ui->scale; clip.h /= ui->scale;
+    cui_rect world = { r.x * xf.scale + xf.ox / ui->scale, r.y * xf.scale + xf.oy / ui->scale, r.w * xf.scale, r.h * xf.scale };
+    cui_rect hit = cui__rect_intersect(world, clip);
+    if (hit.w > 0 && hit.h > 0) cui__paint_add_hit(ui, s->id, hit, CUI_NF_INTERACTIVE);
+    int a = CUI_MIN(s->cursor, s->anchor), b = CUI_MAX(s->cursor, s->anchor);
+    cui_color color = cui_alpha(cui__emphasis(ui), ui->mode == CUI_THEME_DARK ? 0.35f : 0.22f);
+    cui_rect highlight = {0};
+    for (int k = 0; k < count; k++) {
+        const cui__text_cluster *c = &clusters[k];
+        if (c->x >= r.w || c->w <= 0) continue;
+        cui_rect box = { r.x + c->x, r.y, CUI_MIN(c->w, r.w - c->x), r.h };
+        cui_rect wr = { box.x * xf.scale + xf.ox / ui->scale, world.y, box.w * xf.scale, world.h };
+        cui_rect visible = cui__rect_intersect(wr, clip);
+        if (visible.w <= 0 || visible.h <= 0) continue;
+        CUI__GROW(ui, s->spans, s->count, s->span_cap, 1);
+        s->spans[s->count++] = (cui__selection_span){ wr, offset + c->start, offset + c->end, c->rtl, link };
+        if (ui->focus == s->id && a < offset + c->end && b > offset + c->start) {
+            if (highlight.w > 0 && box.x <= highlight.x + highlight.w + 1 && box.x + box.w >= highlight.x - 1) {
+                float right = CUI_MAX(highlight.x + highlight.w, box.x + box.w);
+                highlight.x = CUI_MIN(highlight.x, box.x); highlight.w = right - highlight.x;
+            } else {
+                if (highlight.w > 0) cui_draw_rect(ui, highlight, CUI_CORNERS(0), color);
+                highlight = box;
+            }
+        }
+    }
+    if (highlight.w > 0) cui_draw_rect(ui, highlight, CUI_CORNERS(0), color);
+}
+
+typedef struct { cui__selection *selection; int offset; } cui__selection_paint;
+static void cui__paint_selectable_text(cui_ctx *ui, cui_node *n, void *data) {
+    cui__selection_paint *p = data;
+    float lh = n->font_size * n->line_height;
+    int align = n->text_align;
+    if (align == CUI_TEXT_START) align = n->rtl ? CUI_TEXT_RIGHT : CUI_TEXT_LEFT;
+    else if (align == CUI_TEXT_END) align = n->rtl ? CUI_TEXT_LEFT : CUI_TEXT_RIGHT;
+#ifdef CUI_TEXT_SHAPING
+    cui_direction direction = ui->text_direction;
+    ui->text_direction = n->rtl ? CUI_DIRECTION_RTL : CUI_DIRECTION_LTR;
+    ui->text_paragraph = cui__text_needs_shaping(ui, n->text, n->text_len) ? n->text : NULL;
+    ui->text_paragraph_len = n->text_len;
+#endif
+    bool tab = (n->flags & CUI_NF_TABULAR) != 0;
+    int start = 0, line = 0;
+    do {
+        int end = start;
+        if (n->lines) { start = n->lines[line].start; end = n->lines[line].end; }
+        else while (end < n->text_len && n->text[end] != '\n') end++;
+        float w = cui__text_width(ui, n->font, n->font_size, n->text + start, end - start, tab);
+        cui_rect r = { n->rect.x, n->rect.y + line * lh, w, lh };
+        if (w < n->rect.w || n->lines) {
+            if (align == CUI_TEXT_CENTER) r.x += (n->rect.w - w) * 0.5f;
+            else if (align == CUI_TEXT_RIGHT) r.x += n->rect.w - w;
+        }
+        if (!n->lines && w > n->rect.w) r.w = CUI_MAX(0, n->rect.w - cui__text_width(ui, n->font, n->font_size, "\xE2\x80\xA6", 3, false));
+        cui__selection_line(ui, p->selection, p->offset + start, n->font, n->font_size, n->text + start, end - start, r, tab, 0);
+        start = end + 1; line++;
+    } while (n->lines ? line < n->text_lines : start <= n->text_len);
+#ifdef CUI_TEXT_SHAPING
+    ui->text_direction = direction; ui->text_paragraph = NULL;
+#endif
+    if (ui->focus == p->selection->id && ui->focus_visible)
+        cui__draw_focus_ring(ui, n->rect, CUI_CORNERS(2), 1);
+}
+
+void cui__selection_text(cui_ctx *ui, int node, cui__selection *s, int offset) {
+    if (!s) return;
+    cui__selection_paint *p = cui__frame_alloc(ui, sizeof *p);
+    p->selection = s; p->offset = offset;
+    ui->nodes[node].paint = cui__paint_selectable_text;
+    ui->nodes[node].paint_data = p;
+}
+
 /* ---- editing primitives ---- */
 
 bool cui__edit_is_word(unsigned char c) { return c >= 128 || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }

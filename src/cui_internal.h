@@ -192,6 +192,10 @@ float cui__font_ascent(cui_ctx *ui, cui_font font, float size);
 float cui__text_width(cui_ctx *ui, cui_font font, float size, const char *text, int len, bool tabular);
 /* Index of the byte boundary closest to x within a single line. */
 int cui__text_hit(cui_ctx *ui, cui_font font, float size, const char *text, int len, float x);
+/* Visual glyph clusters, with logical UTF-8 byte ranges, for display selection. */
+typedef struct { int start, end; float x, w; bool rtl; } cui__text_cluster;
+int cui__text_clusters(cui_ctx *ui, cui_font font, float size, const char *text, int len,
+                       bool tabular, cui__text_cluster *out);
 /* Word wrap into lines. Returns line count; writes up to max lines. */
 int cui__text_wrap(cui_ctx *ui, cui_font font, float size, const char *text, int len, float width,
                    cui_text_layout_line *lines, int max_lines);
@@ -354,6 +358,7 @@ typedef struct cui_scroll_state {
     cui_color fade;             /* edge fade color, alpha 0 for none */
 } cui_scroll_state;
 
+cui_id cui__auto_id(cui_ctx *ui);
 int cui__node_new(cui_ctx *ui, cui_id id);
 /* Code, numbers, times and key combinations read left to right even in a right-to-left
  * interface, and so do components whose grid is drawn by hand under a header made of
@@ -636,6 +641,7 @@ struct cui_ctx {
         void *dock;
         void *spot;                /* spotlight card */
         void *reasoning;
+        struct cui__selection *selection;   /* Markdown content, restored when its build ends */
     } building;
     cui__text_fx_fn text_fx;       /* set while a node with a text effect paints */
     void *text_fx_data;
@@ -728,6 +734,14 @@ void cui__paint_sheen(cui_ctx *ui, cui_node *n, void *data);   /* data: float st
 
 cui_color cui__legible(cui_color fg, cui_color bg, float ratio);
 cui_color cui__shade(cui_color c, float L, float chroma_mul);
+
+/* Display selection (cui_textedit.c): text and Markdown share input and glyph hit maps. */
+typedef struct cui__selection cui__selection;
+cui__selection *cui__selection_begin(cui_ctx *ui, cui_id id, const char *source, int len);
+int cui__selection_append(cui_ctx *ui, cui__selection *s, const char *text, int len);
+void cui__selection_line(cui_ctx *ui, cui__selection *s, int offset, cui_font font, float size,
+                         const char *text, int len, cui_rect r, bool tabular, cui_id link);
+void cui__selection_text(cui_ctx *ui, int node, cui__selection *s, int offset);
 
 /* ---- text editing primitives (cui_textedit.c), shared with the code editor ---- */
 #define CUI__UNDO_MAX 48

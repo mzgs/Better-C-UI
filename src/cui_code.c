@@ -184,6 +184,8 @@ typedef struct {
     bool line_numbers;
     int hl_from, hl_to;
     float size, lh, gutter, pad;
+    cui__selection *selection;
+    int selection_offset;
     cui_color colors[TK_COUNT], gutter_c, hl_c;
 } cui__code_paint;
 
@@ -213,7 +215,18 @@ static void cui__paint_code(cui_ctx *ui, cui_node *n, void *data) {
             const char *s = p->code + i + toks[k].start;
             int len = toks[k].len;
             /* tabs become four spaces */
-            if (len > 0 && s[0] == '\t') { x += cui__text_width(ui, CUI_FONT_MONO, p->size, "    ", 4, true) * (float)len; continue; }
+            if (len > 0 && s[0] == '\t') {
+                float tw = cui__text_width(ui, CUI_FONT_MONO, p->size, "    ", 4, true);
+                for (int tab = 0; tab < len; tab++) {
+                    cui__selection_line(ui, p->selection, p->selection_offset + i + toks[k].start + tab,
+                        CUI_FONT_MONO, p->size, s + tab, 1, (cui_rect){ x, y - 1, tw, p->lh }, true, 0);
+                    x += tw;
+                }
+                continue;
+            }
+            cui__selection_line(ui, p->selection, p->selection_offset + i + toks[k].start,
+                CUI_FONT_MONO, p->size, s, len,
+                (cui_rect){ x, y - 1, cui__text_width(ui, CUI_FONT_MONO, p->size, s, len, true), p->lh }, true, 0);
             if (toks[k].kind != TK_TEXT || s[0] != ' ')
                 cui__draw_text_line(ui, CUI_FONT_MONO, p->size, x, ty, p->colors[toks[k].kind], s, len, true);
             x += cui__text_width(ui, CUI_FONT_MONO, p->size, s, len, true);
@@ -311,6 +324,8 @@ static void cui__code_block_ex_body(cui_ctx *ui, const char *id_str, const char 
     cui__code_paint *p = cui__frame_alloc(ui, sizeof *p);
     p->code = cui__frame_strdup(ui, code, len);
     p->len = len;
+    p->selection = ui->building.selection;
+    p->selection_offset = cui__selection_append(ui, p->selection, code, len);
     p->json = o->lang && !strcmp(o->lang, "json");
     p->lang = cui__lang_for(p->json ? NULL : o->lang);
     p->line_numbers = o->line_numbers;

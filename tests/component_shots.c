@@ -38,6 +38,34 @@ static void frame_wrap(cui_ctx *ui, void (*body)(cui_ctx *ui)) {
 
 #define SCENE(name) static void body_##name(cui_ctx *ui); static void scene_##name(cui_ctx *ui, int f) { if (f < 0) return; frame_wrap(ui, body_##name); } static void body_##name(cui_ctx *ui)
 
+static void scene_text_selection(cui_ctx *ui, int f) {
+    if (f < 0) {
+        int step = -f - 1;
+        if (step == 3) { cui_input_key(ui, CUI_KEY_TAB, true, 0); cui_input_key(ui, CUI_KEY_TAB, false, 0); }
+        if (step == 4) { cui_input_key(ui, CUI_KEY_A, true, CUI_MOD_PRIMARY); cui_input_key(ui, CUI_KEY_A, false, CUI_MOD_PRIMARY); }
+        return;
+    }
+    cui_column(ui, .pad = 28, .gap = 16, .width = CUI_FILL, .height = CUI_FILL, .bg = CUI_COLOR_BACKGROUND) {
+        cui_label(ui, "Select text and copy");
+        cui_text(ui, "The release notes are ready. Select a word, drag across wrapped lines, or use the keyboard to copy this paragraph.",
+                 .selectable = true, .width = CUI_FILL);
+        cui_muted(ui, "Tab to focus. Shift+arrows to select. Command+C or Ctrl+C to copy.");
+    }
+}
+
+static void scene_markdown_selection(cui_ctx *ui, int f) {
+    if (f < 0) {
+        int step = -f - 1;
+        if (step == 3) { cui_input_key(ui, CUI_KEY_TAB, true, 0); cui_input_key(ui, CUI_KEY_TAB, false, 0); }
+        if (step == 4) { cui_input_key(ui, CUI_KEY_A, true, CUI_MOD_PRIMARY); cui_input_key(ui, CUI_KEY_A, false, CUI_MOD_PRIMARY); }
+        return;
+    }
+    cui_column(ui, .pad = 28, .gap = 16, .width = CUI_FILL, .height = CUI_FILL, .bg = CUI_COLOR_BACKGROUND) {
+        cui_markdown(ui, "selected-notes", "## Release notes\n\nSelect **formatted text**, *emphasis* and `inline code` together.\n\n> Copy a quote along with the next paragraph.\n\nThe clipboard receives plain text, without formatting markers.");
+        cui_muted(ui, "Drag between paragraphs, or focus the view and select all.");
+    }
+}
+
 SCENE(buttons) {
     cui_row(ui, .gap = 8, .wrap = true) {
         cui_button(ui, "Primary", .variant = CUI_BUTTON_PRIMARY, .icon = CUI_ICON_PLUS);
@@ -1513,7 +1541,7 @@ static void body_markdown(cui_ctx *ui) {
         cui_separator(ui);
         cui_row(ui, .width = CUI_FILL, .gap = 12, .align = CUI_ALIGN_CENTER, .wrap = true) {
             if (cui_button(ui, "Replay as a stream", .size = CUI_SIZE_SM, .icon = CUI_ICON_PLAY)) { stream_start = cui_time(ui); status[0] = 0; }
-            cui_text(ui, status[0] ? status : r.hovered_link ? r.hovered_link : "Click a link or a task box",
+            cui_text(ui, status[0] ? status : r.hovered_link ? r.hovered_link : "Drag text to select, or click a link or task box",
                      .size = 12.5f, .color = CUI_COLOR_TEXT_SECONDARY);
         }
     }
@@ -4011,6 +4039,8 @@ static void scene_dev2_api(cui_ctx *ui, int f) {
 int main(int argc, char **argv) {
     const char *dir = argc > 1 ? argv[1] : ".";
     static const scene scenes[] = {
+        { "text-selection", scene_text_selection, 560, 210, true },
+        { "markdown-selection", scene_markdown_selection, 560, 330, true },
         { "buttons", scene_buttons, 760, 110, true }, { "segmented", scene_segmented, 420, 110, true },
         { "toggles", scene_toggles, 680, 150, true }, { "slider", scene_slider, 480, 170, true },
         { "inputs", scene_inputs, 680, 230, true }, { "textarea", scene_textarea, 540, 200, false },

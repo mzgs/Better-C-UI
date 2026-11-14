@@ -48,7 +48,7 @@ void cui__close(cui_ctx *ui) {
     if (ui->parent_depth > 0) ui->parent_depth--;
 }
 
-static cui_id cui__auto_id(cui_ctx *ui) {
+cui_id cui__auto_id(cui_ctx *ui) {
     int d = ui->id_depth;
     int c = ui->auto_counter[d]++;
     cui_id seed = d ? ui->id_stack[d - 1] : 0x51ED270Bu;

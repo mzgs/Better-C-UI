@@ -432,7 +432,7 @@ typedef struct {
     float pad;                   /* inline code: padding inside its tint */
 } md_font;
 
-typedef struct { const char *p; int len; float x, w; int line, run, link; uint8_t style, lead; } md_seg;
+typedef struct { const char *p; int len; float x, w; int line, run, link, selection_offset; cui_id selection_link; uint8_t style, lead; } md_seg;
 typedef struct { md_seg *seg; int n, cap; int lines; float widest; } md_lay;
 
 static cui_font md_font_of(const md_font *f, int style) { return (style & MS_CODE) ? f->mono : (style & MS_STRONG) ? f->bold : f->reg; }
@@ -470,6 +470,7 @@ static void md_seg_add(cui_ctx *ui, md_lay *L, const md_inline *in, int run, con
     }
     md_seg *s = &L->seg[L->n++];
     s->p = p; s->len = len; s->x = x; s->w = w; s->line = L->lines; s->run = run; s->link = R->link;
+    s->selection_offset = 0; s->selection_link = 0;
     s->style = R->style; s->lead = (R->style & MS_CODE) && p == R->p;
 }
 
@@ -565,6 +566,7 @@ typedef struct {
     md_font f;
     cui_color fg, link_c, code_bg;
     const float *hover, *focus;   /* per link of the block */
+    cui__selection *selection;
     bool underline_rest;          /* links keep a full underline (text on a colored surface) */
 } md_paint;
 
@@ -594,6 +596,8 @@ static void md_paint_inline(cui_ctx *ui, cui_node *n, void *data) {
             cui_draw_rect(ui, (cui_rect){ x, top + (f->lh - ch) * 0.5f, s->w, ch }, CUI_CORNERS(4), p->code_bg);
         }
         float tx = x + (s->lead ? f->pad : 0);
+        cui__selection_line(ui, p->selection, s->selection_offset, font, size, s->p, s->len,
+                            (cui_rect){ tx, top, s->w - (s->lead ? f->pad : 0), f->lh }, false, s->selection_link);
         int v0 = ui->dl.vtx_count;
         cui__draw_text_line(ui, font, size, tx, base - cui__font_ascent(ui, font, size), col, s->p, s->len, false);
         if (s->style & MS_EM) md_shear(ui, v0, base);
@@ -637,11 +641,13 @@ static void md_paint_rail(cui_ctx *ui, cui_node *n, void *data) {
     cui_draw_rect(ui, (cui_rect){ n->rect.x, n->rect.y, w, n->rect.h }, CUI_CORNERS(w * 0.5f), *c);
 }
 
-typedef struct { float w; } md_root_paint;
+typedef struct { float w; bool selectable; } md_root_paint;
 static void md_paint_root(cui_ctx *ui, cui_node *n, void *data) {
     md_root_paint *p = data;
     /* laid out for another width than it got: build once more at this one */
     if (fabsf(n->rect.w - p->w) > 0.5f) ui->animating = true;
+    if (p->selectable && ui->focus == n->id && ui->focus_visible)
+        cui__draw_focus_ring(ui, n->rect, CUI_CORNERS(2), 1);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -659,6 +665,9 @@ typedef struct {
     cui_color fg, fg2, link_c, code_bg, marker_c, rule_c, rail_c;
     int link_seq, code_seq, table_seq;
     cui_markdown_result *res;
+    cui__selection *selection;
+    int selection_blocks;
+    const char *selection_separator;
 } md_ctx;
 
 typedef struct { float w; int depth; bool tight; cui_color fg; } md_box;
@@ -694,6 +703,10 @@ static float md_gap_before(md_ctx *c, const md_box *b, int prev, int kind, int l
 
 static cui_id md_link_id(md_ctx *c, int seq) { return cui__hash(&seq, sizeof seq, c->id ^ 0x3D11Au); }
 
+static void md_selection_separator(md_ctx *c, const char *separator) {
+    if (c->selection && c->selection_blocks++) cui__selection_append(c->ui, c->selection, separator, -1);
+}
+
 /* Builds a laid out inline block: one painted node, a hit box per link piece. */
 static float md_inline_emit(md_ctx *c, const md_inline *in, const md_font *f, cui_color fg, int align, float W) {
     cui_ctx *ui = c->ui;
@@ -722,9 +735,25 @@ static float md_inline_emit(md_ctx *c, const md_inline *in, const md_font *f, cu
         if (r.clicked) c->res->link = url;
         if (!lk->autolink) { ui->last_id = id; cui_tooltip(ui, r.hovered && url ? url : ""); }
     }
+    if (c->selection) {
+        md_selection_separator(c, c->selection_separator);
+        int *offsets = cui__frame_alloc(ui, ((size_t)in->nruns + 1) * sizeof *offsets);
+        for (int k = 0; k < in->nruns; k++) {
+            const md_run *run = &in->runs[k];
+            offsets[k] = cui__selection_append(ui, c->selection,
+                run->style & MS_BREAK ? "\n" : run->p, run->style & MS_BREAK ? 1 : run->len);
+        }
+        for (int k = 0; k < L.n; k++) {
+            md_seg *seg = &L.seg[k];
+            const md_run *run = &in->runs[seg->run];
+            uintptr_t a = (uintptr_t)seg->p, b = (uintptr_t)run->p;
+            seg->selection_offset = offsets[seg->run] + (a >= b && a - b < (uintptr_t)run->len ? (int)(a - b) : 0);
+            seg->selection_link = seg->link >= 0 ? ids[seg->link] : 0;
+        }
+    }
     int leaf = cui__leaf(ui, 0, CUI_FILL, CUI_PX((float)L.lines * f->lh));
     md_paint *p = cui__frame_alloc(ui, sizeof *p);
-    p->seg = L.seg; p->n = L.n; p->f = *f;
+    p->seg = L.seg; p->n = L.n; p->f = *f; p->selection = c->selection;
     p->fg = fg; p->link_c = c->custom_color ? fg : c->link_c; p->code_bg = c->code_bg;
     p->hover = hover; p->focus = focus;
     p->underline_rest = c->custom_color;
@@ -827,6 +856,7 @@ static float md_code(md_ctx *c, const md_line *L, int n, int strip, md_line lang
     memset(&co, 0, sizeof co);
     co.lang = lg;
     co.size = c->body;
+    md_selection_separator(c, "\n");
     cui_code_block_ex(ui, cui__frame_printf(ui, "code%d", c->code_seq++), buf, &co);
     return c->fit ? widest + 42 : 0;
 }
@@ -1196,15 +1226,28 @@ static int md_table(md_ctx *c, const md_box *b, const md_line *L, int n, int i, 
     cui_table_opts to;
     memset(&to, 0, sizeof to);
     to.compact = true;
+    int header_start = ui->node_count;
     cui_table_begin_ex(ui, cui__frame_printf(ui, "table%d", c->table_seq++), cols, ncols, &to);
+    if (c->selection) {
+        int column = 0;
+        for (int k = header_start; k < ui->node_count; k++) {
+            cui_node *node = &ui->nodes[k];
+            if (!(node->flags & CUI_NF_TEXT) || node->font == CUI_FONT_ICONS) continue;
+            md_selection_separator(c, column++ ? "\t" : "\n");
+            int offset = cui__selection_append(ui, c->selection, node->text, node->text_len);
+            cui__selection_text(ui, k, c->selection, offset);
+        }
+    }
     for (int r = 1; r <= nrows; r++) {
         cui_table_row(ui, false);
         for (int k = 0; k < ncols; k++) {
             cui_table_cell(ui);
+            c->selection_separator = k ? "\t" : "\n";
             if (k < rowc[r]) md_inline_emit(c, &cells[r * ncols + k], &f, b->fg, align[k], colw[k] - 16);
         }
     }
     cui_table_end(ui);
+    c->selection_separator = "\n";
     if (nat) *nat = natural;
     return j;
 }
@@ -1318,6 +1361,10 @@ cui_markdown_result cui_markdown_ex(cui_ctx *ui, const char *id_str, const char 
     md_ctx c;
     memset(&c, 0, sizeof c);
     c.ui = ui; c.id = id; c.src = text; c.len = len; c.res = &res;
+    c.selection = o->no_selection ? NULL : cui__selection_begin(ui, id, text, len);
+    c.selection_separator = "\n";
+    cui__selection *previous_selection = ui->building.selection;
+    ui->building.selection = c.selection;
     c.streaming = o->streaming; c.compact = o->compact; c.fit = o->fit_content;
     c.body = o->size > 0 ? o->size : ui->theme.text_body;
     c.u = c.body / 13.0f;
@@ -1355,7 +1402,7 @@ cui_markdown_result cui_markdown_ex(cui_ctx *ui, const char *id_str, const char 
     if (c.fit) { rn->w = CUI_FIT; rn->self_align = CUI__ALIGN_NOSTRETCH; }
     else rn->w = o->width.kind != CUI_SIZE_FIT ? o->width : CUI_FILL;
     md_root_paint *rp = cui__frame_alloc(ui, sizeof *rp);
-    rp->w = W;
+    rp->w = W; rp->selectable = c.selection != NULL;
     rn->paint = md_paint_root;
     rn->paint_data = rp;
     cui__open(ui, root);
@@ -1377,6 +1424,7 @@ cui_markdown_result cui_markdown_ex(cui_ctx *ui, const char *id_str, const char 
 
     cui_pop_id(ui);
     cui__close(ui);
+    ui->building.selection = previous_selection;
     if (c.fit) ui->nodes[root].pref_hint = CUI_MAX(1.0f, CUI_MIN(natural, 1e6f));
     ui->last_id = id;
     return res;

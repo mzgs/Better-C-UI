@@ -57,7 +57,7 @@ Components are grouped by family, one family per file, so a change to one compon
 |---|---|
 | `cui_widgets.c` | text, buttons, links, badges, cards, separators, the base pieces others build on |
 | `cui_controls.c` | checkbox, switch, radio, slider, segmented control, rating |
-| `cui_textedit.c` | text fields and text areas, and the editing primitives the code editor reuses |
+| `cui_textedit.c` | text fields and text areas, display selection, and the editing primitives the code editor reuses |
 | `cui_overlay.c` | popovers, menus, dialogs, sheets, toasts, tooltips, the command palette |
 | `cui_pickers.c` | select, combobox, date and time pickers, color picker |
 | `cui_data.c`, `cui_grid.c`, `cui_treetable.c` | tables, lists, trees, the data grid, tree tables and path bars |
@@ -80,7 +80,7 @@ Components are grouped by family, one family per file, so a change to one compon
 
 **Frame memory.** `cui__frame_alloc` hands out memory that lives until the next frame starts. Paint data, copies of strings the node will draw, and per-frame scratch go there. It never needs freeing.
 
-**Painting.** Plain boxes, borders and text are painted by the layout pass. Anything else (a chart, a knob, a selection band) sets `node->paint` and `node->paint_data`; the callback runs with the final rectangle and draws with the `cui_draw_*` primitives. Paint callbacks must not change state that the next frame's build depends on, with one exception: recording something only layout knows (the resolved reading direction) for the next frame's input.
+**Painting.** Plain boxes, borders and text are painted by the layout pass. Anything else (a chart, a knob, a selection band) sets `node->paint` and `node->paint_data`; the callback runs with the final rectangle and draws with the `cui_draw_*` primitives. Paint callbacks must not change state that the next frame's build depends on, with one exception: recording something only layout knows (the resolved reading direction or visible glyph positions for display selection) for the next frame's input.
 
 **Floating layers.** Popovers, menus, dialogs and tooltips are nodes in their own floating roots, painted after the main tree, with their own hit testing and focus scope.
 

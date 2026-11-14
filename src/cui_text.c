@@ -20,7 +20,7 @@
 #ifdef CUI_TEXT_SHAPING
 #include "cui_shape.h"
 #include "cui_bidi.h"
-typedef struct { int font, id, start; float x, y; } cui_shaped_glyph;
+typedef struct { int font, id, start; float x, y, advance; bool rtl; } cui_shaped_glyph;
 typedef struct cui_shaped_line {
     struct cui_shaped_line *next;
     int start, end, font, count;
@@ -442,7 +442,7 @@ bool cui__text_needs_shaping(cui_ctx *ui, const char *text, int len) {
 }
 
 static float cui__shape_run(cui_ctx *ui, cui_font font, float size, const char *text, int len,
-                             bool tabular, bool draw, float x, float y, cui_color color, float max_x);
+                             bool tabular, bool draw, float x, float y, cui_color color, float max_x, cui__text_cluster *clusters, int *cluster_count);
 #endif
 
 static float cui__text_width_raw(cui_ctx *ui, cui_font font, float size, const char *text, int len, bool tabular) {
@@ -454,7 +454,7 @@ static float cui__text_width_raw(cui_ctx *ui, cui_font font, float size, const c
         for (int start = 0; start <= len;) {
             int end = start;
             while (end < len && text[end] != '\n') end++;
-            float w = cui__shape_run(ui, font, size, text + start, end - start, tabular, false, 0, 0, (cui_color){0}, 1e30f);
+            float w = cui__shape_run(ui, font, size, text + start, end - start, tabular, false, 0, 0, (cui_color){0}, 1e30f, NULL, NULL);
             maxw = CUI_MAX(maxw, w);
             start = end + 1;
         }
@@ -607,7 +607,7 @@ int cui__text_wrap(cui_ctx *ui, cui_font font, float size, const char *text, int
             float best_width = 0;
             while (end < len && text[end] != '\n') {
                 while (end < len && text[end] != ' ' && text[end] != '\t' && text[end] != '\n') end++;
-                float w = cui__shape_run(ui, font, size, text + start, end - start, false, false, 0, 0, (cui_color){0}, 1e30f);
+                float w = cui__shape_run(ui, font, size, text + start, end - start, false, false, 0, 0, (cui_color){0}, 1e30f, NULL, NULL);
                 if (w > width + 0.01f && best > start) break;
                 best = end; best_width = w;
                 next = end;
@@ -895,7 +895,7 @@ static uint32_t cui__shape_script(uint32_t cp) {
 }
 
 static float cui__shape_run(cui_ctx *ui, cui_font font, float size, const char *text, int len,
-                             bool tabular, bool draw, float x, float y, cui_color color, float max_x) {
+                             bool tabular, bool draw, float x, float y, cui_color color, float max_x, cui__text_cluster *clusters, int *cluster_count) {
     cui_font_data *base = &ui->fonts[font];
     const char *paragraph = text;
     int plen = len, line_start = 0;
@@ -986,7 +986,7 @@ static float cui__shape_run(cui_ctx *ui, cui_font font, float size, const char *
                     cui_shape_glyph *g = &input[k];
                     CUI__GROW(ui, glyphs, glyph_count, glyph_cap, 1);
                     glyphs[glyph_count++] = (shaped_glyph){ gf, g->id, g->cluster,
-                        span->width + g->x * em, g->y * em };
+                        span->width + g->x * em, g->y * em, g->advance * em, rtl };
                     span->width += g->advance * em;
                     span->count++;
                 }
@@ -1011,6 +1011,29 @@ static float cui__shape_run(cui_ctx *ui, cui_font font, float size, const char *
     cui__free(ui, order); cui__free(ui, levels);
     cached->width = pen; cached->next = p->lines; p->lines = cached; p->line_count++;
 paint:
+    if (clusters) {
+        int *at = cui__frame_alloc(ui, ((size_t)len + 1) * sizeof *at);
+        for (int k = 0; k <= len; k++) at[k] = -1;
+        int count = 0;
+        for (int k = 0; k < cached->count; k++) {
+            const cui_shaped_glyph *g = &cached->glyphs[k];
+            if (g->start < 0 || g->start >= len) continue;
+            int j = at[g->start];
+            if (j < 0) {
+                at[g->start] = count;
+                clusters[count++] = (cui__text_cluster){ g->start, len, g->x, g->advance, g->rtl };
+            } else {
+                cui__text_cluster *c = &clusters[j];
+                float right = CUI_MAX(c->x + c->w, g->x + g->advance);
+                c->x = CUI_MIN(c->x, g->x); c->w = right - c->x;
+            }
+        }
+        int end = len;
+        for (int k = len - 1; k >= 0; k--) {
+            if (at[k] >= 0) { clusters[at[k]].end = end; end = k; }
+        }
+        *cluster_count = count;
+    }
     if (draw) {
         float scale = ui->scale;
         float baseline = roundf((y + base->ascent * size) * scale);
@@ -1041,6 +1064,23 @@ paint:
 }
 #endif
 
+int cui__text_clusters(cui_ctx *ui, cui_font font, float size, const char *text, int len,
+                       bool tabular, cui__text_cluster *out) {
+    font = cui__resolve_font(ui, font);
+    if (font < 0 || len <= 0) return 0;
+    int count = 0;
+#ifdef CUI_TEXT_SHAPING
+    if (cui__text_needs_shaping(ui, text, len)) {
+        cui__shape_run(ui, font, size, text, len, tabular, false, 0, 0, (cui_color){0}, 1e30f, out, &count);
+        return count;
+    }
+#endif
+    cui__glyph_iter it;
+    cui__iter_init(&it, ui, font, size, text, len, tabular);
+    while (cui__iter_next(&it)) out[count++] = (cui__text_cluster){ it.start, it.end, it.gx, it.adv, false };
+    return count;
+}
+
 /* ---- drawing ---- */
 
 static void cui__draw_run(cui_ctx *ui, cui_font font, float size, float x, float y, cui_color color,
@@ -1051,7 +1091,7 @@ static void cui__draw_run(cui_ctx *ui, cui_font font, float size, float x, float
     if (color.a == 0) return;
 #ifdef CUI_TEXT_SHAPING
     if (cui__text_needs_shaping(ui, text, len)) {
-        cui__shape_run(ui, font, size, text, len, tabular, true, x, y, color, max_x);
+        cui__shape_run(ui, font, size, text, len, tabular, true, x, y, color, max_x, NULL, NULL);
         return;
     }
 #endif
