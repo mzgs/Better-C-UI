@@ -726,7 +726,7 @@ Read-only source code with syntax highlighting, optional line numbers and a copy
 cui_code_block(ui, "counter", source, .lang = "c", .title = "counter.c", .line_numbers = true, .highlight_from = 7);
 ```
 
-Lexical highlighting for 50 languages and formats (listed below), in colors that follow the theme. Long lines scroll sideways, `max_height` makes the block scroll vertically, and the copy button morphs into a check after copying. Inside a scrolling page, a mostly vertical trackpad gesture scrolls the page when the block has no vertical overflow, even with a small sideways delta. A mostly horizontal gesture or Shift+wheel scrolls long lines sideways.
+Lexical highlighting for 37 language entries, matching the optional Tree-sitter demo (listed below), in colors that follow the theme. Long lines scroll sideways, `max_height` makes the block scroll vertically, and the copy button morphs into a check after copying. Inside a scrolling page, a mostly vertical trackpad gesture scrolls the page when the block has no vertical overflow, even with a small sideways delta. A mostly horizontal gesture or Shift+wheel scrolls long lines sideways.
 
 Returns nothing. `source` is your string, read on every frame, so it can change while it is shown. `lang` takes a lowercase id from the table below; `"text"` or `"plain"` disables colors. Without `lang`, the block and editor use generic token colors. The language is chosen by the app, with no automatic detection. The title bar shows `title`, or the language when there is no title, and holds the copy button: a block with neither, or with `no_header`, has no copy button. `highlight_from` and `highlight_to` are line numbers from 1, and `highlight_from` alone marks one line. To let people change the code, use the code editor.
 
@@ -738,60 +738,47 @@ The code block, code editor, diff viewer and source previews share these rules. 
 
 | Language or format | `lang` | Aliases |
 |---|---|---|
-| C | `c` | `h` |
-| C++ | `cpp` | `c++`, `cxx`, `cc`, `hpp` |
-| JavaScript | `js` | `javascript`, `jsx` |
-| TypeScript | `ts` | `typescript`, `tsx` |
-| Python | `python` | `py` |
-| Rust | `rust` | `rs` |
-| Go | `go` | `golang` |
 | JSON | `json` |  |
-| Shell | `shell` | `sh`, `bash`, `zsh` |
-| Java | `java` |  |
-| C# | `csharp` | `cs`, `c#` |
-| Swift | `swift` |  |
-| Kotlin | `kotlin` | `kt`, `kts` |
-| Dart | `dart` |  |
-| PHP | `php` |  |
-| Ruby | `ruby` | `rb` |
-| Lua | `lua` |  |
-| Perl | `perl` | `pl` |
-| R | `r` |  |
-| Julia | `julia` | `jl` |
-| Scala | `scala` | `sc` |
-| Objective-C | `objc` | `objective-c`, `objectivec`, `m`, `mm` |
-| SQL | `sql` |  |
-| HTML | `html` | `htm` |
-| CSS | `css` |  |
-| XML | `xml` | `svg` |
-| YAML | `yaml` | `yml` |
-| TOML | `toml` |  |
-| Markdown | `markdown` | `md` |
-| PowerShell | `powershell` | `ps1`, `pwsh` |
-| Batch | `batch` | `bat`, `cmd` |
+| Astro | `astro` |  |
+| Bash | `bash` | `sh`, `shell`, `zsh` |
+| C | `c` | `h` |
 | CMake | `cmake` |  |
-| Makefile | `make` | `makefile` |
-| Dockerfile | `dockerfile` | `docker` |
-| INI | `ini` | `cfg` |
+| C++ | `cpp` | `c++`, `cxx`, `cc`, `hpp` |
+| C# | `csharp` | `cs`, `c#` |
+| CSS | `css` |  |
 | Diff | `diff` | `patch` |
-| Assembly | `asm` | `assembly`, `nasm` |
-| Fortran | `fortran` | `f90`, `f95` |
-| Pascal | `pascal` | `pas`, `delphi` |
-| Visual Basic | `vb` | `vbnet`, `visualbasic` |
-| MATLAB | `matlab` | `octave` |
-| Groovy | `groovy` | `gradle` |
-| Haskell | `haskell` | `hs` |
+| EJS | `ejs` |  |
 | Elixir | `elixir` | `ex`, `exs` |
-| Erlang | `erlang` | `erl`, `hrl` |
-| Clojure | `clojure` | `clj`, `cljs`, `cljc`, `edn` |
-| F# | `fsharp` | `fs`, `f#`, `fsx` |
-| OCaml | `ocaml` | `ml`, `mli` |
+| ERB | `erb` | `rhtml` |
+| Go | `go` | `golang` |
+| GraphQL | `graphql` |  |
+| HTML | `html` | `htm` |
+| Java | `java` |  |
+| JavaScript | `javascript` | `js`, `jsx` |
+| JSDoc | `jsdoc` |  |
+| Kotlin | `kotlin` | `kt`, `kts` |
+| Lua | `lua` |  |
+| Make | `make` | `makefile` |
+| Markdown | `markdown` | `md` |
+| Markdown inline | `markdown_inline` | `md_inline` |
+| PHP | `php` |  |
+| Protocol Buffers | `proto` | `protobuf` |
+| Python | `python` | `py` |
+| Ruby | `ruby` | `rb` |
+| Rust | `rust` | `rs` |
+| Scala | `scala` | `sc` |
+| SQL | `sql` |  |
+| Svelte | `svelte` |  |
+| Swift | `swift` |  |
+| TOML | `toml` |  |
+| TSX | `tsx` |  |
+| TypeScript | `typescript` | `ts` |
+| YAML | `yaml` | `yml` |
 | Zig | `zig` |  |
-| GLSL | `glsl` | `vert`, `frag` |
 
-This is a lightweight lexical highlighter: it recognizes common keywords, types, strings, numbers, comments and function-like names. SQL, Fortran, Visual Basic and other case-insensitive profiles match keywords without regard to case. Markup colors tags and attributes; CSS and config formats color properties and keys; Markdown colors headings, quotes and inline code; Diff colors added, removed and hunk lines. Block comments carry across lines, including when the start is outside the editor's viewport.
+This is a lightweight lexical highlighter: it recognizes common keywords, types, strings, numbers, comments and function-like names. SQL and CMake match keywords without regard to case. HTML, Astro and Svelte color tags and attributes; EJS and ERB also color single-line `<% ... %>` directives and `<%# ... %>` comments; JSDoc colors common annotation names and types; CSS and config formats color properties and keys; Markdown colors headings, quotes and inline code, while Markdown inline colors inline code; Diff colors added, removed and hunk lines. Block comments carry across lines, including when the start is outside the editor's viewport.
 
-These rules do not validate code or resolve symbols. Nested comments, multiline/raw strings, interpolation, heredocs, embedded languages (such as JavaScript in HTML or JSX tags) and dialect-specific syntax are not fully parsed. Pascal supports `{ ... }` comments; its alternate `(* ... *)` form is outside this profile. Assembly uses common mnemonics rather than an instruction-set-specific grammar.
+These rules do not validate code or resolve symbols. Nested comments, multiline/raw strings, interpolation, heredocs, embedded languages (such as JavaScript in HTML or JSX tags) and dialect-specific syntax are not fully parsed. Template code is shown as a directive without parsing the embedded JavaScript or Ruby. Unknown or removed language ids use generic token colors; `text` disables highlighting.
 
 ### JSON viewer
 
@@ -855,11 +842,11 @@ cui_textf(ui, "Ln %d, Col %d", r.line, r.column);
 if (error_line) cui_code_editor_goto(ui, "shader", error_line, error_column);   /* jump to a compile error */
 ```
 
-Editable code for shader editors, script consoles and config files, with the code block's [50-language highlighting](#syntax-highlighting-languages) (or plain text with `.lang = "text"`), its surface and its monospace font. You own the text: a NUL terminated buffer and its capacity, edited in place. An edit that would not fit is refused whole, never cut in half, and the result reports it (`refused`) so you can say so. The result also gives the caret's line and column (columns count a tab to its stop), the selection as byte offsets, the line count, whether the text changed this frame and, with the find bar open, how many matches there are and which one is selected. A gutter on the left numbers the lines and marks the caret's line, which also gets a quiet band across the editor; the bracket beside the caret and its partner are boxed. Lines never wrap: long ones scroll sideways under the gutter, which stays, and a hairline marks the gutter's edge while the code is scrolled. Only the lines in view are tokenized and drawn, so a file of tens of thousands of lines scrolls and types like a short one. `.read_only` keeps selection, copy, find and go to line but refuses every edit; `.placeholder` shows while the text is empty; `.tab_size` (default 4) and `.use_tabs` choose how indentation is typed; `.height` defaults to 320 points and a negative height fills the space. `cui_code_editor_goto` puts the caret at a line and column, `cui_code_editor_select` selects bytes and `cui_code_editor_find` opens the find bar with a query; each focuses the editor and scrolls there on its next frame (call them from the same id scope).
+Editable code for shader editors, script consoles and config files, with the code block's [37-entry highlighting](#syntax-highlighting-languages) (or plain text with `.lang = "text"`), its surface and its monospace font. You own the text: a NUL terminated buffer and its capacity, edited in place. An edit that would not fit is refused whole, never cut in half, and the result reports it (`refused`) so you can say so. The result also gives the caret's line and column (columns count a tab to its stop), the selection as byte offsets, the line count, whether the text changed this frame and, with the find bar open, how many matches there are and which one is selected. A gutter on the left numbers the lines and marks the caret's line, which also gets a quiet band across the editor; the bracket beside the caret and its partner are boxed. Lines never wrap: long ones scroll sideways under the gutter, which stays, and a hairline marks the gutter's edge while the code is scrolled. Only the lines in view are tokenized and drawn, so a file of tens of thousands of lines scrolls and types like a short one. `.read_only` keeps selection, copy, find and go to line but refuses every edit; `.placeholder` shows while the text is empty; `.tab_size` (default 4) and `.use_tabs` choose how indentation is typed; `.height` defaults to 320 points and a negative height fills the space. `cui_code_editor_goto` puts the caret at a line and column, `cui_code_editor_select` selects bytes and `cui_code_editor_find` opens the find bar with a query; each focuses the editor and scrolls there on its next frame (call them from the same id scope).
 
 The same editor can show SQL or HTML by changing `lang`:
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/code-languages-dark.png"><img src="images/components/code-languages.png" alt="SQL and HTML code editors with language-specific syntax colors"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/code-languages-dark.png"><img src="images/components/code-languages.png" alt="GraphQL and EJS code editors with built-in syntax colors"></picture>
 
 #### Optional Tree-sitter
 
@@ -867,7 +854,7 @@ Build with `CUI_TREE_SITTER=ON`, link `cui::tree_sitter` and pass `.highlighter 
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/tree-sitter-dark.png"><img src="images/components/tree-sitter.png" alt="A JSON editor highlighted by the optional Tree-sitter backend"></picture>
 
-The native preview above uses the test JSON grammar; the browser's live preview uses the built-in fallback. Keyboard and editing behavior are the same with either backend.
+The native preview above uses the test JSON grammar; the browser's live preview uses the built-in fallback. Keyboard and editing behavior are the same with either backend. For GPUI Kit’s full grammar set (37 entries), enable `CUI_TREE_SITTER_DEMO` and run the [native language-picker demo](../examples/tree_sitter/README.md). Its generated baseline queries do not include embedded-language injections or local-variable analysis.
 
 Mouse: click places the caret, Shift+click extends, drag selects (the view scrolls when the pointer leaves it), double-click selects a word, triple-click or a click in the gutter selects a line, and dragging after a double or triple click extends by words or lines. The wheel scrolls, Shift+wheel or a sideways scroll goes sideways, and the thin scrollbars that appear can be dragged. Keys, with the editor focused (on a Mac, Cmd for Ctrl and Option for the word moves):
 

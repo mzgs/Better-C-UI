@@ -112,13 +112,15 @@ Install the runtime into a prefix, then configure CUI with that prefix:
 cmake -S /path/to/tree-sitter -B ts-build -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX="$PWD/ts-install"
 cmake --build ts-build --parallel
 cmake --install ts-build
-cmake -S . -B build-ts -DCMAKE_BUILD_TYPE=Debug -DCUI_TREE_SITTER=ON -DCMAKE_PREFIX_PATH="$PWD/ts-install"
+cmake -S . -B build-ts -DCMAKE_BUILD_TYPE=Debug -DCUI_TREE_SITTER=ON \
+  -DCUI_TREE_SITTER_DEMO=ON -DCMAKE_PREFIX_PATH="$PWD/ts-install"
 cmake --build build-ts --parallel
 ctest --test-dir build-ts --output-on-failure
 ./build-ts/examples/tree_sitter
+./build-ts/examples/tree_sitter --check
 ```
 
-The JSON demo is built when examples and tests are enabled; it links the small test grammar. The CUI library never bundles or automatically downloads grammars. Bring the generated parser and highlight query for each language your app needs. For a JSON grammar checkout, for example:
+The optional [GPUI Kit grammar demo](../examples/tree_sitter/README.md) requires `CUI_TREE_SITTER_DEMO=ON`, CMake 3.18+ and Python 3. It downloads the 34 pinned grammar crates for GPUI Kit’s full language set during the first configure and compiles them into the demo executable. Its searchable picker keeps a draft per language. Generated baseline queries cover common syntax categories; they do not implement embedded-language injections or local-variable analysis, and Markdown block and inline parsers are separate entries. The demo is independent of `CUI_BUILD_TESTS`; tests retain a small vendored JSON fixture. The core and `cui::tree_sitter` add-on never download or bundle grammars. For your own app, bring the generated parser and highlight query for each language you need. For a JSON grammar checkout, for example:
 
 ```cmake
 add_library(my_json STATIC /path/to/tree-sitter-json/src/parser.c)

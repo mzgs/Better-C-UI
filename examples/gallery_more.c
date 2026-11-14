@@ -504,7 +504,7 @@ static void page_grid(cui_ctx *ui) {
 }
 
 static void page_code(cui_ctx *ui) {
-    section(ui, "Code block", "Highlighting for 50 languages and formats, including C, Python, Java, SQL, HTML and YAML.");
+    section(ui, "Code block", "Highlighting for 37 language entries, matching the optional Tree-sitter demo.");
     cui_code_block(ui, "c-sample",
         "#include <cui/cui.h>\n"
         "\n"

@@ -774,7 +774,7 @@ int cui__edit_word_left(const char *s, int pos);
 int cui__edit_word_right(const char *s, int len, int pos);
 
 /* ---- syntax highlighting (cui_code.c): the code block, the code editor and the diff viewer ---- */
-enum { CUI__LEX_CODE, CUI__LEX_MARKUP, CUI__LEX_CSS, CUI__LEX_CONFIG, CUI__LEX_MARKDOWN, CUI__LEX_DIFF };
+enum { CUI__LEX_CODE, CUI__LEX_MARKUP, CUI__LEX_CSS, CUI__LEX_CONFIG, CUI__LEX_MARKDOWN, CUI__LEX_DIFF, CUI__LEX_TEMPLATE, CUI__LEX_MARKDOWN_INLINE };
 typedef struct {
     const char *const *kw, *const *types;
     const char *line_comment, *line_comment2, *block_start, *block_end;

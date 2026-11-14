@@ -1482,13 +1482,14 @@ CUI_API bool cui_file_picker_ex(cui_ctx *ui, const char *id, bool *open, char *o
 /* Code                                                                     */
 /* ------------------------------------------------------------------------ */
 
-/* Code block with lexical highlighting for 50 languages and formats. lang ids:
- * "c", "cpp", "js", "ts", "python", "rust", "go", "json", "shell", "java",
- * "csharp", "swift", "kotlin", "dart", "php", "ruby", "lua", "perl", "r", "julia",
- * "scala", "objc", "sql", "html", "css", "xml", "yaml", "toml", "markdown",
- * "powershell", "batch", "cmake", "make", "dockerfile", "ini", "diff", "asm",
- * "fortran", "pascal", "vb", "matlab", "groovy", "haskell", "elixir", "erlang",
- * "clojure", "fsharp", "ocaml", "zig", "glsl"; "text" or "plain" for no colors.
+/* Code block with lexical highlighting for 37 language entries, matching the
+ * optional Tree-sitter demo. lang ids:
+ * "json", "astro", "bash", "c", "cmake", "cpp", "csharp", "css",
+ * "diff", "ejs", "elixir", "erb", "go", "graphql", "html", "java",
+ * "javascript", "jsdoc", "kotlin", "lua", "make", "markdown", "markdown_inline", "php",
+ * "proto", "python", "ruby", "rust", "scala", "sql", "svelte", "swift",
+ * "toml", "tsx", "typescript", "yaml", "zig";
+ * "text" or "plain" for no colors.
  * Common aliases ("py", "rs", "cs", "sh", ...) are accepted; ids are lowercase.
  * Rules cover common tokens, not full grammars, nested comments, multiline
  * strings, interpolation or embedded languages. Has line numbers, a title bar
@@ -1626,7 +1627,7 @@ CUI_API bool cui_markdown_apply_task(char *text, const cui_markdown_result *resu
 typedef struct cui_text_mark { int start, end; int color; } cui_text_mark;
 typedef struct cui_code_editor_opts {
     int _;
-    const char *lang;          /* the 50 language ids and aliases of cui_code_block; "text" for none; NULL uses generic token colors */
+    const char *lang;          /* the 37 language ids and aliases of cui_code_block; "text" for none; NULL uses generic token colors */
     cui_size width;            /* default fill */
     float height;              /* default 320; negative fills the space */
     float size;                /* font size, default 13 */

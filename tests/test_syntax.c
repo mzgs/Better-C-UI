@@ -6,56 +6,43 @@ static int syntax_failed, syntax_checks;
 
 typedef struct { const char *lang, *source, *word; int kind; const char *aliases; } syntax_case;
 static const syntax_case syntax_cases[] = {
-    { "c", "int count = 42; // count", "int", CUI__TK_TYPE, "h" },
-    { "cpp", "constexpr int count = 42;", "constexpr", CUI__TK_KEYWORD, "c++|cxx|cc|hpp" },
-    { "js", "const name = `river`;", "const", CUI__TK_KEYWORD, "javascript|jsx" },
-    { "ts", "interface Tile { size: number; }", "interface", CUI__TK_KEYWORD, "typescript|tsx" },
-    { "python", "def total(items): # sum", "def", CUI__TK_KEYWORD, "py" },
-    { "rust", "fn name<'a>(s: &'a str) {}", "fn", CUI__TK_KEYWORD, "rs" },
-    { "go", "func main() { fmt.Println(`river`) }", "func", CUI__TK_KEYWORD, "golang" },
     { "json", "{\"count\": 42, \"ready\": true}", "\"count\"", CUI__TK_FUNC, "" },
-    { "shell", "if test -f config; then echo 'ready'; fi", "if", CUI__TK_KEYWORD, "sh|bash|zsh" },
-    { "java", "public class Tile { int size = 42; }", "public", CUI__TK_KEYWORD, "" },
-    { "csharp", "namespace Tiles { public record Tile(int Size); }", "namespace", CUI__TK_KEYWORD, "cs|c#" },
-    { "swift", "guard let name = value else { return }", "guard", CUI__TK_KEYWORD, "" },
-    { "kotlin", "fun total(items: List<Int>) = items.sum()", "fun", CUI__TK_KEYWORD, "kt|kts" },
-    { "dart", "final count = 42; // total", "final", CUI__TK_KEYWORD, "" },
-    { "php", "function total($items) { return 42; } # total", "function", CUI__TK_KEYWORD, "" },
-    { "ruby", "unless ready then puts 'waiting' end", "unless", CUI__TK_KEYWORD, "rb" },
-    { "lua", "local count = 42 -- total", "local", CUI__TK_KEYWORD, "" },
-    { "perl", "my $count = 42; # total", "my", CUI__TK_KEYWORD, "pl" },
-    { "r", "function(x) { return(x + 42) }", "function", CUI__TK_KEYWORD, "" },
-    { "julia", "mutable struct Tile; size::Int; end", "mutable", CUI__TK_KEYWORD, "jl" },
-    { "scala", "given count: Int = 42", "given", CUI__TK_KEYWORD, "sc" },
-    { "objc", "@interface Tile : NSObject", "interface", CUI__TK_KEYWORD, "objective-c|objectivec|m|mm" },
-    { "sql", "SELECT name FROM tiles WHERE count > 42;", "SELECT", CUI__TK_KEYWORD, "" },
-    { "html", "<section class=\"tiles\">River</section>", "section", CUI__TK_KEYWORD, "htm" },
-    { "css", ".tile { background-color: green; }", "background-color", CUI__TK_FUNC, "" },
-    { "xml", "<tile size=\"42\">River</tile>", "tile", CUI__TK_KEYWORD, "svg" },
-    { "yaml", "cache-size: 42 # entries", "cache-size", CUI__TK_FUNC, "yml" },
-    { "toml", "cache_size = 42 # entries", "cache_size", CUI__TK_FUNC, "" },
-    { "markdown", "## Tile cache", "## Tile cache", CUI__TK_KEYWORD, "md" },
-    { "powershell", "Get-Item 'config.toml' # config", "Get-Item", CUI__TK_KEYWORD, "ps1|pwsh" },
-    { "batch", "IF EXIST config.ini ECHO ready", "IF", CUI__TK_KEYWORD, "bat|cmd" },
+    { "astro", "<Tile name=\"river\" />", "Tile", CUI__TK_KEYWORD, "" },
+    { "bash", "if test -f config; then echo 'ready'; fi", "if", CUI__TK_KEYWORD, "sh|shell|zsh" },
+    { "c", "int count = 42; // count", "int", CUI__TK_TYPE, "h" },
     { "cmake", "add_executable(tiles main.c)", "add_executable", CUI__TK_KEYWORD, "" },
-    { "make", "include config.mk", "include", CUI__TK_KEYWORD, "makefile" },
-    { "dockerfile", "FROM alpine:3.21", "FROM", CUI__TK_KEYWORD, "docker" },
-    { "ini", "cache_size = 42 ; entries", "cache_size", CUI__TK_FUNC, "cfg" },
+    { "cpp", "constexpr int count = 42;", "constexpr", CUI__TK_KEYWORD, "c++|cxx|cc|hpp" },
+    { "csharp", "namespace Tiles { public record Tile(int Size); }", "namespace", CUI__TK_KEYWORD, "cs|c#" },
+    { "css", ".tile { background-color: green; }", "background-color", CUI__TK_FUNC, "" },
     { "diff", "+added entry", "+added entry", CUI__TK_STRING, "patch" },
-    { "asm", "MOV eax, 42 ; total", "MOV", CUI__TK_KEYWORD, "assembly|nasm" },
-    { "fortran", "PROGRAM tiles ! main", "PROGRAM", CUI__TK_KEYWORD, "f90|f95" },
-    { "pascal", "BEGIN count := 42; END;", "BEGIN", CUI__TK_KEYWORD, "pas|delphi" },
-    { "vb", "Dim count As Integer = 42 ' total", "Dim", CUI__TK_KEYWORD, "vbnet|visualbasic" },
-    { "matlab", "function count = total(items) % total", "function", CUI__TK_KEYWORD, "octave" },
-    { "groovy", "def count = 42 // total", "def", CUI__TK_KEYWORD, "gradle" },
-    { "haskell", "module Tiles where -- main", "module", CUI__TK_KEYWORD, "hs" },
+    { "ejs", "<h1><%= name %></h1>", "<%= name %>", CUI__TK_PREPROC, "" },
     { "elixir", "defmodule Tiles do # main", "defmodule", CUI__TK_KEYWORD, "ex|exs" },
-    { "erlang", "case Count of 42 -> ready end.", "case", CUI__TK_KEYWORD, "erl|hrl" },
-    { "clojure", "(if-let [name 'river] name \"unknown\")", "if-let", CUI__TK_KEYWORD, "clj|cljs|cljc|edn" },
-    { "fsharp", "let count = 42 // total", "let", CUI__TK_KEYWORD, "fs|f#|fsx" },
-    { "ocaml", "let count = 42 (* total *)", "let", CUI__TK_KEYWORD, "ml|mli" },
+    { "erb", "<p><%= @name %></p>", "<%= @name %>", CUI__TK_PREPROC, "rhtml" },
+    { "go", "func main() { fmt.Println(`river`) }", "func", CUI__TK_KEYWORD, "golang" },
+    { "graphql", "query Tiles { tiles { name } }", "query", CUI__TK_KEYWORD, "" },
+    { "html", "<section class=\"tiles\">River</section>", "section", CUI__TK_KEYWORD, "htm" },
+    { "java", "public class Tile { int size = 42; }", "public", CUI__TK_KEYWORD, "" },
+    { "javascript", "const name = `river`;", "const", CUI__TK_KEYWORD, "js|jsx" },
+    { "jsdoc", "@param {string} name Description", "param", CUI__TK_KEYWORD, "" },
+    { "kotlin", "fun total(items: List<Int>) = items.sum()", "fun", CUI__TK_KEYWORD, "kt|kts" },
+    { "lua", "local count = 42 -- total", "local", CUI__TK_KEYWORD, "" },
+    { "make", "include config.mk", "include", CUI__TK_KEYWORD, "makefile" },
+    { "markdown", "## Tile cache", "## Tile cache", CUI__TK_KEYWORD, "md" },
+    { "markdown_inline", "Read `tile_get()` here", "`tile_get()`", CUI__TK_STRING, "md_inline" },
+    { "php", "function total($items) { return 42; } # total", "function", CUI__TK_KEYWORD, "" },
+    { "proto", "message Tile { int32 size = 1; }", "message", CUI__TK_KEYWORD, "protobuf" },
+    { "python", "def total(items): # sum", "def", CUI__TK_KEYWORD, "py" },
+    { "ruby", "unless ready then puts 'waiting' end", "unless", CUI__TK_KEYWORD, "rb" },
+    { "rust", "fn name<'a>(s: &'a str) {}", "fn", CUI__TK_KEYWORD, "rs" },
+    { "scala", "given count: Int = 42", "given", CUI__TK_KEYWORD, "sc" },
+    { "sql", "SELECT name FROM tiles WHERE count > 42;", "SELECT", CUI__TK_KEYWORD, "" },
+    { "svelte", "<h1 class=\"tile\">{name}</h1>", "h1", CUI__TK_KEYWORD, "" },
+    { "swift", "guard let name = value else { return }", "guard", CUI__TK_KEYWORD, "" },
+    { "toml", "cache_size = 42 # entries", "cache_size", CUI__TK_FUNC, "" },
+    { "tsx", "const tile: Tile = <Tile size={42} />;", "const", CUI__TK_KEYWORD, "" },
+    { "typescript", "interface Tile { size: number; }", "interface", CUI__TK_KEYWORD, "ts" },
+    { "yaml", "cache-size: 42 # entries", "cache-size", CUI__TK_FUNC, "yml" },
     { "zig", "pub fn main() void {}", "pub", CUI__TK_KEYWORD, "" },
-    { "glsl", "uniform vec3 light; // position", "uniform", CUI__TK_KEYWORD, "vert|frag" },
 };
 
 static void syntax_expect(const char *lang, const char *source, const char *word, int kind) {
@@ -96,7 +83,7 @@ static void syntax_bounds(const char *lang, const char *source) {
 }
 
 static void test_syntax_languages(void) {
-    CHECK(CUI_COUNTOF(syntax_cases) == 50);
+    CHECK(CUI_COUNTOF(syntax_cases) == 37);
     for (int i = 0; i < CUI_COUNTOF(syntax_cases); i++) {
         const syntax_case *c = &syntax_cases[i];
         syntax_expect(c->lang, c->source, c->word, c->kind);
@@ -149,32 +136,27 @@ static void test_syntax_languages(void) {
 }
 
 static void test_syntax_rules(void) {
+    syntax_expect("ejs", "<%= \"%>\" %> tail", "<%= \"%>\" %>", CUI__TK_PREPROC);
+    syntax_expect("erb", "<%# cached tiles %>", "<%# cached tiles %>", CUI__TK_COMMENT);
+    syntax_bounds("ejs", "<%= \"<!-- %>\" %> tail");
+    syntax_bounds("erb", "<%# ' %> tail");
+    syntax_expect("markdown_inline", "# Heading", "Heading", CUI__TK_TEXT);
+    syntax_expect("graphql", "query Tiles($limit: Int)", "Int", CUI__TK_TYPE);
+    syntax_expect("proto", "int32 size = 1;", "int32", CUI__TK_TYPE);
+    syntax_expect("jsdoc", "@param {string} name", "string", CUI__TK_TYPE);
     syntax_expect("sql", "select 'it''s ready' FROM tiles", "'it''s ready'", CUI__TK_STRING);
     syntax_expect("sql", "SeLeCt name", "SeLeCt", CUI__TK_KEYWORD);
-    syntax_expect("vb", "Dim label = \"say \"\"hello\"\"\"", "\"say \"\"hello\"\"\"", CUI__TK_STRING);
-    syntax_expect("pascal", "name := 'it''s ready';", "'it''s ready'", CUI__TK_STRING);
-    syntax_expect("powershell", "Write-Host \"say `\"hello`\"\"", "\"say `\"hello`\"\"", CUI__TK_STRING);
     syntax_expect("sql", "SELECT 'C:\\' -- path", "-- path", CUI__TK_COMMENT);
-    syntax_expect("batch", "REM\tcomment", "REM\tcomment", CUI__TK_COMMENT);
-    syntax_expect("vb", "REM", "REM", CUI__TK_COMMENT);
     syntax_expect("markdown", "It's ready", "ready", CUI__TK_TEXT);
     syntax_expect("html", "<section data-id=\"42\">Text</section>", "data-id", CUI__TK_FUNC);
-    syntax_expect("xml", "</tile>", "tile", CUI__TK_KEYWORD);
     syntax_expect("toml", "[cache] # settings", "[cache]", CUI__TK_TYPE);
-    syntax_expect("ini", "[cache] ; settings", "; settings", CUI__TK_COMMENT);
     syntax_expect("yaml", "\"cache-size\": 42", "\"cache-size\"", CUI__TK_FUNC);
     syntax_expect("yaml", "ready: true", "true", CUI__TK_CONST);
     syntax_expect("markdown", "Read `tile_get()` here", "`tile_get()`", CUI__TK_STRING);
     syntax_expect("diff", "-removed", "-removed", CUI__TK_PREPROC);
     syntax_expect("diff", "@@ -1 +1 @@", "@@ -1 +1 @@", CUI__TK_KEYWORD);
     syntax_expect("make", "tiles: main.c", "tiles", CUI__TK_FUNC);
-    syntax_expect("objc", "return count;", "return", CUI__TK_KEYWORD);
-    syntax_expect("objc", "int count;", "int", CUI__TK_TYPE);
     syntax_expect("rust", "fn name<'a>(s: &'a str)", "str", CUI__TK_TYPE);
-    syntax_expect("haskell", "name :: 'a -> String", "String", CUI__TK_TYPE);
-    syntax_expect("ocaml", "let name (x : 'a) = 42", "42", CUI__TK_NUMBER);
-    syntax_expect("fsharp", "let name (x : 'a) = 42", "42", CUI__TK_NUMBER);
-    syntax_expect("clojure", "(let [name 'river] 42)", "42", CUI__TK_NUMBER);
     syntax_expect("rust", "let letter = 'x';", "'x'", CUI__TK_STRING);
     syntax_expect("c", "printf(\"// string \\\" end\");", "\"// string \\\" end\"", CUI__TK_STRING);
     syntax_expect("c", "double size = 1.5e-3;", "1.5e-3", CUI__TK_NUMBER);
@@ -182,6 +164,16 @@ static void test_syntax_rules(void) {
     syntax_expect("text", "if 42 \"string\" // comment", "if 42 \"string\" // comment", CUI__TK_TEXT);
     syntax_expect("plain", "<section>", "<section>", CUI__TK_TEXT);
     syntax_expect("unknown", "42", "42", CUI__TK_NUMBER);
+
+    const char *removed[] = { "dart", "perl", "r", "julia", "objc", "xml", "powershell", "batch",
+        "dockerfile", "ini", "asm", "fortran", "pascal", "vb", "matlab", "groovy", "haskell",
+        "erlang", "clojure", "fsharp", "ocaml", "glsl" };
+    cui__lang generic = cui__lang_for(NULL);
+    for (int i = 0; i < CUI_COUNTOF(removed); i++) {
+        cui__lang rules = cui__lang_for(removed[i]);
+        CHECK(rules.kw == generic.kw && rules.types == generic.types);
+        CHECK(!rules.line_comment && !rules.block_start && rules.mode == CUI__LEX_CODE);
+    }
 }
 
 static bool syntax_has_color(cui_ctx *ui, int kind) {

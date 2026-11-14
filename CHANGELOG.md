@@ -14,9 +14,11 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Added
 
-- **Optional Tree-sitter highlighting** for code editors and code blocks (`CUI_TREE_SITTER=ON`), using app-supplied grammars and queries, retained syntax trees, automatic edit detection and same-frame colors. The default remains the built-in lexer. Includes a JSON demo, query validation, fallback diagnostics and setup documentation.
+- **GPUI Kit grammar Tree-sitter demo** (`CUI_TREE_SITTER_DEMO=ON`) with GPUI Kit’s full parser set (37 language entries from 34 version-pinned crates), generated baseline queries, a searchable language picker, per-language drafts and a parser/query self-check. The bundle is confined to the demo; core and add-on size are unchanged. Embedded-language injections and local-variable analysis are not included.
 
-- **Syntax highlighting for 50 languages and formats**, shared by the code editor, code blocks, diff viewer and source previews. Adds Java, C#, Swift, Kotlin, SQL, HTML, CSS, YAML and more, with aliases, case-insensitive keywords where appropriate and language-specific comment delimiters. See the [language list](docs/components-more.md#syntax-highlighting-languages).
+- **Optional Tree-sitter highlighting** for code editors and code blocks (`CUI_TREE_SITTER=ON`), using app-supplied grammars and queries, retained syntax trees, automatic edit detection and same-frame colors. The default remains the built-in lexer. Includes query validation, fallback diagnostics and setup documentation.
+
+- **Syntax highlighting for 37 language entries**, shared by the code editor, code blocks, diff viewer and source previews. Matches the optional GPUI Kit grammar bundle’s language set, including Astro, Svelte, EJS, ERB, GraphQL, JSDoc, Protocol Buffers, TSX and Markdown inline, with aliases and language-specific lexical rules. Removed profiles use generic token colors. See the [language list](docs/components-more.md#syntax-highlighting-languages).
 
 - **Cascading submenus** in dropdown, context and menu-bar menus, with hover/click opening, directional keyboard navigation, RTL placement and branch dismissal.
 - **Find and replace** in the code editor, including single replacement, atomic Replace all, one-step batch undo, and `cui_code_editor_find_replace`.

@@ -100,6 +100,7 @@ The window layer for your system is picked by the preprocessor. Before the imple
 | `CUI_STB_IMAGE` | `ON` | PNG and JPEG loading for `cui_image_load` |
 | `CUI_BUILD_SHARED` | `OFF` | Build a shared library |
 | `CUI_TREE_SITTER` | `OFF` | Build the separate `cui::tree_sitter` add-on for editor/code-block highlighting ([setup](integration.md#optional-tree-sitter-highlighting)) |
+| `CUI_TREE_SITTER_DEMO` | `OFF` | Download the pinned GPUI Kit grammars and build the native language-picker demo; requires the add-on and examples ([details](../examples/tree_sitter/README.md)) |
 | `CUI_WEBVIEW` | `OFF` | Build the separate `cui::webview` native browser add-on ([setup](integration.md#native-webview-setup)) |
 | `CUI_BUILD_EXAMPLES`, `CUI_BUILD_TESTS` | `ON` at top level | |
 

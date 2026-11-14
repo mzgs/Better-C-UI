@@ -177,3 +177,7 @@ if(MSVC)
     target_compile_options(cui_rtl_layout PRIVATE /utf-8)
 endif()
 add_test(NAME cui_rtl_layout COMMAND cui_rtl_layout)
+
+if(TARGET tree_sitter)
+    add_test(NAME cui_test_tree_sitter_languages COMMAND tree_sitter --check)
+endif()

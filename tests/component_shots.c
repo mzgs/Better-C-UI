@@ -1254,23 +1254,25 @@ static void body_code_editor(cui_ctx *ui) {
 }
 
 SCENE(code_languages) {
-    static char sql[1024] =
-        "-- Tiles worth keeping in memory\n"
-        "SELECT tile_key, miss_count\n"
-        "FROM tile_cache\n"
-        "WHERE region = 'north' AND miss_count > 3\n"
-        "ORDER BY miss_count DESC;\n";
-    static char html[1024] =
-        "<!-- Cache status panel\n"
-        "     refreshed after each request -->\n"
+    static char graphql[1024] =
+        "# Tiles worth keeping in memory\n"
+        "query Tiles($limit: Int) {\n"
+        "  tiles(limit: $limit) {\n"
+        "    name\n"
+        "    size\n"
+        "  }\n"
+        "}\n";
+    static char ejs[1024] =
+        "<!-- Cache status panel -->\n"
         "<section class=\"cache-status\">\n"
-        "  <h2>North region</h2>\n"
-        "  <span data-count=\"42\">Tiles ready</span>\n"
+        "  <h2><%= region %></h2>\n"
+        "  <%# Tiles for the active region %>\n"
+        "  <span><%= count %> tiles ready</span>\n"
         "</section>\n";
-    cui_label(ui, "SQL");
-    cui_code_editor(ui, "sql-editor", sql, sizeof sql, .lang = "sql", .height = 166);
-    cui_label(ui, "HTML");
-    cui_code_editor(ui, "html-editor", html, sizeof html, .lang = "html", .height = 184);
+    cui_label(ui, "GraphQL");
+    cui_code_editor(ui, "graphql-editor", graphql, sizeof graphql, .lang = "graphql", .height = 184);
+    cui_label(ui, "EJS");
+    cui_code_editor(ui, "ejs-editor", ejs, sizeof ejs, .lang = "ejs", .height = 184);
 }
 
 SCENE(tree_sitter) {

@@ -89,21 +89,6 @@ static const char *const ty_kotlin[] = {
     "String", "Unit", "Array", "List", "Map", "Set",
     NULL
 };
-static const char *const kw_dart[] = {
-    "abstract", "as", "assert", "async", "await", "break", "case", "catch", "class", "const",
-    "continue", "covariant", "default", "deferred", "do", "dynamic", "else", "enum", "export", "extends",
-    "extension", "external", "factory", "final", "finally", "for", "get", "hide", "if", "implements",
-    "import", "in", "interface", "is", "late", "library", "mixin", "new", "of", "on",
-    "operator", "part", "required", "rethrow", "return", "sealed", "set", "show", "static", "super",
-    "switch", "sync", "this", "throw", "try", "typedef", "var", "void", "when", "while",
-    "with", "yield",
-    NULL
-};
-static const char *const ty_dart[] = {
-    "bool", "double", "int", "num", "String", "Object", "Future", "Stream", "List", "Map",
-    "Set", "Never", "Null",
-    NULL
-};
 static const char *const kw_php[] = {
     "abstract", "and", "array", "as", "break", "callable", "case", "catch", "class", "clone",
     "const", "continue", "declare", "default", "die", "do", "echo", "else", "elseif", "empty",
@@ -136,35 +121,6 @@ static const char *const kw_lua[] = {
     "in", "local", "not", "or", "repeat", "return", "then", "until", "while",
     NULL
 };
-static const char *const kw_perl[] = {
-    "and", "BEGIN", "bless", "caller", "continue", "dbmclose", "dbmopen", "delete", "die", "do",
-    "dump", "each", "else", "elsif", "END", "eval", "exists", "exit", "for", "foreach",
-    "given", "goto", "grep", "if", "import", "last", "local", "map", "my", "next",
-    "no", "not", "or", "our", "package", "print", "printf", "redo", "ref", "require",
-    "return", "say", "scalar", "state", "sub", "tie", "tr", "unless", "untie", "until",
-    "use", "when", "while", "xor",
-    NULL
-};
-static const char *const kw_r[] = {
-    "break", "else", "for", "function", "if", "in", "next", "repeat", "return", "while",
-    NULL
-};
-static const char *const ty_r[] = {
-    "character", "complex", "double", "integer", "list", "logical", "matrix", "numeric", "data.frame",
-    NULL
-};
-static const char *const kw_julia[] = {
-    "abstract", "baremodule", "begin", "break", "catch", "const", "continue", "do", "else", "elseif",
-    "end", "export", "finally", "for", "function", "global", "if", "import", "in", "let",
-    "local", "macro", "module", "mutable", "primitive", "quote", "return", "struct", "try", "using",
-    "where", "while",
-    NULL
-};
-static const char *const ty_julia[] = {
-    "Any", "Bool", "Char", "Float32", "Float64", "Int", "Int32", "Int64", "Nothing", "String",
-    "Symbol", "Tuple", "Vector", "Dict",
-    NULL
-};
 static const char *const kw_scala[] = {
     "abstract", "case", "catch", "class", "def", "derives", "do", "else", "end", "enum",
     "export", "extends", "extension", "false", "final", "finally", "for", "forSome", "given", "if",
@@ -177,22 +133,6 @@ static const char *const kw_scala[] = {
 static const char *const ty_scala[] = {
     "Any", "Boolean", "Byte", "Char", "Double", "Float", "Int", "Long", "Nothing", "Null",
     "Option", "Short", "String", "Unit", "List", "Map", "Seq", "Set",
-    NULL
-};
-static const char *const kw_objc[] = {
-    "autoreleasepool", "catch", "class", "compatibility_alias", "defs", "dynamic", "encode", "end", "finally", "implementation",
-    "import", "interface", "optional", "package", "private", "property", "protected", "protocol", "public", "required",
-    "selector", "synchronized", "synthesize", "throw", "try",
-    "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue",
-    "return", "goto", "typedef", "struct", "union", "enum", "static", "const", "extern", "volatile",
-    "inline", "sizeof", "namespace", "template", "typename", "new", "delete", "using", "virtual", "override",
-    "auto", "constexpr", "nullptr", "this", "operator",
-    NULL
-};
-static const char *const ty_objc[] = {
-    "BOOL", "Class", "id", "IMP", "NSInteger", "NSObject", "NSString", "NSUInteger", "SEL",
-    "void", "char", "short", "int", "long", "float", "double", "bool", "unsigned", "signed",
-    "size_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "int8_t", "int16_t", "int32_t", "int64_t", "FILE",
     NULL
 };
 static const char *const kw_sql[] = {
@@ -217,26 +157,6 @@ static const char *const kw_css[] = {
     "inline", "relative", "absolute", "fixed", "sticky", "solid", "transparent",
     NULL
 };
-static const char *const kw_powershell[] = {
-    "begin", "break", "catch", "class", "continue", "data", "define", "do", "dynamicparam", "else",
-    "elseif", "end", "enum", "exit", "filter", "finally", "for", "foreach", "from", "function",
-    "if", "in", "param", "process", "return", "switch", "throw", "trap", "try", "until",
-    "using", "var", "while", "workflow", "write-host", "write-output", "get-item", "get-content", "set-content",
-    NULL
-};
-static const char *const ty_powershell[] = {
-    "bool", "byte", "char", "datetime", "decimal", "double", "float", "int", "long", "object",
-    "string", "switch", "void",
-    NULL
-};
-static const char *const kw_batch[] = {
-    "assoc", "break", "call", "cd", "chdir", "cls", "color", "copy", "date", "del",
-    "dir", "do", "echo", "else", "endlocal", "erase", "exit", "for", "ftype", "goto",
-    "if", "in", "md", "mkdir", "move", "not", "off", "on", "path", "pause",
-    "popd", "prompt", "pushd", "rd", "rem", "ren", "rename", "rmdir", "set", "setlocal",
-    "shift", "start", "time", "title", "type", "ver", "verify", "vol",
-    NULL
-};
 static const char *const kw_cmake[] = {
     "add_compile_definitions", "add_compile_options", "add_custom_command", "add_custom_target", "add_definitions", "add_dependencies", "add_executable", "add_library", "add_subdirectory", "break",
     "cmake_minimum_required", "configure_file", "continue", "else", "elseif", "enable_language", "enable_testing", "endblock", "endforeach", "endfunction",
@@ -251,157 +171,11 @@ static const char *const kw_make[] = {
     "override", "private", "sinclude", "undefine", "unexport", "vpath",
     NULL
 };
-static const char *const kw_dockerfile[] = {
-    "add", "arg", "cmd", "copy", "entrypoint", "env", "expose", "from", "healthcheck", "label",
-    "maintainer", "onbuild", "run", "shell", "stopsignal", "user", "volume", "workdir",
-    NULL
-};
-static const char *const kw_asm[] = {
-    "adc", "add", "and", "b", "bl", "call", "cmp", "db", "dd", "dec",
-    "dq", "dw", "end", "equ", "extern", "global", "imul", "inc", "int", "jmp",
-    "jne", "je", "jnz", "jz", "lea", "ldr", "mov", "mul", "nop", "not",
-    "or", "pop", "proc", "push", "ret", "section", "segment", "shl", "shr", "str",
-    "sub", "syscall", "test", "xor",
-    NULL
-};
-static const char *const ty_asm[] = {
-    "byte", "dword", "qword", "word",
-    NULL
-};
-static const char *const kw_fortran[] = {
-    "allocate", "allocatable", "associate", "backspace", "block", "call", "case", "close", "common", "contains",
-    "continue", "cycle", "data", "deallocate", "dimension", "do", "else", "elseif", "elsewhere", "end",
-    "enddo", "endif", "entry", "equivalence", "error", "exit", "external", "format", "function", "goto",
-    "if", "implicit", "import", "in", "include", "inquire", "intent", "interface", "intrinsic", "module",
-    "namelist", "none", "only", "open", "optional", "parameter", "pointer", "print", "private", "program",
-    "public", "pure", "read", "recursive", "result", "return", "rewind", "save", "select", "stop",
-    "subroutine", "target", "then", "type", "use", "value", "where", "while", "write",
-    NULL
-};
-static const char *const ty_fortran[] = {
-    "character", "complex", "double", "integer", "logical", "precision", "real",
-    NULL
-};
-static const char *const kw_pascal[] = {
-    "and", "array", "asm", "begin", "case", "class", "const", "constructor", "destructor", "div",
-    "do", "downto", "else", "end", "except", "exports", "file", "finalization", "finally", "for",
-    "function", "goto", "if", "implementation", "in", "inherited", "initialization", "inline", "interface", "is",
-    "label", "library", "mod", "nil", "not", "object", "of", "on", "operator", "or",
-    "out", "packed", "procedure", "program", "property", "raise", "record", "repeat", "resourcestring", "set",
-    "shl", "shr", "string", "then", "threadvar", "to", "try", "type", "unit", "until",
-    "uses", "var", "while", "with", "xor",
-    NULL
-};
-static const char *const ty_pascal[] = {
-    "boolean", "byte", "cardinal", "char", "double", "extended", "integer", "longint", "pointer", "real",
-    "shortint", "single", "smallint", "word",
-    NULL
-};
-static const char *const kw_vb[] = {
-    "addhandler", "addressof", "alias", "and", "andalso", "as", "async", "await", "boolean", "byref",
-    "byte", "byval", "call", "case", "catch", "class", "const", "continue", "date", "decimal",
-    "declare", "default", "delegate", "dim", "directcast", "do", "each", "else", "elseif", "end",
-    "enum", "erase", "error", "event", "exit", "false", "finally", "for", "friend", "function",
-    "get", "global", "goto", "handles", "if", "implements", "imports", "in", "inherits", "interface",
-    "is", "isnot", "let", "lib", "like", "loop", "me", "mod", "module", "mustinherit",
-    "mustoverride", "mybase", "myclass", "namespace", "new", "next", "not", "nothing", "notinheritable", "noto",
-    "verridable", "object", "of", "on", "operator", "option", "optional", "or", "orelse", "out",
-    "overloads", "overridable", "overrides", "paramarray", "partial", "private", "property", "protected", "public", "raiseevent",
-    "readonly", "redim", "rem", "removehandler", "resume", "return", "select", "set", "shadows", "shared",
-    "single", "static", "step", "stop", "string", "structure", "sub", "synclock", "then", "throw",
-    "to", "true", "try", "trycast", "typeof", "using", "when", "while", "widening", "with",
-    "withevents", "writeonly", "xor", "yield",
-    NULL
-};
-static const char *const ty_vb[] = {
-    "boolean", "byte", "char", "date", "decimal", "double", "integer", "long", "object", "sbyte",
-    "short", "single", "string", "uinteger", "ulong", "ushort",
-    NULL
-};
-static const char *const kw_matlab[] = {
-    "arguments", "break", "case", "catch", "classdef", "continue", "else", "elseif", "end", "enumeration",
-    "events", "for", "function", "global", "if", "methods", "otherwise", "parfor", "persistent", "properties",
-    "return", "spmd", "switch", "try", "while",
-    NULL
-};
-static const char *const ty_matlab[] = {
-    "cell", "char", "double", "int8", "int16", "int32", "int64", "logical", "single", "string",
-    "struct", "table", "uint8", "uint16", "uint32", "uint64",
-    NULL
-};
-static const char *const kw_groovy[] = {
-    "as", "assert", "break", "case", "catch", "class", "const", "continue", "def", "default",
-    "do", "else", "enum", "extends", "final", "finally", "for", "goto", "if", "implements",
-    "import", "in", "instanceof", "interface", "native", "new", "package", "private", "protected", "public",
-    "return", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "trait",
-    "transient", "try", "var", "void", "volatile", "while",
-    NULL
-};
-static const char *const ty_groovy[] = {
-    "boolean", "byte", "char", "double", "float", "int", "long", "short", "String", "Object",
-    "BigDecimal", "List", "Map", "Set",
-    NULL
-};
-static const char *const kw_haskell[] = {
-    "as", "case", "class", "data", "default", "deriving", "do", "else", "family", "forall",
-    "foreign", "hiding", "if", "import", "in", "infix", "infixl", "infixr", "instance", "let",
-    "mdo", "module", "newtype", "of", "pattern", "qualified", "role", "then", "type", "where",
-    NULL
-};
-static const char *const ty_haskell[] = {
-    "Bool", "Char", "Double", "Either", "Float", "IO", "Int", "Integer", "Maybe", "Ordering",
-    "String",
-    NULL
-};
 static const char *const kw_elixir[] = {
     "after", "alias", "and", "case", "catch", "cond", "def", "defdelegate", "defexception", "defguard",
     "defimpl", "defmacro", "defmodule", "defp", "defprotocol", "defstruct", "do", "else", "end", "fn",
     "for", "if", "import", "in", "not", "or", "quote", "raise", "receive", "require",
     "rescue", "super", "throw", "try", "unless", "unquote", "use", "when", "with",
-    NULL
-};
-static const char *const kw_erlang[] = {
-    "after", "and", "andalso", "band", "begin", "bnot", "bor", "bsl", "bsr", "bxor",
-    "case", "catch", "cond", "div", "end", "fun", "if", "let", "maybe", "not",
-    "of", "or", "orelse", "receive", "rem", "try", "when", "xor",
-    NULL
-};
-static const char *const kw_clojure[] = {
-    "and", "apply", "assoc", "binding", "case", "catch", "cond", "conj", "def", "defmacro",
-    "defmethod", "defmulti", "defn", "defn-", "defonce", "defprotocol", "defrecord", "deftype", "do", "doseq",
-    "dotimes", "else", "extend", "fn", "for", "if", "if-let", "if-not", "import", "in-ns",
-    "let", "letfn", "loop", "map", "new", "not", "ns", "or", "quote", "recur",
-    "reduce", "refer", "require", "set!", "throw", "try", "use", "var", "when", "when-let",
-    "when-not", "while",
-    NULL
-};
-static const char *const kw_fsharp[] = {
-    "abstract", "and", "as", "assert", "async", "base", "begin", "class", "default", "delegate",
-    "do", "done", "downcast", "downto", "elif", "else", "end", "exception", "extern", "false",
-    "finally", "fixed", "for", "fun", "function", "global", "if", "in", "inherit", "inline",
-    "interface", "internal", "lazy", "let", "match", "member", "module", "mutable", "namespace", "new",
-    "not", "null", "of", "open", "or", "override", "private", "public", "rec", "return",
-    "select", "static", "struct", "then", "to", "true", "try", "type", "upcast", "use",
-    "val", "void", "when", "while", "with", "yield",
-    NULL
-};
-static const char *const ty_fsharp[] = {
-    "bool", "byte", "char", "decimal", "double", "float", "float32", "int", "int16", "int32",
-    "int64", "list", "obj", "option", "seq", "sbyte", "string", "uint16", "uint32", "uint64",
-    "unit",
-    NULL
-};
-static const char *const kw_ocaml[] = {
-    "and", "as", "assert", "begin", "class", "constraint", "do", "done", "downto", "else",
-    "end", "exception", "external", "false", "for", "fun", "function", "functor", "if", "in",
-    "include", "inherit", "initializer", "lazy", "let", "match", "method", "module", "mutable", "new",
-    "nonrec", "object", "of", "open", "or", "private", "rec", "sig", "struct", "then",
-    "to", "true", "try", "type", "val", "virtual", "when", "while", "with",
-    NULL
-};
-static const char *const ty_ocaml[] = {
-    "array", "bool", "bytes", "char", "float", "int", "int32", "int64", "list", "nativeint",
-    "option", "string", "unit",
     NULL
 };
 static const char *const kw_zig[] = {
@@ -418,18 +192,26 @@ static const char *const ty_zig[] = {
     "u32", "u64", "usize", "void",
     NULL
 };
-static const char *const kw_glsl[] = {
-    "attribute", "break", "buffer", "case", "centroid", "coherent", "const", "continue", "default", "discard",
-    "do", "else", "flat", "for", "highp", "if", "in", "inout", "invariant", "layout",
-    "lowp", "mediump", "noperspective", "out", "patch", "precision", "readonly", "restrict", "return", "sample",
-    "shared", "smooth", "struct", "subroutine", "switch", "uniform", "varying", "volatile", "while", "writeonly",
-    NULL
+static const char *const kw_graphql[] = {
+    "directive", "enum", "extend", "fragment", "implements", "input", "interface",
+    "mutation", "on", "query", "repeatable", "scalar", "schema", "subscription", "type", "union", NULL
 };
-static const char *const ty_glsl[] = {
-    "bool", "bvec2", "bvec3", "bvec4", "double", "float", "int", "ivec2", "ivec3", "ivec4",
-    "mat2", "mat3", "mat4", "sampler2D", "samplerCube", "uint", "uvec2", "uvec3", "uvec4", "vec2",
-    "vec3", "vec4", "void",
-    NULL
+static const char *const ty_graphql[] = { "Boolean", "Float", "ID", "Int", "String", NULL };
+static const char *const kw_jsdoc[] = {
+    "abstract", "async", "author", "callback", "class", "constant", "constructor", "default",
+    "deprecated", "description", "enum", "example", "exports", "extends", "external", "file",
+    "function", "implements", "interface", "link", "member", "module", "namespace", "override",
+    "param", "private", "property", "protected", "public", "readonly", "returns", "see", "since",
+    "static", "template", "this", "throws", "todo", "type", "typedef", "version", "yields", NULL
+};
+static const char *const kw_proto[] = {
+    "enum", "extend", "extensions", "group", "import", "map", "max", "message", "oneof",
+    "option", "optional", "package", "public", "repeated", "required", "reserved", "returns",
+    "rpc", "service", "stream", "syntax", "to", "weak", NULL
+};
+static const char *const ty_proto[] = {
+    "bool", "bytes", "double", "fixed32", "fixed64", "float", "int32", "int64", "sfixed32",
+    "sfixed64", "sint32", "sint64", "string", "uint32", "uint64", NULL
 };
 static const char *const none[] = { NULL };
 
@@ -442,56 +224,43 @@ static bool cui__syntax_equal(const char *a, const char *b, int n, bool fold) {
 
 cui__lang cui__lang_for(const char *lang) {
     static const struct { const char *names; cui__lang rules; } languages[] = {
-        { "c|h", { .kw = kw_c, .types = ty_c, .line_comment = "//", .block_start = "/*", .block_end = "*/", .hash_preproc = true } },
-        { "cpp|c++|cxx|cc|hpp", { .kw = kw_c, .types = ty_c, .line_comment = "//", .block_start = "/*", .block_end = "*/", .hash_preproc = true } },
-        { "js|javascript|jsx", { .kw = kw_js, .types = ty_js, .line_comment = "//", .block_start = "/*", .block_end = "*/", .backtick = true } },
-        { "ts|typescript|tsx", { .kw = kw_js, .types = ty_js, .line_comment = "//", .block_start = "/*", .block_end = "*/", .backtick = true } },
-        { "python|py", { .kw = kw_py, .types = ty_py, .line_comment = "#" } },
-        { "rust|rs", { .kw = kw_rs, .types = ty_rs, .line_comment = "//", .block_start = "/*", .block_end = "*/", .char_quotes = true } },
-        { "go|golang", { .kw = kw_go, .types = ty_go, .line_comment = "//", .block_start = "/*", .block_end = "*/", .backtick = true } },
         { "json", { .no_caps_types = true } },
-        { "shell|sh|bash|zsh", { .kw = kw_sh, .line_comment = "#", .no_caps_types = true } },
-        { "java", { .kw = kw_java, .types = ty_java, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
-        { "csharp|cs|c#", { .kw = kw_cs, .types = ty_cs, .line_comment = "//", .block_start = "/*", .block_end = "*/", .doubled_quotes = true } },
-        { "swift", { .kw = kw_swift, .types = ty_swift, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
-        { "kotlin|kt|kts", { .kw = kw_kotlin, .types = ty_kotlin, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
-        { "dart", { .kw = kw_dart, .types = ty_dart, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
-        { "php", { .kw = kw_php, .types = ty_php, .line_comment = "//", .block_start = "/*", .block_end = "*/", .line_comment2 = "#", .backtick = true } },
-        { "ruby|rb", { .kw = kw_ruby, .types = ty_ruby, .line_comment = "#", .block_start = "=begin", .block_end = "=end", .backtick = true } },
-        { "lua", { .kw = kw_lua, .line_comment = "--", .block_start = "--[[", .block_end = "]]" } },
-        { "perl|pl", { .kw = kw_perl, .line_comment = "#", .backtick = true } },
-        { "r", { .kw = kw_r, .types = ty_r, .line_comment = "#", .backtick = true } },
-        { "julia|jl", { .kw = kw_julia, .types = ty_julia, .line_comment = "#", .block_start = "#=", .block_end = "=#", .backtick = true } },
-        { "scala|sc", { .kw = kw_scala, .types = ty_scala, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
-        { "objc|objective-c|objectivec|m|mm", { .kw = kw_objc, .types = ty_objc, .line_comment = "//", .block_start = "/*", .block_end = "*/", .hash_preproc = true } },
-        { "sql", { .kw = kw_sql, .types = ty_sql, .line_comment = "--", .block_start = "/*", .block_end = "*/", .case_insensitive = true, .doubled_quotes = true, .literal_strings = true } },
-        { "html|htm", { .mode = CUI__LEX_MARKUP, .block_start = "<!--", .block_end = "-->", .no_caps_types = true, .hyphen_words = true } },
-        { "css", { .kw = kw_css, .mode = CUI__LEX_CSS, .block_start = "/*", .block_end = "*/", .hyphen_words = true } },
-        { "xml|svg", { .mode = CUI__LEX_MARKUP, .block_start = "<!--", .block_end = "-->", .no_caps_types = true, .hyphen_words = true } },
-        { "yaml|yml", { .doubled_quotes = true, .mode = CUI__LEX_CONFIG, .line_comment = "#", .no_caps_types = true, .hyphen_words = true } },
-        { "toml", { .mode = CUI__LEX_CONFIG, .line_comment = "#", .no_caps_types = true, .hyphen_words = true } },
-        { "markdown|md", { .mode = CUI__LEX_MARKDOWN, .backtick = true, .no_caps_types = true } },
-        { "powershell|ps1|pwsh", { .kw = kw_powershell, .types = ty_powershell, .line_comment = "#", .block_start = "<#", .block_end = "#>", .case_insensitive = true, .string_escape = '`', .hyphen_words = true } },
-        { "batch|bat|cmd", { .kw = kw_batch, .line_comment = "rem ", .line_comment2 = "::", .string_escape = '^', .case_insensitive = true } },
+        { "astro", { .mode = CUI__LEX_MARKUP, .block_start = "<!--", .block_end = "-->", .no_caps_types = true, .hyphen_words = true } },
+        { "bash|sh|shell|zsh", { .kw = kw_sh, .line_comment = "#", .no_caps_types = true } },
+        { "c|h", { .kw = kw_c, .types = ty_c, .line_comment = "//", .block_start = "/*", .block_end = "*/", .hash_preproc = true } },
         { "cmake", { .kw = kw_cmake, .line_comment = "#", .block_start = "#[[", .block_end = "]]", .case_insensitive = true } },
-        { "make|makefile", { .mode = CUI__LEX_CONFIG, .kw = kw_make, .line_comment = "#", .no_caps_types = true, .hyphen_words = true } },
-        { "dockerfile|docker", { .kw = kw_dockerfile, .line_comment = "#", .case_insensitive = true } },
-        { "ini|cfg", { .mode = CUI__LEX_CONFIG, .line_comment = ";", .line_comment2 = "#", .no_caps_types = true, .hyphen_words = true } },
+        { "cpp|c++|cxx|cc|hpp", { .kw = kw_c, .types = ty_c, .line_comment = "//", .block_start = "/*", .block_end = "*/", .hash_preproc = true } },
+        { "csharp|cs|c#", { .kw = kw_cs, .types = ty_cs, .line_comment = "//", .block_start = "/*", .block_end = "*/", .doubled_quotes = true } },
+        { "css", { .kw = kw_css, .mode = CUI__LEX_CSS, .block_start = "/*", .block_end = "*/", .hyphen_words = true } },
         { "diff|patch", { .mode = CUI__LEX_DIFF } },
-        { "asm|assembly|nasm", { .kw = kw_asm, .types = ty_asm, .line_comment = ";", .line_comment2 = "#", .case_insensitive = true } },
-        { "fortran|f90|f95", { .kw = kw_fortran, .types = ty_fortran, .line_comment = "!", .case_insensitive = true, .doubled_quotes = true, .literal_strings = true } },
-        { "pascal|pas|delphi", { .kw = kw_pascal, .types = ty_pascal, .line_comment = "//", .block_start = "{", .block_end = "}", .case_insensitive = true, .doubled_quotes = true, .literal_strings = true } },
-        { "vb|vbnet|visualbasic", { .kw = kw_vb, .types = ty_vb, .line_comment = "'", .line_comment2 = "rem ", .case_insensitive = true, .doubled_quotes = true, .literal_strings = true } },
-        { "matlab|octave", { .kw = kw_matlab, .types = ty_matlab, .line_comment = "%", .block_start = "%{", .block_end = "%}", .doubled_quotes = true, .literal_strings = true } },
-        { "groovy|gradle", { .kw = kw_groovy, .types = ty_groovy, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
-        { "haskell|hs", { .kw = kw_haskell, .types = ty_haskell, .line_comment = "--", .block_start = "{-", .block_end = "-}", .char_quotes = true } },
+        { "ejs", { .mode = CUI__LEX_TEMPLATE, .block_start = "<!--", .block_end = "-->", .no_caps_types = true, .hyphen_words = true } },
         { "elixir|ex|exs", { .kw = kw_elixir, .line_comment = "#" } },
-        { "erlang|erl|hrl", { .kw = kw_erlang, .line_comment = "%" } },
-        { "clojure|clj|cljs|cljc|edn", { .kw = kw_clojure, .line_comment = ";", .hyphen_words = true, .no_caps_types = true, .no_single_quotes = true } },
-        { "fsharp|fs|f#|fsx", { .kw = kw_fsharp, .types = ty_fsharp, .line_comment = "//", .block_start = "(*", .block_end = "*)", .char_quotes = true } },
-        { "ocaml|ml|mli", { .kw = kw_ocaml, .types = ty_ocaml, .block_start = "(*", .block_end = "*)", .char_quotes = true } },
+        { "erb|rhtml", { .mode = CUI__LEX_TEMPLATE, .block_start = "<!--", .block_end = "-->", .no_caps_types = true, .hyphen_words = true } },
+        { "go|golang", { .kw = kw_go, .types = ty_go, .line_comment = "//", .block_start = "/*", .block_end = "*/", .backtick = true } },
+        { "graphql", { .kw = kw_graphql, .types = ty_graphql, .line_comment = "#", .no_single_quotes = true } },
+        { "html|htm", { .mode = CUI__LEX_MARKUP, .block_start = "<!--", .block_end = "-->", .no_caps_types = true, .hyphen_words = true } },
+        { "java", { .kw = kw_java, .types = ty_java, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
+        { "javascript|js|jsx", { .kw = kw_js, .types = ty_js, .line_comment = "//", .block_start = "/*", .block_end = "*/", .backtick = true } },
+        { "jsdoc", { .kw = kw_jsdoc, .types = ty_js, .no_caps_types = true, .hyphen_words = true } },
+        { "kotlin|kt|kts", { .kw = kw_kotlin, .types = ty_kotlin, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
+        { "lua", { .kw = kw_lua, .line_comment = "--", .block_start = "--[[", .block_end = "]]" } },
+        { "make|makefile", { .mode = CUI__LEX_CONFIG, .kw = kw_make, .line_comment = "#", .no_caps_types = true, .hyphen_words = true } },
+        { "markdown|md", { .mode = CUI__LEX_MARKDOWN, .backtick = true, .no_caps_types = true } },
+        { "markdown_inline|md_inline", { .mode = CUI__LEX_MARKDOWN_INLINE, .backtick = true, .no_caps_types = true } },
+        { "php", { .kw = kw_php, .types = ty_php, .line_comment = "//", .block_start = "/*", .block_end = "*/", .line_comment2 = "#", .backtick = true } },
+        { "proto|protobuf", { .kw = kw_proto, .types = ty_proto, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
+        { "python|py", { .kw = kw_py, .types = ty_py, .line_comment = "#" } },
+        { "ruby|rb", { .kw = kw_ruby, .types = ty_ruby, .line_comment = "#", .block_start = "=begin", .block_end = "=end", .backtick = true } },
+        { "rust|rs", { .kw = kw_rs, .types = ty_rs, .line_comment = "//", .block_start = "/*", .block_end = "*/", .char_quotes = true } },
+        { "scala|sc", { .kw = kw_scala, .types = ty_scala, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
+        { "sql", { .kw = kw_sql, .types = ty_sql, .line_comment = "--", .block_start = "/*", .block_end = "*/", .case_insensitive = true, .doubled_quotes = true, .literal_strings = true } },
+        { "svelte", { .mode = CUI__LEX_MARKUP, .block_start = "<!--", .block_end = "-->", .no_caps_types = true, .hyphen_words = true } },
+        { "swift", { .kw = kw_swift, .types = ty_swift, .line_comment = "//", .block_start = "/*", .block_end = "*/" } },
+        { "toml", { .mode = CUI__LEX_CONFIG, .line_comment = "#", .no_caps_types = true, .hyphen_words = true } },
+        { "tsx", { .kw = kw_js, .types = ty_js, .line_comment = "//", .block_start = "/*", .block_end = "*/", .backtick = true } },
+        { "typescript|ts", { .kw = kw_js, .types = ty_js, .line_comment = "//", .block_start = "/*", .block_end = "*/", .backtick = true } },
+        { "yaml|yml", { .doubled_quotes = true, .mode = CUI__LEX_CONFIG, .line_comment = "#", .no_caps_types = true, .hyphen_words = true } },
         { "zig", { .kw = kw_zig, .types = ty_zig, .line_comment = "//" } },
-        { "glsl|vert|frag", { .kw = kw_glsl, .types = ty_glsl, .line_comment = "//", .block_start = "/*", .block_end = "*/", .hash_preproc = true } },
     };
     cui__lang l;
     memset(&l, 0, sizeof l);
@@ -545,7 +314,7 @@ static bool cui__ident_start(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A
 static bool cui__ident_char(char c) { return cui__ident_start(c) || (c >= '0' && c <= '9'); }
 
 static bool cui__syntax_quote(const cui__lang *L, const char *s, int n, int i) {
-    if (L->mode == CUI__LEX_MARKDOWN) return s[i] == '`';
+    if (L->mode == CUI__LEX_MARKDOWN || L->mode == CUI__LEX_MARKDOWN_INLINE) return s[i] == '`';
     if (s[i] == '"' || (s[i] == '`' && L->backtick)) return true;
     if (s[i] != '\'' || L->no_single_quotes) return false;
     if (!L->char_quotes) return true;
@@ -565,6 +334,8 @@ int cui__tokenize(const cui__lang *L, bool json, const char *s, int n, bool *in_
         if (n > 0) EMIT(0, n, s[0] == '+' ? CUI__TK_STRING : s[0] == '-' ? CUI__TK_PREPROC : s[0] == '@' ? CUI__TK_KEYWORD : CUI__TK_TEXT);
         return count;
     }
+    bool markup = L->mode == CUI__LEX_MARKUP || L->mode == CUI__LEX_TEMPLATE;
+    bool markdown = L->mode == CUI__LEX_MARKDOWN || L->mode == CUI__LEX_MARKDOWN_INLINE;
     int first = 0;
     while (first < n && (s[first] == ' ' || s[first] == '\t')) first++;
     if (L->mode == CUI__LEX_MARKDOWN && first < n && (s[first] == '#' || s[first] == '>')) {
@@ -592,6 +363,18 @@ int cui__tokenize(const cui__lang *L, bool json, const char *s, int n, bool *in_
         }
         if (cui__syntax_at(s, n, i, L->line_comment, L->case_insensitive) ||
             cui__syntax_at(s, n, i, L->line_comment2, L->case_insensitive)) { EMIT(i, n - i, CUI__TK_COMMENT); break; }
+        if (L->mode == CUI__LEX_TEMPLATE && cui__syntax_at(s, n, i, "<%", false)) {
+            int st = i;
+            bool comment = i + 2 < n && s[i + 2] == '#';
+            i += 2;
+            while (i < n && !cui__syntax_at(s, n, i, "%>", false)) {
+                if (!comment && (s[i] == '\'' || s[i] == '"')) i = cui__syntax_string_end(L, s, n, i);
+                else i++;
+            }
+            if (i < n) i += 2;
+            EMIT(st, i - st, comment ? CUI__TK_COMMENT : CUI__TK_PREPROC);
+            continue;
+        }
         if (L->mode == CUI__LEX_CONFIG && i == first && c == '[') {
             int st = i++;
             while (i < n && s[i] != ']') i++;
@@ -614,7 +397,7 @@ int cui__tokenize(const cui__lang *L, bool json, const char *s, int n, bool *in_
             EMIT(st, i - st, (json || L->mode == CUI__LEX_CONFIG) && k < n && (s[k] == ':' || (L->mode == CUI__LEX_CONFIG && s[k] == '=')) ? CUI__TK_FUNC : CUI__TK_STRING);
             continue;
         }
-        if (L->mode != CUI__LEX_MARKUP && L->mode != CUI__LEX_MARKDOWN &&
+        if (!markup && !markdown &&
             ((c >= '0' && c <= '9') || (c == '-' && json && i + 1 < n && s[i + 1] >= '0' && s[i + 1] <= '9'))) {
             int st = i++;
             while (i < n && (cui__ident_char(s[i]) || s[i] == '.' ||
@@ -628,10 +411,10 @@ int cui__tokenize(const cui__lang *L, bool json, const char *s, int n, bool *in_
             if (cap <= 0) continue;
             int len = i - st, kind = CUI__TK_TEXT, k = i;
             while (k < n && (s[k] == ' ' || s[k] == '\t')) k++;
-            if (L->mode == CUI__LEX_MARKUP) {
+            if (markup) {
                 if (st > 0 && (s[st - 1] == '<' || (st > 1 && s[st - 1] == '/' && s[st - 2] == '<'))) kind = CUI__TK_KEYWORD;
                 else if (k < n && s[k] == '=') kind = CUI__TK_FUNC;
-            } else if (L->mode == CUI__LEX_MARKDOWN) kind = CUI__TK_TEXT;
+            } else if (markdown) kind = CUI__TK_TEXT;
             else if ((L->mode == CUI__LEX_CONFIG || L->mode == CUI__LEX_CSS) && k < n && (s[k] == ':' || s[k] == '=')) kind = CUI__TK_FUNC;
             else if (json) kind = CUI__TK_CONST;
             else if (cui__syntax_word(L->kw, s + st, len, L->case_insensitive)) kind = CUI__TK_KEYWORD;

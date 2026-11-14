@@ -162,7 +162,7 @@ Open the images and look at them, in light and dark. Then copy into `docs/images
 - **4 spaces**, no tabs, braces on the same line, as in the surrounding code.
 - **Naming.** Public API is `cui_`, internal functions are `cui__`, constants are `CUI_`.
 - **Options are named arguments.** New options go in the component's options struct with a sensible zero default, so existing calls keep working.
-- **No new default dependencies.** CUI defaults to the OS and vendored `third_party/`. The explicitly enabled `cui::tree_sitter` add-on links an app-supplied Tree-sitter runtime; the core never does. Its test/demo JSON grammar remains test-only. Size matters: check what a change adds to `hello`.
+- **No new default dependencies.** CUI defaults to the OS and vendored `third_party/`. The explicitly enabled `cui::tree_sitter` add-on links an app-supplied Tree-sitter runtime; the core never does. Its vendored JSON fixture remains test-only. The separately enabled `CUI_TREE_SITTER_DEMO` downloads pinned grammars for the demo executable only. Size matters: check what a change adds to `hello`.
 - **Design.** New components follow the [design principles](design.md): theme tokens instead of raw colors, keyboard support, and a reduced motion path for every animation.
 - **Comments** explain why, not what.
 
