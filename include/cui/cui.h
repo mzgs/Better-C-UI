@@ -1482,18 +1482,45 @@ CUI_API bool cui_file_picker_ex(cui_ctx *ui, const char *id, bool *open, char *o
 /* Code                                                                     */
 /* ------------------------------------------------------------------------ */
 
-/* Code block with syntax highlighting (lang: "c", "cpp", "js", "ts",
- * "python", "rust", "go", "json", "shell", or "text" for none), line numbers, a title bar and a
- * copy button. Long lines scroll sideways. */
+/* Code block with lexical highlighting for 50 languages and formats. lang ids:
+ * "c", "cpp", "js", "ts", "python", "rust", "go", "json", "shell", "java",
+ * "csharp", "swift", "kotlin", "dart", "php", "ruby", "lua", "perl", "r", "julia",
+ * "scala", "objc", "sql", "html", "css", "xml", "yaml", "toml", "markdown",
+ * "powershell", "batch", "cmake", "make", "dockerfile", "ini", "diff", "asm",
+ * "fortran", "pascal", "vb", "matlab", "groovy", "haskell", "elixir", "erlang",
+ * "clojure", "fsharp", "ocaml", "zig", "glsl"; "text" or "plain" for no colors.
+ * Common aliases ("py", "rs", "cs", "sh", ...) are accepted; ids are lowercase.
+ * Rules cover common tokens, not full grammars, nested comments, multiline
+ * strings, interpolation or embedded languages. Has line numbers, a title bar
+ * and a copy button. Long lines scroll sideways. */
+/* External syntax colors use the same palette as the built-in lexer. */
+typedef enum cui_syntax_kind {
+    CUI_SYNTAX_TEXT, CUI_SYNTAX_KEYWORD, CUI_SYNTAX_TYPE, CUI_SYNTAX_STRING,
+    CUI_SYNTAX_NUMBER, CUI_SYNTAX_COMMENT, CUI_SYNTAX_FUNCTION, CUI_SYNTAX_PREPROCESSOR,
+    CUI_SYNTAX_PUNCTUATION, CUI_SYNTAX_CONSTANT, CUI_SYNTAX_COUNT
+} cui_syntax_kind;
+
+/* App-owned document highlighter, called during build after editor input.
+ * update receives the full UTF-8 text and returns len color-kind bytes, each
+ * a CUI_SYNTAX_* value; all bytes of a code point must share a kind.
+ * The returned array must live until the next update;
+ * CUI snapshots the bytes needed for painting. Return NULL to use .lang.
+ * NULL update or invalid kinds also use .lang. Do not modify source or
+ * build UI from update. One object per independently changing buffer. */
+typedef struct cui_code_highlighter {
+    void *user;
+    const uint8_t *(*update)(void *user, const char *source, int len);
+} cui_code_highlighter;
 typedef struct cui_code_opts {
     int _;
-    const char *lang;          /* "c", "cpp", "js", "ts", "python", "rust", "go", "json", "shell" or "text" (no colors); shown in the title bar */
+    const char *lang;          /* a language id above; NULL uses generic token colors; shown in the title bar */
     const char *title;         /* e.g. a file name */
     bool line_numbers;         /* a column of line numbers on the left */
     int highlight_from, highlight_to;   /* 1 based line range to emphasize */
     float max_height;          /* scrolls beyond this, default none */
     float size;                /* font size, default 13 */
     bool no_header;            /* no title bar, even with a lang */
+    const cui_code_highlighter *highlighter; /* optional app-owned document highlighter; NULL/failure uses lang */
 } cui_code_opts;
 CUI_API void cui_code_block_ex(cui_ctx *ui, const char *id, const char *code, const cui_code_opts *opts);
 
@@ -1599,7 +1626,7 @@ CUI_API bool cui_markdown_apply_task(char *text, const cui_markdown_result *resu
 typedef struct cui_text_mark { int start, end; int color; } cui_text_mark;
 typedef struct cui_code_editor_opts {
     int _;
-    const char *lang;          /* as cui_code_block: "c", "cpp", "js", "ts", "python", "rust", "go", "json", "shell"; "text" for none */
+    const char *lang;          /* the 50 language ids and aliases of cui_code_block; "text" for none; NULL uses generic token colors */
     cui_size width;            /* default fill */
     float height;              /* default 320; negative fills the space */
     float size;                /* font size, default 13 */
@@ -1611,6 +1638,7 @@ typedef struct cui_code_editor_opts {
     const char *placeholder;   /* shown while the text is empty */
     const cui_text_mark *marks;   /* byte ranges to highlight, sorted by start; may overlap and span any number of lines */
     int mark_count;            /* number of `marks` */
+    const cui_code_highlighter *highlighter; /* optional; updated after edits, before painting; NULL/failure uses lang */
 } cui_code_editor_opts;
 typedef struct cui_code_editor_result {
     bool changed;              /* the text changed this frame */

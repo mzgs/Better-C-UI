@@ -395,37 +395,11 @@ static void cui__ed_type(cui__ed *E, const char *text, int n, int lang_kind) {
     cui__ed_replace(E, s0, s1, text, n, s1 > s0 ? 3 : 1);
 }
 
-/* Whether a block comment is open after s[i, e) when one was open before
- * (in): a quick scan that follows the tokenizer (strings end at the line
- * end; a line without a '/' cannot open one). */
-static bool cui__ed_scan_line(const cui__lang *L, const char *s, int i, int e, bool in) {
-    if (!in && !memchr(s + i, '/', (size_t)(e - i))) return false;
-    size_t lc = L->line_comment ? strlen(L->line_comment) : 0;
-    while (i < e) {
-        if (in) {
-            while (i < e && !(s[i] == '*' && i + 1 < e && s[i + 1] == '/')) i++;
-            if (i < e) { i += 2; in = false; }
-            continue;
-        }
-        char c = s[i];
-        if (lc && (size_t)(e - i) >= lc && strncmp(s + i, L->line_comment, lc) == 0) break;
-        if (c == '/' && i + 1 < e && s[i + 1] == '*') { in = true; continue; }
-        if (c == '"' || c == '\'' || (c == '`' && L->backtick)) {
-            i++;
-            while (i < e && s[i] != c) { if (s[i] == '\\' && i + 1 < e) i++; i++; }
-            if (i < e) i++;
-            continue;
-        }
-        i++;
-    }
-    return in;
-}
-
 /* Block comment open at the start of line `upto`. */
 static bool cui__ed_block_state(const cui__ed *E, const cui__lang *L, int upto) {
-    if (!L->block_comments) return false;
+    if (!L->block_start) return false;
     bool in = false;
-    for (int line = 0; line < upto; line++) in = cui__ed_scan_line(L, E->buf, E->ls[line], cui__ed_end(E, line), in);
+    for (int line = 0; line < upto; line++) in = cui__syntax_block_state(L, E->buf + E->ls[line], cui__ed_end(E, line) - E->ls[line], in);
     return in;
 }
 
@@ -434,6 +408,7 @@ static bool cui__ed_block_state(const cui__ed *E, const cui__lang *L, int upto) 
 typedef struct {
     cui_id sid;
     const char *text;           /* a copy of the lines in view; text[0] is byte `base` */
+    const uint8_t *syntax;
     int base, first, count, nl;
     const int *ls;              /* starts of the lines in view and the one after */
     bool in_block, json, empty, focused, show_line, ro;
@@ -576,7 +551,8 @@ static void cui__paint_editor(cui_ctx *ui, cui_node *n, void *data) {
         int nn = stop - ls;
         if (nn + 1 > tok_cap) { tok_cap = nn + 1; toks = cui__frame_alloc(ui, sizeof *toks * (size_t)tok_cap); }
         bool was_block = block;
-        int nt = cui__tokenize(&p->lang, p->json, s + ls, nn, &block, toks, tok_cap);
+        int nt = p->syntax ? cui__syntax_tokens(p->syntax + ls, s + ls, nn, toks, tok_cap) :
+                            cui__tokenize(&p->lang, p->json, s + ls, nn, &block, toks, tok_cap);
         int pos = ls, col = 0;
         for (int t = 0; t < nt; t++) {
             int a = ls + toks[t].start, b = a + toks[t].len;
@@ -589,7 +565,7 @@ static void cui__paint_editor(cui_ctx *ui, cui_node *n, void *data) {
             cui__ed_run(ui, p, s, a, b, ca, x0, y + ty, p->colors[toks[t].kind]);
         }
         /* a block comment opened past the columns in view still carries on */
-        if (stop < le && p->lang.block_comments) block = cui__ed_scan_line(&p->lang, s, ls, le, was_block);
+        if (!p->syntax && stop < le && p->lang.block_start) block = cui__syntax_block_state(&p->lang, s + ls, le - ls, was_block);
     }
     /* placeholder */
     if (p->empty && p->placeholder)
@@ -1235,7 +1211,8 @@ static void cui__edf_build_lines(cui__edf *f, const cui__lang *L, bool json, boo
     memcpy(ls, E->ls + first, sizeof(int) * (size_t)(p->count + 1));
     p->ls = ls;
     p->lang = *L; p->json = json;
-    p->in_block = cui__ed_block_state(E, L, first);
+    p->syntax = cui__syntax_snapshot(ui, f->o->highlighter, E->buf, E->len, a, b);
+    p->in_block = p->syntax ? false : cui__ed_block_state(E, L, first);
     p->tab = E->tab;
     p->cursor = e->cursor; p->anchor = e->anchor;
     p->caret_line = f->caret_line; p->caret_col = f->caret_col;

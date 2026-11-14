@@ -25,6 +25,8 @@ with -x objective-c -fobjc-arc, or define CUI_NO_APP.
 
 The optional native browser is emitted separately as cui_webview.h + cui_webview.c.
 Compile and link it explicitly with the matching core and the platform browser SDK.
+The Tree-sitter add-on is emitted as cui_tree_sitter.h + cui_tree_sitter.c; compile
+it separately and link the runtime and your chosen grammar.
 """
 import os
 import re
@@ -173,6 +175,16 @@ def build_webview(header_seen):
     return header.text(), source.text()
 
 
+def build_tree_sitter(header_seen):
+    header = Emitter()
+    header.seen = set(header_seen)
+    header.file("include/cui/cui_tree_sitter.h")
+    source = Emitter()
+    source.seen = set(header.seen)
+    source.file("addons/tree_sitter/cui_tree_sitter.c")
+    return header.text(), source.text()
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "build", "amalgamation")
     os.makedirs(out, exist_ok=True)
@@ -194,7 +206,12 @@ def main():
         f.write(banner("optional WebView add-on header") + '#include "cui.h"\n' + addon_header)
     with open(os.path.join(out, "cui_webview.c"), "w", encoding="utf-8") as f:
         f.write(banner("optional WebView add-on") + POSIX + '#include "cui_webview.h"\n' + addon_source)
-    for name in ["cui.h", "cui.c", "cui_single.h", "cui_webview.h", "cui_webview.c"]:
+    ts_header, ts_source = build_tree_sitter(he.seen)
+    with open(os.path.join(out, "cui_tree_sitter.h"), "w", encoding="utf-8") as f:
+        f.write(banner("optional Tree-sitter add-on header") + '#include "cui.h"\n' + ts_header)
+    with open(os.path.join(out, "cui_tree_sitter.c"), "w", encoding="utf-8") as f:
+        f.write(banner("optional Tree-sitter add-on") + POSIX + '#include "cui_tree_sitter.h"\n' + ts_source)
+    for name in ["cui.h", "cui.c", "cui_single.h", "cui_webview.h", "cui_webview.c", "cui_tree_sitter.h", "cui_tree_sitter.c"]:
         p = os.path.join(out, name)
         print(f"  {name:13} {os.path.getsize(p) // 1024:6d} KB  {p}")
 

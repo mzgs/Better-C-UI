@@ -29,3 +29,13 @@ endif()
 if(WIN32)
     target_link_libraries(stress PRIVATE psapi)
 endif()
+
+# The runtime has no bundled grammars; this demo borrows the test-only JSON fixture.
+if(CUI_TREE_SITTER AND CUI_BUILD_TESTS)
+    add_executable(tree_sitter tree_sitter.c)
+    target_link_libraries(tree_sitter PRIVATE cui::tree_sitter cui_test_json_grammar)
+    cui_app_target(tree_sitter)
+    if(APPLE)
+        set_target_properties(tree_sitter PROPERTIES MACOSX_BUNDLE OFF)
+    endif()
+endif()

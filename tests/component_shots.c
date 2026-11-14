@@ -8,6 +8,15 @@
 #include <string.h>
 #include "icon_list.h"
 
+#ifdef CUI_TREE_SITTER
+#include <cui/cui_tree_sitter.h>
+const struct TSLanguage *tree_sitter_json(void);
+static void scene_ts_cleanup(cui_ctx *ui, void *data) {
+    (void)ui;
+    cui_tree_sitter_destroy(*(cui_tree_sitter **)data);
+}
+#endif
+
 typedef void (*scene_fn)(cui_ctx *ui, int frame);
 
 static bool b_on = true, b_off = false, b_check = true, b_check2 = false;
@@ -1242,6 +1251,50 @@ static void body_code_editor(cui_ctx *ui) {
             if (r.refused) cui_text(ui, "Buffer full", .size = 12.5f, .color = CUI_COLOR_DANGER);
         }
     }
+}
+
+SCENE(code_languages) {
+    static char sql[1024] =
+        "-- Tiles worth keeping in memory\n"
+        "SELECT tile_key, miss_count\n"
+        "FROM tile_cache\n"
+        "WHERE region = 'north' AND miss_count > 3\n"
+        "ORDER BY miss_count DESC;\n";
+    static char html[1024] =
+        "<!-- Cache status panel\n"
+        "     refreshed after each request -->\n"
+        "<section class=\"cache-status\">\n"
+        "  <h2>North region</h2>\n"
+        "  <span data-count=\"42\">Tiles ready</span>\n"
+        "</section>\n";
+    cui_label(ui, "SQL");
+    cui_code_editor(ui, "sql-editor", sql, sizeof sql, .lang = "sql", .height = 166);
+    cui_label(ui, "HTML");
+    cui_code_editor(ui, "html-editor", html, sizeof html, .lang = "html", .height = 184);
+}
+
+SCENE(tree_sitter) {
+    static char json[1024] =
+        "{\n"
+        "  \"region\": \"north\",\n"
+        "  \"cache_size\": 256,\n"
+        "  \"prefetch\": true,\n"
+        "  \"levels\": [2, 4, 8, 16]\n"
+        "}\n";
+    const cui_code_highlighter *highlighter = NULL;
+#ifdef CUI_TREE_SITTER
+    cui_id id = cui_make_id(ui, "json-syntax");
+    cui_tree_sitter **stored = cui_state(ui, id, sizeof *stored);
+    if (!*stored) {
+        *stored = cui_tree_sitter_create(tree_sitter_json(),
+            "(string) @string (number) @number [(true) (false) (null)] @constant "
+            "(pair key: (string) @string.special.key)", NULL);
+        cui_state_on_free(ui, id, scene_ts_cleanup);
+    }
+    highlighter = cui_tree_sitter_highlighter(*stored);
+#endif
+    cui_label(ui, highlighter ? "Tree-sitter · JSON" : "Built-in highlighter · JSON");
+    cui_code_editor(ui, "json-config", json, sizeof json, .lang = "json", .highlighter = highlighter, .height = 240);
 }
 
 static char ed_marks_src[16384];
@@ -4138,6 +4191,8 @@ int main(int argc, char **argv) {
         { "tree-table", scene_tree_table, 760, 576, true }, { "path-bar", scene_path_bar, 680, 330, true },
         { "json-view", scene_json_view, 560, 330, true }, { "markdown", scene_markdown, 700, 850, true },
         { "code-editor", scene_code_editor, 760, 446, true },
+        { "code-languages", scene_code_languages, 760, 506, true },
+        { "tree-sitter", scene_tree_sitter, 760, 338, true },
         { "code-editor-marks", scene_code_editor_marks, 760, 328, true },
         { "file-browser-loading", scene_file_browser_loading, 900, 460, true },
         { "diff-view", scene_diff_view, 900, 480, true },

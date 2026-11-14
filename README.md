@@ -114,6 +114,8 @@ Better-C-UI is a good fit for a desktop tool, an editor, a dashboard or a game's
 
 The optional [native WebView add-on](docs/integration.md#native-webview-setup) is built separately with `CUI_WEBVIEW=ON`. Link `cui::webview` and include `<cui/cui_webview.h>` to embed web content. Ordinary `cui::cui` applications keep their existing dependencies.
 
+The [optional Tree-sitter add-on](docs/integration.md#optional-tree-sitter-highlighting) adds grammar-based editor and code-block highlighting with `CUI_TREE_SITTER=ON` and the separate `cui::tree_sitter` target. Applications supply the runtime, grammars and queries; the built-in highlighter stays the default.
+
 ## Install
 
 You need a C99 compiler and CMake 3.14 or newer. With CMake:

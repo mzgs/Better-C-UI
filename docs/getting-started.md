@@ -4,7 +4,7 @@ This guide takes you from an empty folder to a working window, then explains the
 
 ## 1. Get Better-C-UI
 
-Better-C-UI is a regular CMake project with no external dependencies. You need a C99 compiler and CMake 3.14 or newer:
+Better-C-UI is a regular CMake project whose default build has no external dependencies. You need a C99 compiler and CMake 3.14 or newer:
 
 | System | Install |
 |---|---|
@@ -88,7 +88,7 @@ cc -std=c99 -Os main.c cui.o -Wl,--gc-sections -s -lX11 -ldl -lm -lpthread -o my
 
 Those flags are what keep the app small. `-ffunction-sections -fdata-sections` with `-Wl,--gc-sections` lets the linker drop the components you do not use, and `-s` strips symbols: the first window below comes to about 265 KB. Compiling and linking everything in one plain `cc -O2 main.c cui.c` works too, and gives about 1.6 MB, because every component stays in. On macOS use `-Wl,-dead_strip` instead of `-Wl,--gc-sections`; with MSVC, `/Gy` and `/link /OPT:REF /OPT:ICF`.
 
-The window layer for your system is picked by the preprocessor. Before the implementation, `CUI_NO_APP` leaves the window layer out (bring your own window and renderer), `CUI_PLATFORM_SDL2` or `CUI_PLATFORM_GLFW` uses SDL2 or GLFW instead, `CUI_NO_DEFAULT_FONTS` and `CUI_NO_STB_IMAGE` leave out the fonts and image loading, and `CUI_TEXT_SHAPING` adds Arabic-script shaping. On macOS the window layer is Objective-C: compile `cui.c` with `-x objective-c -fobjc-arc`, or define `CUI_NO_APP`.
+The window layer for your system is picked by the preprocessor. Before the implementation, `CUI_NO_APP` leaves the window layer out (bring your own window and renderer), `CUI_PLATFORM_SDL2` or `CUI_PLATFORM_GLFW` uses SDL2 or GLFW instead, `CUI_NO_DEFAULT_FONTS` and `CUI_NO_STB_IMAGE` leave out the fonts and image loading, and `CUI_TEXT_SHAPING` adds Arabic-script shaping. The separately compiled `cui_tree_sitter.c` add-on requires an external Tree-sitter runtime and your grammar ([setup](integration.md#optional-tree-sitter-highlighting)). On macOS the window layer is Objective-C: compile `cui.c` with `-x objective-c -fobjc-arc`, or define `CUI_NO_APP`.
 
 ### Options
 
@@ -99,6 +99,7 @@ The window layer for your system is picked by the preprocessor. Before the imple
 | `CUI_DEFAULT_FONTS` | `ON` | Embed Inter, Geist and Lucide (about 180 KB) |
 | `CUI_STB_IMAGE` | `ON` | PNG and JPEG loading for `cui_image_load` |
 | `CUI_BUILD_SHARED` | `OFF` | Build a shared library |
+| `CUI_TREE_SITTER` | `OFF` | Build the separate `cui::tree_sitter` add-on for editor/code-block highlighting ([setup](integration.md#optional-tree-sitter-highlighting)) |
 | `CUI_WEBVIEW` | `OFF` | Build the separate `cui::webview` native browser add-on ([setup](integration.md#native-webview-setup)) |
 | `CUI_BUILD_EXAMPLES`, `CUI_BUILD_TESTS` | `ON` at top level | |
 

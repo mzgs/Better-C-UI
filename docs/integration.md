@@ -102,6 +102,81 @@ The vertex format and the reference shader are in [rendering.md](rendering.md). 
 
 Texture update strides are in bytes and may include padding between rows. Both built-in renderers ignore an update if its rectangle is outside the texture, its pixels are NULL, or its stride is smaller than one row. Texture creation requires positive dimensions and an R8 or RGBA8 format. OpenGL texture storage can be retried after an allocation failure.
 
+## Optional Tree-sitter highlighting
+
+The editor and code block accept an app-owned Tree-sitter document through the generic `.highlighter` option. The default build uses the built-in lexer and has no Tree-sitter dependency. With `CUI_TREE_SITTER=ON`, CUI builds the separate `cui::tree_sitter` add-on and exposes `<cui/cui_tree_sitter.h>`. Only applications linking the add-on depend on the runtime; `cui::cui` stays independent even when the add-on is built. There is no Rust dependency. Tree-sitter is built separately with its own compiler settings (current upstream uses C11); CUI remains C99. This integration is tested with Tree-sitter 0.27.2.
+
+Install the runtime into a prefix, then configure CUI with that prefix:
+
+```sh
+cmake -S /path/to/tree-sitter -B ts-build -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX="$PWD/ts-install"
+cmake --build ts-build --parallel
+cmake --install ts-build
+cmake -S . -B build-ts -DCMAKE_BUILD_TYPE=Debug -DCUI_TREE_SITTER=ON -DCMAKE_PREFIX_PATH="$PWD/ts-install"
+cmake --build build-ts --parallel
+ctest --test-dir build-ts --output-on-failure
+./build-ts/examples/tree_sitter
+```
+
+The JSON demo is built when examples and tests are enabled; it links the small test grammar. The CUI library never bundles or automatically downloads grammars. Bring the generated parser and highlight query for each language your app needs. For a JSON grammar checkout, for example:
+
+```cmake
+add_library(my_json STATIC /path/to/tree-sitter-json/src/parser.c)
+target_include_directories(my_json PRIVATE /path/to/tree-sitter-json/src)
+target_link_libraries(my_app PRIVATE cui::tree_sitter my_json)
+```
+
+Create a document once, outside the frame loop. The generated grammar must outlive it; the query is compiled during creation and may then be freed. One document belongs to one independently changing buffer. An editor and preview of that same buffer may share it.
+
+```c
+#include <cui/cui_tree_sitter.h>
+
+const struct TSLanguage *tree_sitter_json(void);  /* provided by your generated parser */
+const char *query = "(string) @string (number) @number "
+                    "[(true) (false) (null)] @constant "
+                    "(pair key: (string) @string.special.key)";
+cui_tree_sitter_error error;
+cui_tree_sitter *syntax = cui_tree_sitter_create(tree_sitter_json(), query, &error);
+/* Check syntax: NULL means error.message and error.offset describe the failure. */
+
+/* Inside the frame loop, after checking creation succeeded: */
+cui_code_editor(ui, "config", buffer, sizeof buffer, .lang = "json", .highlighter = cui_tree_sitter_highlighter(syntax));
+cui_code_block(ui, "preview", buffer, .lang = "json", .highlighter = cui_tree_sitter_highlighter(syntax));
+error = cui_tree_sitter_last_error(syntax);
+
+/* After the frame loop: */
+cui_tree_sitter_destroy(syntax);
+```
+
+The document caches its text, syntax tree and capture colors. Edits, undo/redo and caller-side buffer replacements are detected automatically. Parsing reuses the previous tree through a UTF-8-aware edit range; capture colors are rebuilt after a change and reused while text is unchanged. The editor updates after input, so edits receive their new colors on the same frame. Painting uses a frame-owned copy of colors, just like the editor's text snapshot. Calls belong on the UI thread.
+
+The first parse and capture processing run synchronously. Each retained document uses a source snapshot, one color-kind byte per source byte and Tree-sitter's syntax tree, plus temporary capture storage on edits. This is a full-document cache; large documents and predicate-heavy queries should be measured in your app. Regex predicates currently compile through `cui_regex_search` for each captured value.
+
+Captures map to the existing light/dark syntax palette:
+
+| Capture names (including dotted variants) | Color |
+|---|---|
+| `keyword`, `conditional`, `repeat` | Keyword |
+| `type`, `constructor` | Type |
+| `string`, `character`, `escape` | String |
+| `string.special.key`, `function`, `method` | Function/key |
+| `number`, `float` | Number |
+| `comment` | Comment |
+| `constant`, `boolean` | Constant |
+| `preproc` | Preprocessor |
+| `punctuation`, `operator`, `delimiter` | Punctuation |
+| `variable`, `property`, `label` | Normal text |
+
+Unknown captures and `_` helper captures are ignored. Shorter captured ranges override enclosing ranges. Equal lengths prefer capture names with more dotted components, then later query patterns. This adapter supports `#eq?`, `#not-eq?`, `#match?`, `#not-match?`, `#any-of?` and `#not-any-of?`, with single (unquantified) captures. Regexes use the [CUI regex engine](components-more.md#regex-tester), not Rust's regex syntax. Unsupported predicates, directives and regexes fail creation with an error; arbitrary upstream highlight queries may need adapting. Language injections and locals queries are not implemented.
+
+Malformed source is expected while editing and does not itself trigger fallback. On a backend error, the component uses `.lang` and `cui_tree_sitter_last_error` reports why. `.lang` also retains its existing indentation behavior. A NULL highlighter uses the built-in lexer. The generic hook is always available, including builds without Tree-sitter; a callback that returns NULL or invalid kinds falls back to `.lang`. Diff and source-preview components continue to use the built-in lexer.
+
+For installed CMake packages, request `find_package(cui CONFIG REQUIRED COMPONENTS tree_sitter)` and link `cui::tree_sitter`. Only requesting that component discovers the runtime; `find_package(cui CONFIG REQUIRED)` works without Tree-sitter installed. With pkg-config, use `cui-tree-sitter`, which records the runtime in `Requires.private`; the core `cui.pc` has no Tree-sitter requirements.
+
+The amalgamator emits separate `cui_tree_sitter.h` and `cui_tree_sitter.c` files. Compile the add-on alongside `cui.c` (or the `cui_single.h` implementation), add the runtime include directory and link its runtime plus your grammar. The generated core files have no Tree-sitter code or declarations.
+
+The core interface is `cui_code_highlighter`: an app-owned `user` pointer and an `update(user, source, len)` callback. Return `len` bytes of `CUI_SYNTAX_*` kinds, with every byte of a UTF-8 code point using the same kind; CUI copies the visible range for paint. A custom highlighter needs only `cui.h`. The Tree-sitter add-on implements this interface through `cui_tree_sitter_highlighter(document)` and uses only the public CUI API.
+
 ## Native WebView setup
 
 The optional [`cui_webview`](components-more.md#web-view) add-on lives in `addons/webview/` and links as `cui::webview`. Include `<cui/cui_webview.h>` for its browser APIs. It uses a platform browser engine and works with either CUI renderer. It requires the app layer and the Cocoa, Win32 or X11 backend. SDL2, GLFW, custom window hosts and WebAssembly use the unavailable placeholder; configuring `CUI_WEBVIEW=ON` with an unsupported desktop backend fails explicitly.

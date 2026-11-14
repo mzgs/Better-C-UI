@@ -111,7 +111,7 @@ if ref:
             + "".join(f'<h2 id="{s["id"]}">{esc(s["title"])}</h2>' + "".join(
                 f'<p><code>{esc(f["sig"])}</code>' + (f'<br>{f["doc"]}' if f["doc"] else "")
                 + (f' <a href="#/c/{f["page"]}">{esc(C["items"][f["page"]]["title"])}</a>' if f["page"] else "") + "</p>" for f in s["fns"]) for s in ref))
-    urls.append(page("reference/", "#/reference", "Function reference · Better-C-UI", f'Every public function of Better-C-UI: {sum(len(s["fns"]) for s in ref)} signatures from cui.h, cui_app.h and cui_render.h, each linked to the page that explains it.', body))
+    urls.append(page("reference/", "#/reference", "Function reference · Better-C-UI", f'Every public function of Better-C-UI: {sum(len(s["fns"]) for s in ref)} signatures from the core and optional-feature headers, each linked to the page that explains it.', body))
 
 urls.insert(0, URL)   # the home page is index.html itself
 

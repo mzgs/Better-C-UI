@@ -2,6 +2,20 @@ add_executable(cui_tests test_main.c)
 target_link_libraries(cui_tests PRIVATE cui::cui)
 add_test(NAME cui_tests COMMAND cui_tests)
 
+add_executable(cui_test_syntax test_syntax.c)
+target_include_directories(cui_test_syntax PRIVATE ../src)
+target_link_libraries(cui_test_syntax PRIVATE cui::cui)
+add_test(NAME cui_test_syntax COMMAND cui_test_syntax)
+
+if(CUI_TREE_SITTER)
+    add_library(cui_test_json_grammar STATIC ../third_party/tree-sitter-json/parser.c)
+    target_include_directories(cui_test_json_grammar PRIVATE ../third_party/tree-sitter-json)
+    add_executable(cui_test_tree_sitter test_tree_sitter.c)
+    target_include_directories(cui_test_tree_sitter PRIVATE ../src)
+    target_link_libraries(cui_test_tree_sitter PRIVATE cui::tree_sitter cui_test_json_grammar TreeSitter::TreeSitter)
+    add_test(NAME cui_test_tree_sitter COMMAND cui_test_tree_sitter)
+endif()
+
 add_executable(cui_test_grid_scroll test_grid_scroll.c)
 target_include_directories(cui_test_grid_scroll PRIVATE ../src)
 target_link_libraries(cui_test_grid_scroll PRIVATE cui::cui)
@@ -78,7 +92,11 @@ add_executable(cui_bench bench.c ../examples/gallery_ui.c ../examples/gallery_mo
 target_link_libraries(cui_bench PRIVATE cui::cui)
 
 add_executable(cui_component_shots component_shots.c)
-target_link_libraries(cui_component_shots PRIVATE cui::cui)
+if(CUI_TREE_SITTER)
+    target_link_libraries(cui_component_shots PRIVATE cui::tree_sitter cui_test_json_grammar)
+else()
+    target_link_libraries(cui_component_shots PRIVATE cui::cui)
+endif()
 
 include(CheckLanguage)
 check_language(CXX)

@@ -774,15 +774,39 @@ int cui__edit_word_left(const char *s, int pos);
 int cui__edit_word_right(const char *s, int len, int pos);
 
 /* ---- syntax highlighting (cui_code.c): the code block, the code editor and the diff viewer ---- */
-typedef struct { const char *const *kw; const char *const *types; const char *line_comment, *line_comment2; bool block_comments, hash_preproc, backtick, no_caps_types, plain; } cui__lang;
+enum { CUI__LEX_CODE, CUI__LEX_MARKUP, CUI__LEX_CSS, CUI__LEX_CONFIG, CUI__LEX_MARKDOWN, CUI__LEX_DIFF };
+typedef struct {
+    const char *const *kw, *const *types;
+    const char *line_comment, *line_comment2, *block_start, *block_end;
+    int mode;
+    char string_escape;
+    bool hash_preproc, backtick, no_caps_types, plain, case_insensitive, doubled_quotes, hyphen_words, char_quotes, no_single_quotes, literal_strings;
+} cui__lang;
 typedef struct { int start, len; uint8_t kind; } cui__tok;
-#define CUI__TK_COUNT 10   /* token kinds; colors from cui__syntax_colors */
+enum {
+    CUI__TK_TEXT = CUI_SYNTAX_TEXT,
+    CUI__TK_KEYWORD = CUI_SYNTAX_KEYWORD,
+    CUI__TK_TYPE = CUI_SYNTAX_TYPE,
+    CUI__TK_STRING = CUI_SYNTAX_STRING,
+    CUI__TK_NUMBER = CUI_SYNTAX_NUMBER,
+    CUI__TK_COMMENT = CUI_SYNTAX_COMMENT,
+    CUI__TK_FUNC = CUI_SYNTAX_FUNCTION,
+    CUI__TK_PREPROC = CUI_SYNTAX_PREPROCESSOR,
+    CUI__TK_PUNCT = CUI_SYNTAX_PUNCTUATION,
+    CUI__TK_CONST = CUI_SYNTAX_CONSTANT,
+    CUI__TK_COUNT = CUI_SYNTAX_COUNT
+};
 cui__lang cui__lang_for(const char *lang);
 /* Tokenize one line. *in_block carries an open block comment between lines. */
 int cui__tokenize(const cui__lang *L, bool json, const char *s, int n, bool *in_block, cui__tok *out, int cap);
+/* Scan without emitting tokens, for comments above or beyond the viewport. */
+bool cui__syntax_block_state(const cui__lang *L, const char *s, int n, bool in_block);
 /* The same, by language name as the code block takes it ("c", "py", "json"...). */
 int cui__tokenize_lang(const char *lang, const char *s, int n, bool *in_block, cui__tok *out, int cap);
 void cui__syntax_colors(cui_ctx *ui, cui_color *c);   /* CUI__TK_COUNT colors, by token kind */
+/* Snapshot backend colors for a byte range, or NULL for the built-in lexer. */
+const uint8_t *cui__syntax_snapshot(cui_ctx *ui, const cui_code_highlighter *highlighter, const char *source, int len, int from, int to);
+int cui__syntax_tokens(const uint8_t *kinds, const char *text, int n, cui__tok *out, int cap);
 /* One line of code in the mono font at (x, y), highlighted when lang is set, stopping past
  * max_x; *in_block carries a block comment to the next line. Returns the x after it. */
 float cui__draw_code_line(cui_ctx *ui, const char *lang, const char *s, int n, bool *in_block, float x, float y, float size, const cui_color *colors, float max_x);

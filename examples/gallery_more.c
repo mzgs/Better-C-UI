@@ -504,7 +504,7 @@ static void page_grid(cui_ctx *ui) {
 }
 
 static void page_code(cui_ctx *ui) {
-    section(ui, "Code block", "Highlighting for C, C++, JavaScript, TypeScript, Python, Rust, Go, JSON and shell.");
+    section(ui, "Code block", "Highlighting for 50 languages and formats, including C, Python, Java, SQL, HTML and YAML.");
     cui_code_block(ui, "c-sample",
         "#include <cui/cui.h>\n"
         "\n"
@@ -527,7 +527,14 @@ static void page_code(cui_ctx *ui) {
                            .lang = "shell");
         }
     }
-    section(ui, "Code editor", "Edit the buffer; a highlight can span several lines.");
+    cui_code_block(ui, "sql-sample",
+        "-- Recent tiles with cache misses\n"
+        "SELECT tile_key, miss_count\n"
+        "FROM tile_cache\n"
+        "WHERE miss_count > 3 AND region = 'north'\n"
+        "ORDER BY miss_count DESC;\n",
+        .lang = "sql", .title = "cache.sql", .line_numbers = true);
+    section(ui, "Code editor", "Edit the buffer; a highlight can span several lines. Optional Tree-sitter support adds grammar-based colors.");
     static char code[1024] = "void update_tiles(void) {\n    for (int i = 0; i < 64; i++) {\n        tile_update(cache, i);\n    }\n}\n";
     if (cui_button(ui, "Find and replace", .size = CUI_SIZE_SM, .icon = CUI_ICON_SEARCH))
         cui_code_editor_find_replace(ui, "editable-code", "tile", "cell");

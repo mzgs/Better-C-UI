@@ -6,11 +6,17 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Changed
 
+- **Tree-sitter is a separate add-on** in `addons/tree_sitter/`: link `cui::tree_sitter` (installed packages request `COMPONENTS tree_sitter`). Editor/code-block options use `.highlighter = cui_tree_sitter_highlighter(document)` in place of `.tree_sitter`. The core exposes a generic `cui_code_highlighter` hook and has no Tree-sitter dependency, including when the add-on is built. Amalgamated and pkg-config distributions provide separate add-on artifacts.
+
 - Removed the local HTML5 video example and its dedicated tests and screenshots.
 
 - **WebView is a separate add-on**: enable `CUI_WEBVIEW`, include `<cui/cui_webview.h>` and link `cui::webview` (installed packages request `COMPONENTS webview`). The core keeps the layout placeholder and has no browser libraries, even when the add-on is built. Native sources live in `addons/webview/`; pkg-config and amalgamated distributions provide separate add-on artifacts. Existing WebView callers must update their include/link settings.
 
 ### Added
+
+- **Optional Tree-sitter highlighting** for code editors and code blocks (`CUI_TREE_SITTER=ON`), using app-supplied grammars and queries, retained syntax trees, automatic edit detection and same-frame colors. The default remains the built-in lexer. Includes a JSON demo, query validation, fallback diagnostics and setup documentation.
+
+- **Syntax highlighting for 50 languages and formats**, shared by the code editor, code blocks, diff viewer and source previews. Adds Java, C#, Swift, Kotlin, SQL, HTML, CSS, YAML and more, with aliases, case-insensitive keywords where appropriate and language-specific comment delimiters. See the [language list](docs/components-more.md#syntax-highlighting-languages).
 
 - **Cascading submenus** in dropdown, context and menu-bar menus, with hover/click opening, directional keyboard navigation, RTL placement and branch dismissal.
 - **Find and replace** in the code editor, including single replacement, atomic Replace all, one-step batch undo, and `cui_code_editor_find_replace`.

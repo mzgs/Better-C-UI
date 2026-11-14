@@ -1,0 +1,11 @@
+prefix=${pcfiledir}/../..
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: cui-tree-sitter
+Description: Optional Tree-sitter highlighting for CUI
+Version: @PROJECT_VERSION@
+Requires: cui
+Requires.private: tree-sitter
+Cflags: -I${includedir} -DCUI_TREE_SITTER
+Libs: -L${libdir} -lcui_tree_sitter

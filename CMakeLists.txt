@@ -13,6 +13,7 @@ endif()
 
 option(CUI_BUILD_EXAMPLES "Build the examples" ${CUI_IS_TOP_LEVEL})
 option(CUI_BUILD_TESTS "Build the tests" ${CUI_IS_TOP_LEVEL})
+option(CUI_TREE_SITTER "Build the optional Tree-sitter highlighting add-on" OFF)
 option(CUI_TEXT_SHAPING "Shape static Arabic text with OpenType" OFF)
 option(CUI_BUILD_SHARED "Build a shared library" OFF)
 option(CUI_WITH_APP "Include the app layer (windows, events)" ON)
@@ -140,6 +141,10 @@ if(CUI_WEBVIEW)
     add_subdirectory(addons/webview)
 endif()
 
+if(CUI_TREE_SITTER)
+    add_subdirectory(addons/tree_sitter)
+endif()
+
 if(CUI_TEXT_SHAPING)
     target_sources(cui PRIVATE src/cui_bidi.c src/cui_shape.c)
     target_compile_definitions(cui PRIVATE CUI_TEXT_SHAPING)
@@ -244,7 +249,7 @@ elseif(CUI_BACKEND STREQUAL "glfw")
 endif()
 configure_file(cmake/cuiConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/cuiConfig.cmake @ONLY)
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/cuiConfigVersion.cmake COMPATIBILITY SameMajorVersion)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cuiConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/cuiConfigVersion.cmake cmake/CuiApp.cmake
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cuiConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/cuiConfigVersion.cmake cmake/CuiApp.cmake cmake/FindTreeSitter.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cui)
 
 # pkg-config
