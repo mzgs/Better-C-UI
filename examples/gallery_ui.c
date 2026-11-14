@@ -250,6 +250,10 @@ static void page_buttons(cui_ctx *ui, gallery *g) {
                 cui_menu_item(ui, "Rename", .icon = CUI_ICON_PENCIL, .shortcut = "F2");
                 cui_menu_item(ui, "Duplicate", .icon = CUI_ICON_COPY, .shortcut = "Ctrl D");
                 cui_menu_item(ui, "Share", .icon = CUI_ICON_SHARE_2);
+                cui_submenu(ui, "Open with", .icon = CUI_ICON_EXTERNAL_LINK) {
+                    if (cui_menu_item(ui, "Text editor")) cui_toast(ui, "Text editor selected");
+                    if (cui_menu_item(ui, "Terminal")) cui_toast(ui, "Terminal selected");
+                }
                 cui_menu_separator(ui);
                 if (cui_menu_item(ui, "Delete", .icon = CUI_ICON_TRASH_2, .danger = true)) g->confirm_open = true;
             }
@@ -264,6 +268,10 @@ static void page_buttons(cui_ctx *ui, gallery *g) {
 static void page_inputs(cui_ctx *ui, gallery *g) {
     section(ui, "Selectable text", "Drag to select, then copy with Command+C or Ctrl+C.");
     cui_text(ui, "Select this sentence, or use Tab, Shift+arrows and copy.", .selectable = true);
+    section(ui, "Autocomplete", "Type to filter, or keep your own value. Arrows and Enter choose a suggestion.");
+    static char recipient[96] = "ma";
+    static const char *recipients[] = { "marina@tern.dev", "marcus@tern.dev", "maya@tern.dev", "support@tern.dev" };
+    cui_autocomplete(ui, "recipient", recipient, sizeof recipient, recipients, 4, .label = "Recipient", .width = CUI_PX(320));
     section(ui, "Text fields", "Labels above, hints and errors below.");
     cui_card(ui, .gap = 16) {
         cui_box(ui, .dir = CUI_GRID, .columns = 2, .min_column_width = 260, .gap = 16) {

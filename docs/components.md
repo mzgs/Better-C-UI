@@ -250,6 +250,24 @@ cui_select(ui, "lang", languages, n, &lang, .searchable = true, .placeholder = "
 
 Returns true on the frame the choice changes. `country` is your `int`, the index of the chosen item. A value outside 0 to `count` - 1, such as -1, means nothing is chosen, and the field then shows `placeholder`, or "Select". Choosing an item closes the list, which scrolls once it is taller than 300 points. The search keeps the items that contain the typed text, whatever the case. For several choices use the multi-select, and for two to five options that should stay visible use a segmented control.
 
+## Autocomplete
+
+An editable field with suggestions. The value can be an item from the list or your own text.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/autocomplete-dark.png"><img src="images/components/autocomplete.png" alt="An editable recipient field with matching suggestions"></picture>
+
+```c
+static char recipient[96] = "ma";
+const char *people[] = { "marina@tern.dev", "marcus@tern.dev", "maya@tern.dev" };
+int events = cui_autocomplete(ui, "recipient", recipient, sizeof recipient, people, 3,
+                              .label = "Recipient", .placeholder = "Name or address");
+if (events & CUI_SUBMITTED) send_to(recipient);
+```
+
+Uses the same options and event flags as `cui_input`: labels, hints, errors, clear button, sizing, disabled and read-only states. The caller owns the NUL-terminated buffer and the suggestion strings; pass refreshed items each frame to show results from your own asynchronous lookup. No fetching runs inside the control.
+
+Typing, clicking the field or pressing Down opens the list. It shows the first eight items containing the typed text, with ASCII case ignored. Put the best matches first. Up/Down moves the highlight, Enter accepts the highlighted suggestion, and Esc dismisses without changing the value. Without a highlighted suggestion, Enter reports `CUI_SUBMITTED` for the free text. Accepting a different suggestion reports `CUI_CHANGED`, preserves field focus and can be undone. Suggestions that do not fit the buffer are disabled rather than truncated. A read-only or disabled field opens no suggestions.
+
 ## Date picker and calendar
 
 Picks a date from a month grid, as a field that opens a calendar or as a calendar shown inline.
@@ -378,6 +396,28 @@ cui_context_menu(ui, "file-menu") {                   /* right click on the prev
 ```
 
 Menus open with a short scale and fade from the trigger, close on a click outside, Esc or after choosing. Item options: `icon`, `shortcut`, `danger`, `disabled`, `checked`. Menu options: `icon`, `variant`, `placement`, `width`, `icon_only`. Keyboard: Down opens from the focused trigger, Up/Down move, Enter chooses.
+
+## Cascading submenus
+
+Nested commands within dropdown, context and menu-bar menus.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/submenus-dark.png"><img src="images/components/submenus.png" alt="A cascading Open with submenu beside its parent menu"></picture>
+
+```c
+cui_menu(ui, "File actions") {
+    cui_submenu(ui, "Open with", .icon = CUI_ICON_EXTERNAL_LINK) {
+        if (cui_menu_item(ui, "Text editor")) open_editor();
+        cui_submenu(ui, "More applications") {
+            if (cui_menu_item(ui, "Browser")) open_browser();
+        }
+    }
+    cui_menu_item(ui, "Copy path");
+}
+```
+
+`cui_submenu` takes the same options as a menu item, including `icon` and `disabled`. Hover for 150 ms, click, or highlight the row and press Right or Enter to open its children. Up/Down moves within the active menu. Left or Esc closes the deepest level and leaves its parent open; choosing an action closes the chain. In RTL, Left opens and Right returns, and the panel opens to the left when there is room. Menus flip or clamp inside a narrow viewport. Keyboard actions are immediate; pointer transitions use the menu motion tokens and respect reduced motion.
+
+Submenus use the existing popup stack (at most 16 popup scopes). With the explicit API, call `cui_submenu_end` only when `cui_submenu_begin_ex` returned true. Omitting an open submenu on the next frame closes its branch.
 
 ## Popover
 

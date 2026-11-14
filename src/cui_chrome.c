@@ -225,7 +225,8 @@ void cui_menu_bar_begin(cui_ctx *ui, const char *id_str, const cui_menu_bar_opts
     /* Left and Right in an open menu move to the neighbouring menu */
     if (st->open >= 0 && n > 1 && !covered_by_other) {
         int dir = cui_key_pressed(ui, CUI_KEY_LEFT) ? -1 : cui_key_pressed(ui, CUI_KEY_RIGHT) ? 1 : 0;
-        if (dir) {
+        cui__menu_nav *nav = cui_state(ui, st->pid[st->open] ^ 0x4E4156u, sizeof *nav);
+        if (dir && !cui_key_pressed(ui, (cui_key)nav->submenu_key)) {
             ui->kpressed[CUI_KEY_LEFT] = ui->kpressed[CUI_KEY_RIGHT] = 0;
             cui__bar_open(ui, st, cui__bar_step(st, st->open, dir), true);
         }

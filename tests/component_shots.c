@@ -193,6 +193,50 @@ static void scene_menu(cui_ctx *ui, int f) {
         }
     }
 }
+static void scene_submenus(cui_ctx *ui, int f) {
+    if (f < 0) {
+        int step = -f - 1;
+        cui_key key = step == 3 ? CUI_KEY_TAB : step == 4 ? CUI_KEY_ENTER : step == 5 ? CUI_KEY_DOWN : step == 6 ? CUI_KEY_RIGHT : CUI_KEY_NONE;
+        if (key != CUI_KEY_NONE) { cui_input_key(ui, key, true, 0); cui_input_key(ui, key, false, 0); }
+        return;
+    }
+    cui_column(ui, .pad = 28, .gap = 12, .width = CUI_FILL, .height = CUI_FILL, .bg = CUI_COLOR_BACKGROUND) {
+        cui_menu(ui, "File actions", .icon = CUI_ICON_FILE_TEXT) {
+            cui_submenu(ui, "Open with", .icon = CUI_ICON_EXTERNAL_LINK) {
+                cui_menu_item(ui, "Text editor", .icon = CUI_ICON_SQUARE_PEN);
+                cui_menu_item(ui, "Terminal", .icon = CUI_ICON_SQUARE_TERMINAL);
+                cui_submenu(ui, "More applications") { cui_menu_item(ui, "Browser", .icon = CUI_ICON_GLOBE); }
+            }
+            cui_menu_item(ui, "Reveal in folder", .icon = CUI_ICON_FOLDER);
+            cui_menu_item(ui, "Copy path", .icon = CUI_ICON_COPY);
+        }
+    }
+}
+
+static void scene_autocomplete(cui_ctx *ui, int f) {
+    if (f < 0) {
+        if (-f - 1 == 4) { cui_input_key(ui, CUI_KEY_DOWN, true, 0); cui_input_key(ui, CUI_KEY_DOWN, false, 0); }
+        return;
+    }
+    static char address[96] = "ma";
+    static const char *items[] = { "marina@tern.dev", "marcus@tern.dev", "maya@tern.dev", "support@tern.dev" };
+    cui_column(ui, .pad = 28, .gap = 12, .width = CUI_FILL, .height = CUI_FILL, .bg = CUI_COLOR_BACKGROUND) {
+        cui_autocomplete(ui, "address", address, sizeof address, items, 4, .label = "Recipient", .autofocus = true, .width = CUI_FILL);
+    }
+}
+
+static void scene_find_replace(cui_ctx *ui, int f) {
+    if (f < 0) {
+        if (-f - 1 == 3) cui_code_editor_find_replace(ui, "replace-editor", "tile", "cell");
+        return;
+    }
+    static char code[1024] = "int tile_count = 64;\n\nvoid update_tiles(void) {\n    for (int tile = 0; tile < tile_count; tile++) {\n        tile_update(cache, tile);\n    }\n}\n";
+    cui_column(ui, .pad = 28, .gap = 12, .width = CUI_FILL, .height = CUI_FILL, .bg = CUI_COLOR_BACKGROUND) {
+        cui_code_editor(ui, "replace-editor", code, sizeof code, .lang = "c", .height = 300, .width = CUI_FILL);
+        cui_muted(ui, "Replace a match or a batch. Undo restores the previous text.");
+    }
+}
+
 static void scene_dialog(cui_ctx *ui, int f) {
     if (f < 0) return;
     static bool open;
@@ -4047,7 +4091,10 @@ int main(int argc, char **argv) {
         { "pickers", scene_pickers, 680, 130, false }, { "select", scene_select_open, 320, 330, true },
         { "calendar", scene_calendar, 340, 360, true }, { "tabs", scene_tabs, 580, 160, true },
         { "navigation", scene_navigation, 620, 200, false }, { "sidebar", scene_sidebar, 260, 210, true },
-        { "menu", scene_menu, 300, 290, true }, { "dialog", scene_dialog, 620, 340, true },
+        { "menu", scene_menu, 300, 290, true },
+        { "submenus", scene_submenus, 560, 290, true },
+        { "autocomplete", scene_autocomplete, 440, 260, true },
+        { "find-replace", scene_find_replace, 760, 390, true }, { "dialog", scene_dialog, 620, 340, true },
         { "toast", scene_toast, 420, 220, true }, { "tooltip", scene_tooltip, 260, 150, false },
         { "alerts", scene_alerts, 620, 210, true }, { "feedback", scene_feedback, 520, 220, false },
         { "badges", scene_badges, 600, 160, true }, { "cards", scene_cards, 700, 230, true },

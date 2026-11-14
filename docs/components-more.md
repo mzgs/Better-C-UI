@@ -811,6 +811,20 @@ Find and app-provided marks draw only the highlights that reach the visible colu
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/code-editor-marks-dark.png"><img src="images/components/code-editor-marks.png" alt="A whole-file highlight still visible at line 450"></picture>
 
+#### Find and replace
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/find-replace-dark.png"><img src="images/components/find-replace.png" alt="Code editor with find and replace fields and single/all replacement actions"></picture>
+
+Open the replacement row using the find bar's replace toggle, Primary+Alt+F (Command+Option+F on macOS), or Ctrl+H on other platforms. It can also be opened from code, in the same id scope as the editor:
+
+```c
+cui_code_editor_find_replace(ui, "shader", "tile", "cell");
+cui_code_editor_result r = cui_code_editor(ui, "shader", src, sizeof src, .lang = "c");
+if (r.refused) { /* the requested replacement did not fit; the buffer is unchanged */ }
+```
+
+Replace changes the selected match (or finds the next match first), then selects the next match. Enter in the replacement field also replaces one match. Replace all scans the original buffer for non-overlapping literal matches with ASCII case ignored, checks the entire result's size, and changes the buffer in one undo step. It never replaces newly inserted text again. Undo from the code restores the previous contents; Esc returns from a find/replacement field to the code. Existing CRLF line endings are preserved. Query and replacement fields hold up to 127 bytes. Empty queries and read-only editors disable replacement actions. `NULL` as the query closes the bar.
+
 ### Diff viewer
 
 Compares two versions of a text line by line.

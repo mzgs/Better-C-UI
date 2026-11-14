@@ -12,6 +12,10 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Added
 
+- **Cascading submenus** in dropdown, context and menu-bar menus, with hover/click opening, directional keyboard navigation, RTL placement and branch dismissal.
+- **Find and replace** in the code editor, including single replacement, atomic Replace all, one-step batch undo, and `cui_code_editor_find_replace`.
+- **Editable autocomplete** through `cui_autocomplete`, retaining free text and offering up to eight filtered suggestions with keyboard selection, capacity checks and undo.
+
 - **Selectable text and Markdown**: `.selectable = true` enables selection on `cui_text`; Markdown supports it by default, with `.no_selection` to opt out. Drag or use the keyboard to select and copy plain text across formatted runs, paragraphs, code blocks and tables. Link clicks and task boxes keep their existing actions.
 
 - **WebView navigation policy and startup scripts**: allow or cancel document navigation from C, including page links and frame navigation; apps can queue cancelled links for opening externally. Register main-frame JavaScript at document start with completion callbacks, before page scripts. Includes a blocked-link example and native checks for redirects, reloads, injection timing and callback destruction. See [Web view](docs/components-more.md#web-view).

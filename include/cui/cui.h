@@ -641,6 +641,12 @@ CUI_API int cui_input_ex(cui_ctx *ui, const char *id, char *buf, size_t cap, con
 CUI_API int cui_textarea_ex(cui_ctx *ui, const char *id, char *buf, size_t cap, const cui_input_opts *opts);
 /* Search field with a search icon and a clear button. */
 CUI_API int cui_search_ex(cui_ctx *ui, const char *id, char *buf, size_t cap, const cui_input_opts *opts);
+/* Editable autocomplete: first eight case-insensitive substring matches. Free text
+ * is always allowed; Down/Up navigates suggestions, Enter accepts, Esc dismisses.
+ * Returns input flags; accepting a different suggestion reports CUI_CHANGED.
+ * Suggestions that do not fit cap are disabled; the caller owns and refreshes items. */
+CUI_API int cui_autocomplete_ex(cui_ctx *ui, const char *id, char *buf, size_t cap,
+                               const char *const *items, int count, const cui_input_opts *opts);
 
 typedef struct cui_number_opts {
     int _;
@@ -774,6 +780,10 @@ typedef struct cui_menu_item_opts {
     bool checked;              /* a check mark at the right edge of the item */
 } cui_menu_item_opts;
 CUI_API bool cui_menu_item_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *opts);
+/* Inside a menu: hover/click or Enter/Right opens a nested menu; Left/Esc
+ * returns to its parent (arrows mirror in RTL). End only when begin returned true. */
+CUI_API bool cui_submenu_begin_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *opts);
+CUI_API void cui_submenu_end(cui_ctx *ui);
 CUI_API void cui_menu_separator(cui_ctx *ui);
 CUI_API void cui_menu_label(cui_ctx *ui, const char *text);
 
@@ -1581,8 +1591,8 @@ CUI_API bool cui_markdown_apply_task(char *text, const cui_markdown_result *resu
  * Shift extends; Ctrl+A; Ctrl+C/X/V (the whole line without a selection);
  * Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y; Tab and Shift+Tab indent and outdent the
  * selected lines; Enter keeps the indentation (a level deeper after an
- * opening bracket, or a colon in Python); Ctrl+F finds, Ctrl+G goes to a
- * line; Esc closes the bar, else clears the selection, else lets the next
+ * opening bracket, or a colon in Python); Primary+F finds, Primary+Alt+F
+ * opens replace (Ctrl+H also works off macOS), Primary+G goes to a line; Esc closes the bar, else clears the selection, else lets the next
  * Tab move focus. Double-click selects a word, triple-click or the gutter a
  * line. Read only keeps selection, copy and find. */
 /* a highlighted range of bytes: color 0 is the accent, 1 to 6 the series colors */
@@ -1620,6 +1630,10 @@ CUI_API void cui_code_editor_goto(cui_ctx *ui, const char *id, int line, int col
 CUI_API void cui_code_editor_select(cui_ctx *ui, const char *id, int anchor, int cursor);
 /* Opens the find bar with query and selects the next match (NULL closes). */
 CUI_API void cui_code_editor_find(cui_ctx *ui, const char *id, const char *query);
+/* Opens find and replace (NULL query closes). Literal, case-insensitive matching;
+ * Replace all uses non-overlapping matches, one undo step, and refuses overflow whole.
+ * Query and replacement are limited to 127 bytes, matching the bar fields. */
+CUI_API void cui_code_editor_find_replace(cui_ctx *ui, const char *id, const char *query, const char *replacement);
 #ifndef __cplusplus
 #define cui_code_editor(ui, id, buf, cap, ...) cui_code_editor_ex((ui), (id), (buf), (cap), CUI__OPTS(cui_code_editor_opts, __VA_ARGS__))
 #endif
@@ -4395,6 +4409,7 @@ CUI_API const cui_draw_data *cui_get_draw_data(cui_ctx *ui);
 #define cui_input(ui, id, buf, cap, ...)    cui_input_ex((ui), (id), (buf), (cap), CUI__OPTS(cui_input_opts, __VA_ARGS__))
 #define cui_textarea(ui, id, buf, cap, ...) cui_textarea_ex((ui), (id), (buf), (cap), CUI__OPTS(cui_input_opts, __VA_ARGS__))
 #define cui_search(ui, id, buf, cap, ...)   cui_search_ex((ui), (id), (buf), (cap), CUI__OPTS(cui_input_opts, __VA_ARGS__))
+#define cui_autocomplete(ui, id, buf, cap, items, count, ...) cui_autocomplete_ex((ui), (id), (buf), (cap), (items), (count), CUI__OPTS(cui_input_opts, __VA_ARGS__))
 #define cui_number(ui, id, v, lo, hi, ...)  cui_number_ex((ui), (id), (v), (lo), (hi), CUI__OPTS(cui_number_opts, __VA_ARGS__))
 #define cui_select(ui, id, items, n, idx, ...) cui_select_ex((ui), (id), (items), (n), (idx), CUI__OPTS(cui_select_opts, __VA_ARGS__))
 #define cui_date_picker(ui, id, v, ...)     cui_date_picker_ex((ui), (id), (v), CUI__OPTS(cui_date_opts, __VA_ARGS__))
@@ -4406,6 +4421,7 @@ CUI_API const cui_draw_data *cui_get_draw_data(cui_ctx *ui);
 #define cui_tour(ui, id, steps, count, step, ...) cui_tour_ex((ui), (id), (steps), (count), (step), CUI__OPTS(cui_tour_opts, __VA_ARGS__))
 #define cui_menu(ui, label, ...)            CUI__SCOPE_IF(cui_menu_begin((ui), (label), CUI__OPTS(cui_menu_opts, __VA_ARGS__)), cui_menu_end(ui))
 #define cui_context_menu(ui, id)            CUI__SCOPE_IF(cui_context_menu_begin((ui), (id)), cui_context_menu_end(ui))
+#define cui_submenu(ui, label, ...)         CUI__SCOPE_IF(cui_submenu_begin_ex((ui), (label), CUI__OPTS(cui_menu_item_opts, __VA_ARGS__)), cui_submenu_end(ui))
 #define cui_menu_item(ui, label, ...)       cui_menu_item_ex((ui), (label), CUI__OPTS(cui_menu_item_opts, __VA_ARGS__))
 #define cui_dialog(ui, title, open, ...)    CUI__SCOPE_IF(cui_dialog_begin((ui), (title), (open), CUI__OPTS(cui_dialog_opts, __VA_ARGS__)), cui_dialog_end(ui))
 #define cui_dialog_footer(ui)               CUI__SCOPE(cui_dialog_footer_begin(ui), cui_dialog_footer_end(ui))

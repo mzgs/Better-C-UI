@@ -5,6 +5,7 @@
  * wrapping, and only the lines in view are tokenized and drawn, so files of
  * many thousands of lines stay fast. */
 #include "cui_internal.h"
+#include <limits.h>
 
 
 #define CUI__ED_SALT  0xED17C0DEu
@@ -21,8 +22,8 @@ typedef struct {
     int bar_drag;               /* scrollbar thumb held: 1 vertical, 2 horizontal */
     float bar_grab, bar_t;
     double last_activity;
-    int mode;                   /* bar: 0 none, 1 find, 2 go to line */
-    char query[128], go[24];
+    int mode;                   /* bar: 0 none, 1 find, 2 go to line, 3 replace */
+    char query[128], replacement[128], go[24];
     bool tab_free;              /* Esc released Tab: the next one moves focus */
     bool bar_focus;             /* give the bar's field focus this frame */
     bool pend_sel, pend_goto, pend_find, init;
@@ -233,6 +234,65 @@ static void cui__ed_find_go(cui__ed *E, int from, int dir) {
     E->st->ed.cursor = at + qn;
     E->reveal = E->center = true;
     E->st->pref_col = -1;
+}
+
+static void cui__ed_match_count(const cui__ed *E, int *total, int *index) {
+    const cui_edit_state *e = &E->st->ed;
+    int a = CUI_MIN(e->cursor, e->anchor), b = CUI_MAX(e->cursor, e->anchor);
+    int qn = (int)strlen(E->st->query);
+    bool selected = b - a == qn && cui__ed_hit(E->buf, E->len, a, E->st->query, qn);
+    *total = *index = 0;
+    for (int i = 0; qn > 0 && i + qn <= E->len; i++) {
+        if (cui__ed_hit(E->buf, E->len, i, E->st->query, qn)) {
+            (*total)++;
+            if (i < a || (selected && i == a)) (*index)++;
+        }
+    }
+    if (!selected) *index = 0;
+}
+
+/* Replace-all builds the complete result before touching the buffer or undo history. */
+static void cui__ed_replace_all(cui__ed *E) {
+    const char *query = E->st->query, *replacement = E->st->replacement;
+    int qn = (int)strlen(query), rn = (int)strlen(replacement), count = 0, first = -1;
+    if (E->ro || qn == 0) return;
+    for (int i = 0; i + qn <= E->len;) {
+        if (cui__ed_hit(E->buf, E->len, i, query, qn)) {
+            if (first < 0) first = i;
+            count++; i += qn;
+        } else i++;
+    }
+    if (!count) return;
+    int64_t length = (int64_t)E->len + (int64_t)count * (rn - qn);
+    if ((uint64_t)length >= E->cap || length > INT_MAX) { E->refused = true; return; }
+    char *out = cui__frame_alloc(E->ui, (size_t)length + 1);
+    int at = 0;
+    for (int i = 0; i < E->len;) {
+        if (cui__ed_hit(E->buf, E->len, i, query, qn)) {
+            memcpy(out + at, replacement, (size_t)rn); at += rn; i += qn;
+        } else out[at++] = E->buf[i++];
+    }
+    out[at] = 0;
+    cui_edit_state *e = &E->st->ed;
+    cui__edit_undo_push(E->ui, e, E->buf, 3);
+    memcpy(E->buf, out, (size_t)length + 1); E->len = at;
+    e->cursor = e->anchor = e->last_cursor = first + rn;
+    E->changed = E->reveal = true; E->st->pref_col = -1;
+    cui__ed_index(E);
+}
+
+static void cui__ed_replace_match(cui__ed *E) {
+    cui_edit_state *e = &E->st->ed;
+    int a = CUI_MIN(e->cursor, e->anchor), b = CUI_MAX(e->cursor, e->anchor);
+    int qn = (int)strlen(E->st->query);
+    if (qn == 0 || E->ro) return;
+    if (b - a != qn || !cui__ed_hit(E->buf, E->len, a, E->st->query, qn)) {
+        cui__ed_find_go(E, b, 1);
+        a = CUI_MIN(e->cursor, e->anchor); b = CUI_MAX(e->cursor, e->anchor);
+        if (b - a != qn || !cui__ed_hit(E->buf, E->len, a, E->st->query, qn)) return;
+    }
+    if (cui__ed_replace(E, a, b, E->st->replacement, (int)strlen(E->st->replacement), 3))
+        cui__ed_find_go(E, e->cursor, 1);
 }
 
 /* ---- indentation ---- */
@@ -582,6 +642,16 @@ void cui_code_editor_select(cui_ctx *ui, const char *id, int anchor, int cursor)
     ui->animating = true;
 }
 
+void cui_code_editor_find_replace(cui_ctx *ui, const char *id, const char *query, const char *replacement) {
+    cui_code_editor_find(ui, id, query);
+    if (!query) return;
+    cui__ed_state *s = cui__ed_get(ui, id);
+    int length = 0;
+    s->replacement[0] = 0;
+    if (replacement) cui__edit_insert(s->replacement, &length, sizeof s->replacement, 0, replacement, (int)strlen(replacement));
+    s->mode = 3;
+}
+
 void cui_code_editor_find(cui_ctx *ui, const char *id, const char *query) {
     cui__ed_state *s = cui__ed_get(ui, id);
     if (!query) { s->mode = 0; return; }
@@ -617,7 +687,7 @@ typedef struct {
     const cui_code_editor_opts *o;
     cui_code_editor_result *res;
     const char *id_str;
-    cui_id id, lid, sid, fid, gid;      /* the editor, its lines, its scroll, the find and go to fields */
+    cui_id id, lid, sid, fid, gid, rid;      /* the editor, its lines, its scroll, the find and go to fields */
     int lang_kind;
     float size, lh, cw, gutter, height; /* text size, line height, column width */
     cui_rect br; bool known;            /* the lines' box, last frame (known: it has one) */
@@ -662,14 +732,18 @@ static void cui__edf_bar_keys(cui__edf *f) {
     cui__ed_state *st = E->st;
     cui_edit_state *e = &st->ed;
     cui_ctx *ui = E->ui;
-    bool mine = ui->focus == f->lid || ui->focus == f->fid || ui->focus == f->gid;
+    bool mine = ui->focus == f->lid || ui->focus == f->fid || ui->focus == f->gid || ui->focus == f->rid;
     if (mine && f->prim && cui_key_pressed(ui, CUI_KEY_F)) {
         int s0 = CUI_MIN(e->cursor, e->anchor), s1 = CUI_MAX(e->cursor, e->anchor);
         if (s1 > s0 && s1 - s0 < (int)sizeof st->query && !memchr(E->buf + s0, '\n', (size_t)(s1 - s0)))
             snprintf(st->query, sizeof st->query, "%.*s", s1 - s0, E->buf + s0);
-        st->mode = 1;
+        st->mode = (ui->mods & CUI_MOD_ALT) ? 3 : 1;
         st->bar_focus = true;
         ui->kpressed[CUI_KEY_F] = 0;
+    }
+    if (mine && f->prim && cui_key_pressed(ui, CUI_KEY_H)) {
+        st->mode = 3; st->bar_focus = true;
+        ui->kpressed[CUI_KEY_H] = 0;
     }
     if (mine && f->prim && cui_key_pressed(ui, CUI_KEY_G)) {
         st->mode = 2;
@@ -677,7 +751,7 @@ static void cui__edf_bar_keys(cui__edf *f) {
         st->bar_focus = true;
         ui->kpressed[CUI_KEY_G] = 0;
     }
-    if ((ui->focus == f->fid || ui->focus == f->gid) && cui_key_pressed(ui, CUI_KEY_ESCAPE)) {
+    if ((ui->focus == f->fid || ui->focus == f->gid || ui->focus == f->rid) && cui_key_pressed(ui, CUI_KEY_ESCAPE)) {
         st->mode = 0;
         ui->focus = f->lid;
         ui->kpressed[CUI_KEY_ESCAPE] = 0;
@@ -990,8 +1064,7 @@ static void cui__edf_build_find(cui__edf *f, cui_input_opts *io, cui_button_opts
     s0 = CUI_MIN(e->cursor, e->anchor);
     int s1 = CUI_MAX(e->cursor, e->anchor);
     bool on_match = qn > 0 && s1 - s0 == qn && cui__ed_hit(E->buf, E->len, s0, st->query, qn);
-    for (int i = 0; qn > 0 && i + qn <= E->len; i++)
-        if (cui__ed_hit(E->buf, E->len, i, st->query, qn)) { total++; if (i < s0 || (on_match && i == s0)) index++; }
+    cui__ed_match_count(E, &total, &index);
     f->res->find_matches = total;
     f->res->find_index = on_match ? index : 0;
     const char *label = qn == 0 ? "" : narrow ? (on_match ? cui__frame_printf(ui, "%d/%d", index, total) : cui__frame_printf(ui, "%d", total))
@@ -1037,6 +1110,33 @@ static void cui__edf_build_goto(cui__edf *f, cui_input_opts *io, bool narrow) {
     }
 }
 
+static void cui__edf_build_replace(cui__edf *f, bool narrow) {
+    cui_ctx *ui = f->E->ui;
+    cui__ed *E = f->E;
+    cui_push_id(ui, f->id_str);
+    cui_box box;
+    memset(&box, 0, sizeof box);
+    box.dir = narrow ? CUI_COLUMN : CUI_ROW; box.width = CUI_FILL;
+    box.gap = 4; box.pad = 6; box.align = CUI_ALIGN_CENTER;
+    cui_box_begin(ui, &box);
+    cui_input_opts io;
+    memset(&io, 0, sizeof io);
+    io.placeholder = "Replace with"; io.size = CUI_SIZE_SM; io.width = CUI_FILL;
+    int flags = cui_input_ex(ui, "replacement", E->st->replacement, sizeof E->st->replacement, &io);
+    cui_row(ui, .gap = 4, .wrap = true) {
+        cui_button_opts bo;
+        memset(&bo, 0, sizeof bo);
+        bo.size = CUI_SIZE_SM; bo.variant = CUI_BUTTON_GHOST;
+        bo.disabled = E->ro || !E->st->query[0] || f->res->find_matches == 0;
+        bool replace = cui_button_ex(ui, "Replace", &bo);
+        bool all = cui_button_ex(ui, "Replace all", &bo);
+        if (!bo.disabled && (replace || (flags & CUI_SUBMITTED))) cui__ed_replace_match(E);
+        if (all) cui__ed_replace_all(E);
+    }
+    cui_box_end(ui);
+    cui_pop_id(ui);
+}
+
 /* the bar above the lines: find or go to line, and a close button */
 static void cui__edf_build_bar(cui__edf *f) {
     cui__ed_state *st = f->E->st;
@@ -1058,13 +1158,19 @@ static void cui__edf_build_bar(cui__edf *f) {
     memset(&bo, 0, sizeof bo);
     bo.size = CUI_SIZE_SM;
     bo.variant = CUI_BUTTON_GHOST;
-    if (st->mode == 1) cui__edf_build_find(f, &io, &bo, narrow);
+    if (st->mode == 1 || st->mode == 3) cui__edf_build_find(f, &io, &bo, narrow);
     else cui__edf_build_goto(f, &io, narrow);
+    if (st->mode == 1 || st->mode == 3) {
+        bo.tooltip = "Find and replace"; bo.shortcut = "Ctrl H"; bo.selected = st->mode == 3;
+        if (cui_icon_button_ex(ui, CUI_ICON_REFRESH_CW, &bo)) st->mode = st->mode == 3 ? 1 : 3;
+        bo.selected = false;
+    }
     bo.tooltip = "Close"; bo.shortcut = "Esc";
     if (cui_icon_button_ex(ui, CUI_ICON_X, &bo)) { st->mode = 0; ui->focus = f->lid; }
     ui->nodes[ui->last_node].w = CUI_PX(26); ui->nodes[ui->last_node].h = CUI_PX(26);
     cui_pop_id(ui);
     cui__close(ui);
+    if (st->mode == 3) cui__edf_build_replace(f, narrow);
     int hl = cui__leaf(ui, 0, CUI_FILL, CUI_PX(1));
     ui->nodes[hl].bg = CUI_C(ui, BORDER);
 }
@@ -1134,7 +1240,7 @@ static void cui__edf_build_lines(cui__edf *f, const cui__lang *L, bool json, boo
     p->cursor = e->cursor; p->anchor = e->anchor;
     p->caret_line = f->caret_line; p->caret_col = f->caret_col;
     p->focused = focused;
-    p->show_line = focused || ui->focus == f->fid || ui->focus == f->gid;
+    p->show_line = focused || ui->focus == f->fid || ui->focus == f->gid || ui->focus == f->rid;
     p->ro = E->ro;
     p->empty = E->len == 0;
     p->placeholder = f->o->placeholder;
@@ -1158,7 +1264,7 @@ static void cui__edf_build_lines(cui__edf *f, const cui__lang *L, bool json, boo
             }
         }
     }
-    if (st->mode == 1 && st->query[0]) { p->query = cui__frame_strdup(ui, st->query, -1); p->qn = (int)strlen(p->query); }
+    if ((st->mode == 1 || st->mode == 3) && st->query[0]) { p->query = cui__frame_strdup(ui, st->query, -1); p->qn = (int)strlen(p->query); }
     if (f->o->marks && f->o->mark_count > 0) {   /* the marks that reach the lines in view, copied: the caller owns them */
         const cui_text_mark *mk = f->o->marks;
         int n = f->o->mark_count, end = 0, count = 0;
@@ -1229,6 +1335,7 @@ static cui_code_editor_result cui__code_editor_ex_body(cui_ctx *ui, const char *
     cui_push_id(ui, id_str);
     f.fid = cui_make_id(ui, "find");
     f.gid = cui_make_id(ui, "goto");
+    f.rid = cui_make_id(ui, "replacement");
     cui_pop_id(ui);
 
     cui__ed E;
@@ -1287,7 +1394,7 @@ static cui_code_editor_result cui__code_editor_ex_body(cui_ctx *ui, const char *
     cui_color bg = dark ? cui_mix(CUI_C(ui, SURFACE), CUI_C(ui, BACKGROUND), 0.4f) : CUI_C(ui, SURFACE_MUTED);
     on->bg = bg;   /* the code block's surface */
     on->border = 1;
-    cui__tween(ui, &st->focus_t, (ui->focus == f.lid || ui->focus == f.fid || ui->focus == f.gid) ? 1.0f : 0.0f, CUI__T_FOCUS);
+    cui__tween(ui, &st->focus_t, (ui->focus == f.lid || ui->focus == f.fid || ui->focus == f.gid || ui->focus == f.rid) ? 1.0f : 0.0f, CUI__T_FOCUS);
     on->border_color = cui_mix(CUI_C(ui, BORDER), cui__edge_on(ui), st->focus_t * 0.7f);
     on->flags |= CUI_NF_CLIP;
     cui__open(ui, outer);
@@ -1303,9 +1410,10 @@ static cui_code_editor_result cui__code_editor_ex_body(cui_ctx *ui, const char *
     cui__close(ui);   /* outer */
     ui->last_id = f.id;
 
+    if (E.changed && (st->mode == 1 || st->mode == 3)) cui__ed_match_count(&E, &res.find_matches, &res.find_index);
     res.changed = E.changed;
     res.refused = E.refused;
-    res.focused = ui->focus == f.lid || ui->focus == f.fid || ui->focus == f.gid;
+    res.focused = ui->focus == f.lid || ui->focus == f.fid || ui->focus == f.gid || ui->focus == f.rid;
     res.cursor = e->cursor; res.anchor = e->anchor;
     res.line = f.caret_line + 1; res.column = f.caret_col + 1;
     res.line_count = E.nl;

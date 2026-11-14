@@ -27,6 +27,24 @@ cui_popup *cui__popup_get(cui_ctx *ui, cui_id id, bool create) {
     return p;
 }
 
+static bool cui__popup_descends(cui_ctx *ui, cui_popup *p, cui_id ancestor) {
+    for (int depth = 0; p && p->parent && depth < 32; depth++) {
+        if (p->parent == ancestor) return true;
+        p = cui__popup_get(ui, p->parent, false);
+    }
+    return false;
+}
+
+static void cui__popup_close_children(cui_ctx *ui, cui_id parent) {
+    for (int k = 0; k < ui->popup_count; k++) {
+        cui_popup *p = &ui->popups[k];
+        if (cui__popup_descends(ui, p, parent)) {
+            p->open = false;
+            if (cui__key_action(ui)) p->s = (cui_transition){0};
+        }
+    }
+}
+
 void cui__popup_set(cui_ctx *ui, cui_id id, bool open) {
     cui_popup *p = cui__popup_get(ui, id, true);
     if (!p) return;
@@ -35,22 +53,27 @@ void cui__popup_set(cui_ctx *ui, cui_id id, bool open) {
         p->z = 1000 + ++ui->layer_seq;
         cui__menu_nav *nav = cui_state(ui, id ^ 0x4E4156u, sizeof *nav);
         nav->highlight = -1;
-        nav->keyboard = false;
+        nav->keyboard = false; nav->submenu_key = 0;
     }
     p->open = open;
+    if (!open) cui__popup_close_children(ui, id);
     if (cui__key_action(ui)) p->s = (cui_transition){ .x = open ? 1.0f : 0.0f };
 }
 
 void cui__close_all_popups(cui_ctx *ui) {
-    for (int i = 0; i < ui->popup_count; i++) ui->popups[i].open = false;
+    bool keyboard = cui__key_action(ui);
+    for (int i = 0; i < ui->popup_count; i++) {
+        ui->popups[i].open = false;
+        if (keyboard) ui->popups[i].s = (cui_transition){0};
+    }
 }
 
 static bool cui__popup_is_topmost(cui_ctx *ui, cui_popup *me) {
     for (int i = 0; i < ui->popup_count; i++) {
         cui_popup *p = &ui->popups[i];
-        if (p != me && p->open && p->opened_frame > me->opened_frame) return false;
+        if (p != me && p->open && p->z > me->z) return false;
     }
-    return ui->dialog_depth == 0 || true;
+    return true;
 }
 
 static bool cui__layer_is_open_popup_after(cui_ctx *ui, cui_id layer, cui_popup *me) {
@@ -90,11 +113,11 @@ bool cui__popup_begin(cui_ctx *ui, cui_id id, cui_id anchor, int placement, floa
     p->last_frame = ui->frame;
     if (p->open) {
         bool top = cui__popup_is_topmost(ui, p);
-        if (top && cui_key_pressed(ui, CUI_KEY_ESCAPE)) { p->open = false; ui->kpressed[CUI_KEY_ESCAPE] = 0; }
+        if (top && cui_key_pressed(ui, CUI_KEY_ESCAPE)) { cui__popup_set(ui, id, false); ui->kpressed[CUI_KEY_ESCAPE] = 0; }
         if (ui->mpressed[0] || ui->mpressed[1]) {
             bool inside = ui->hot_layer == id || cui__layer_is_open_popup_after(ui, ui->hot_layer, p);
             bool on_anchor = anchor && ui->hot == anchor;
-            if (!inside && !on_anchor && ui->frame > p->opened_frame) p->open = false;
+            if (!inside && !on_anchor && ui->frame > p->opened_frame) cui__popup_set(ui, id, false);
         }
     }
     float target = p->open ? 1.0f : 0.0f;
@@ -222,9 +245,14 @@ bool cui_context_menu_begin(cui_ctx *ui, const char *id) {
 
 void cui_context_menu_end(cui_ctx *ui) { cui__popup_end(ui); }
 
-typedef struct { float hover; } cui__item_state;
+typedef struct { float hover; double hover_at; bool rtl; } cui__item_state;
 
-bool cui_menu_item_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *o) {
+static void cui__paint_submenu_direction(cui_ctx *ui, cui_node *n, void *data) {
+    (void)ui;
+    ((cui__item_state *)data)->rtl = n->rtl;
+}
+
+static bool cui__menu_item(cui_ctx *ui, const char *label, const cui_menu_item_opts *o, bool submenu) {
     cui_menu_item_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
@@ -239,7 +267,14 @@ bool cui_menu_item_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *
     cui_pop_disabled(ui);
     if (r.hovered && nav && (ui->mx != ui->pmx || ui->my != ui->pmy || !nav->keyboard)) { nav->highlight = index; nav->keyboard = false; }
     bool hl = nav && nav->highlight == index && !disabled;
+    if (r.hovered && b && !disabled) {
+        for (int k = 0; k < ui->popup_count; k++) {
+            cui_popup *child = &ui->popups[k];
+            if (child->parent == b->id && child->anchor != id && child->open) cui__popup_set(ui, child->id, false);
+        }
+    }
     cui__item_state *st = cui_state(ui, id, sizeof *st);
+    if (nav && nav->highlight == index) nav->submenu_key = submenu ? (st->rtl ? CUI_KEY_LEFT : CUI_KEY_RIGHT) : 0;
     cui__tween(ui, &st->hover, hl ? 1.0f : 0.0f, CUI__T_HIGHLIGHT);
     int i = cui__node_new(ui, id);
     cui_node *n = &ui->nodes[i];
@@ -265,14 +300,67 @@ bool cui_menu_item_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *
         ui->nodes[s].line_height = 1.3f;
     }
     if (o->checked) cui__icon_node(ui, CUI_ICON_CHECK, 16, CUI_C(ui, FOREGROUND));
+    if (submenu) {
+        cui__icon_node(ui, CUI_ICON_CHEVRON_RIGHT, 16, CUI_C(ui, TEXT_MUTED));
+        ui->nodes[i].paint = cui__paint_submenu_direction;
+        ui->nodes[i].paint_data = st;
+    }
     cui__close(ui);
-    bool chosen = !disabled && (r.clicked || (hl && cui_key_pressed(ui, CUI_KEY_ENTER)));
-    if (chosen) {
+    bool keys = b && cui__popup_is_topmost(ui, cui__popup_get(ui, b->id, false));
+    bool chosen = !disabled && (r.clicked || (keys && hl && cui_key_pressed(ui, CUI_KEY_ENTER)));
+    if (chosen && !submenu) {
         cui__close_all_popups(ui);
         ui->kpressed[CUI_KEY_ENTER] = 0;
     }
     return chosen;
 }
+
+bool cui_menu_item_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *o) {
+    return cui__menu_item(ui, label, o, false);
+}
+
+bool cui_submenu_begin_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *o) {
+    if (ui->pb_depth <= 0 || ui->pb_depth >= 16) return false;
+    cui__popup_build *parent = &ui->pb_stack[ui->pb_depth - 1];
+    if (!parent->menu) return false;
+    int index = parent->item_index;
+    bool chosen = cui__menu_item(ui, label, o, true);
+    cui_id anchor = cui_make_id(ui, label), pid = anchor ^ 0x5AB3E4u;
+    cui_popup *p = cui__popup_get(ui, pid, true);
+    if (!p) return false;
+    p->parent = parent->id; p->anchor = anchor;
+    cui__item_state *st = cui_state(ui, anchor, sizeof *st);
+    cui__menu_nav *nav = cui_state(ui, parent->id ^ 0x4E4156u, sizeof *nav);
+    cui_popup *pp = cui__popup_get(ui, parent->id, false);
+    bool disabled = cui_is_disabled(ui) || (o && o->disabled) || !pp || !pp->open;
+    bool hovered = ui->hot == anchor && !disabled;
+    if (!hovered) st->hover_at = 0;
+    else if (st->hover_at == 0) st->hover_at = ui->time;
+    bool keys = pp && cui__popup_is_topmost(ui, pp);
+    cui_key forward = st->rtl ? CUI_KEY_LEFT : CUI_KEY_RIGHT;
+    cui_key back = st->rtl ? CUI_KEY_RIGHT : CUI_KEY_LEFT;
+    bool keyboard_open = keys && nav->highlight == index &&
+        (cui_key_pressed(ui, forward) || cui_key_pressed(ui, CUI_KEY_ENTER));
+    bool hover_open = hovered && ui->time - st->hover_at >= 0.15;
+    if (hovered && !hover_open && !p->open) cui__wakeup_after(ui, (float)(0.15 - (ui->time - st->hover_at)));
+    if (disabled) cui__popup_set(ui, pid, false);
+    else if (!p->open && (chosen || keyboard_open || hover_open)) {
+        cui__popup_set(ui, pid, true);
+        cui__menu_nav *child = cui_state(ui, pid ^ 0x4E4156u, sizeof *child);
+        child->highlight = keyboard_open ? 0 : -1;
+        child->keyboard = keyboard_open;
+        if (keyboard_open) { ui->kpressed[forward] = 0; ui->kpressed[CUI_KEY_ENTER] = 0; }
+    }
+    if (p->open && cui__popup_is_topmost(ui, p) && cui_key_pressed(ui, back)) {
+        cui__popup_set(ui, pid, false); ui->kpressed[back] = 0;
+        nav->highlight = index; nav->keyboard = true;
+    }
+    bool built = cui__popup_begin(ui, pid, anchor, st->rtl ? CUI_PLACE_LEFT_START : CUI_PLACE_RIGHT_START, 0, 6, 0, true);
+    if (built) ui->nodes[cui__current(ui)].offset = 0;   /* no pointer gap between menu levels */
+    return built;
+}
+
+void cui_submenu_end(cui_ctx *ui) { cui__popup_end(ui); }
 
 void cui_menu_separator(cui_ctx *ui) {
     int box = cui__node_new(ui, 0);
@@ -421,6 +509,102 @@ bool cui_select_ex(cui_ctx *ui, const char *id_str, const char *const *items, in
         cui__popup_end(ui);
     }
     return *index != old;
+}
+
+/* Editable suggestions: the caller owns the query, the options and any fetching. */
+typedef struct { uint32_t query_hash; } cui__autocomplete_state;
+
+int cui_autocomplete_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap,
+                        const char *const *items, int count, const cui_input_opts *o) {
+    cui_input_opts defaults;
+    memset(&defaults, 0, sizeof defaults);
+    if (!o) o = &defaults;
+    if (!buf || cap == 0) return 0;
+    if (!memchr(buf, 0, cap)) buf[cap - 1] = 0;
+    if (!items || count < 0) count = 0;
+    cui_id id = cui_make_id(ui, id_str), pid = id ^ 0xA470C0u;
+    cui__autocomplete_state *st = cui_state(ui, id ^ 0xA47057u, sizeof *st);
+    cui_popup *p = cui__popup_get(ui, pid, true);
+    bool disabled = o->disabled || o->read_only || cui_is_disabled(ui);
+    bool open = p && p->open;
+    bool mine = ui->focus == id;
+    int down = mine && !disabled ? ui->kpressed[CUI_KEY_DOWN] : 0;
+    int up = mine && !disabled ? ui->kpressed[CUI_KEY_UP] : 0;
+    cui__menu_nav *nav = cui_state(ui, pid ^ 0x4E4156u, sizeof *nav);
+    int enter = mine && open && nav->highlight >= 0 && nav->highlight < nav->item_count ? ui->kpressed[CUI_KEY_ENTER] : 0;
+    bool escape = mine && open && cui_key_pressed(ui, CUI_KEY_ESCAPE);
+    if (mine && (open || down || up)) {
+        ui->kpressed[CUI_KEY_DOWN] = ui->kpressed[CUI_KEY_UP] = 0;
+        if (enter) ui->kpressed[CUI_KEY_ENTER] = 0;
+        if (open) ui->kpressed[CUI_KEY_ESCAPE] = 0;
+    }
+    int flags = cui_input_ex(ui, id_str, buf, cap, o);
+    uint32_t hash = cui__hash(buf, strlen(buf), 0);
+    bool changed = hash != st->query_hash;
+    st->query_hash = hash;
+    bool clicked = ui->hot == id && ui->mpressed[0];
+    if (p && !disabled && !escape && ui->focus == id &&
+        ((flags & CUI_CHANGED) || clicked || down || up)) {
+        cui__popup_set(ui, pid, true); p->at_mouse = false;
+        if (down || up || ui->text_in_len > 0) p->s = (cui_transition){ .x = 1 };
+    }
+    if (escape && p) p->s = (cui_transition){0};
+    if (p && (disabled || escape || (flags & CUI_SUBMITTED) || (ui->focus != id && ui->hot_layer != pid))) cui__popup_set(ui, pid, false);
+    if (!p) return flags;
+    if (changed || p->opened_frame == ui->frame) { nav->highlight = -1; nav->keyboard = false; }
+    /* shortcut: eight matches keep suggestion building bounded; virtualize if apps need full browsing. */
+    int matches[8], shown = 0;
+    for (int k = 0; k < count && shown < CUI_COUNTOF(matches); k++)
+        if (items[k] && cui__contains_ci(items[k], buf)) matches[shown++] = k;
+    if (nav->highlight >= shown) nav->highlight = shown - 1;
+    if (down) { nav->highlight = (nav->highlight + 1) % CUI_MAX(1, shown); nav->keyboard = true; }
+    if (up) { nav->highlight = nav->highlight <= 0 ? shown - 1 : nav->highlight - 1; nav->keyboard = true; }
+    bool built = cui__popup_begin(ui, pid, id, CUI_PLACE_BOTTOM_START, 0, 6, 0, true);
+    if (built) {
+        if (enter) ui->kpressed[CUI_KEY_ENTER] = enter;
+        cui_box list;
+        memset(&list, 0, sizeof list);
+        list.height = CUI_FIT; list.max_height = CUI_MAX(32.0f, CUI_MIN(256.0f, ui->vh * 0.5f - 12));
+        cui_id list_id = cui_make_id(ui, "#suggestions");
+        cui_scroll_state *scroll = cui_state(ui, list_id, sizeof *scroll);
+        if ((down || up) && nav->highlight >= 0 && scroll->view_h > 0) {
+            float top = nav->highlight * 32.0f, bottom = top + 32;
+            if (top < scroll->ty) scroll->y = scroll->ty = top;
+            else if (bottom > scroll->ty + scroll->view_h) scroll->y = scroll->ty = bottom - scroll->view_h;
+        }
+        cui__scroll_begin_ex(ui, list_id, &list, false);
+        ui->nodes[cui__current(ui)].h = CUI_FIT;
+        ui->nodes[cui__current(ui)].min_h = 0;
+        for (int k = 0; k < shown; k++) {
+            const char *suggestion = items[matches[k]];
+            size_t length = strlen(suggestion);
+            cui_menu_item_opts mo;
+            memset(&mo, 0, sizeof mo);
+            mo.disabled = disabled || length >= cap;
+            cui_push_id_int(ui, matches[k]);
+            bool chosen = cui_menu_item_ex(ui, suggestion, &mo);
+            cui_pop_id(ui);
+            if (chosen) {
+                cui_edit_state *e = cui_state(ui, id, sizeof *e);
+                if (strcmp(buf, suggestion)) {
+                    cui__edit_undo_push(ui, e, buf, 3);
+                    memcpy(buf, suggestion, length + 1); flags |= CUI_CHANGED;
+                }
+                e->cursor = e->anchor = e->last_cursor = (int)length;
+                ui->focus = id;
+            }
+        }
+        if (!shown) {
+            cui_text_opts to;
+            memset(&to, 0, sizeof to); to.color = CUI_C(ui, TEXT_MUTED);
+            cui_text_ex(ui, "No suggestions", &to);
+        }
+        cui__scroll_end_ex(ui);
+        cui__popup_end(ui);
+    }
+    if (enter) ui->kpressed[CUI_KEY_ENTER] = 0;
+    ui->last_id = id;
+    return flags;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1485,6 +1669,10 @@ void cui__widgets_begin_frame(cui_ctx *ui) {
 }
 
 void cui__widgets_end_frame(cui_ctx *ui) {
+    for (int k = 0; k < ui->popup_count; k++) {
+        cui_popup *p = &ui->popups[k];
+        if (p->parent && p->open && p->last_frame != ui->frame) cui__popup_set(ui, p->id, false);
+    }
     /* close any scopes left open by early returns */
     while (ui->pb_depth > 0) cui__popup_end(ui);
     cui__toasts_render(ui);

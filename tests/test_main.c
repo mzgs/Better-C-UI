@@ -1638,6 +1638,168 @@ static void test_menu(void) {
     cui_destroy(ui);
 }
 
+/* cascading menus and editable suggestions ------------------------------ */
+typedef struct { cui_id trigger, parent, child, leaf; int chosen; bool visible, nested, disabled, rtl; } submenu_test;
+static void build_submenus(cui_ctx *ui, void *data) {
+    submenu_test *t = data;
+    t->visible = t->nested = false;
+    cui_column(ui, .pad = 20, .width = CUI_FILL, .direction = t->rtl ? CUI_DIRECTION_RTL : CUI_DIRECTION_LTR) {
+        t->trigger = cui_make_id(ui, "Tools");
+        cui_menu(ui, "Tools") {
+            t->parent = cui_make_id(ui, "Open with");
+            cui_submenu(ui, "Open with", .disabled = t->disabled) {
+                t->visible = true;
+                if (cui_menu_item(ui, "Editor")) t->chosen = 1;
+                t->child = cui_make_id(ui, "More");
+                cui_submenu(ui, "More") {
+                    t->nested = true;
+                    t->leaf = cui_make_id(ui, "Terminal");
+                    if (cui_menu_item(ui, "Terminal")) t->chosen = 2;
+                }
+            }
+            if (cui_menu_item(ui, "Inspect")) t->chosen = 3;
+        }
+    }
+}
+
+static void test_submenus(void) {
+    printf("menus: cascading levels, directional keys, Escape, hover and disabled items\n");
+    cui_ctx *ui = new_ctx();
+    submenu_test t = {0};
+    run(ui, build_submenus, &t, 3);
+    cui_rect trigger = cui_get_rect(ui, t.trigger);
+    click_at(ui, build_submenus, &t, trigger.x + 8, trigger.y + 8);
+    cui_input_mouse_move(ui, 700, 500); run(ui, build_submenus, &t, 1);
+    key(ui, build_submenus, &t, CUI_KEY_DOWN, 0);
+    key(ui, build_submenus, &t, CUI_KEY_RIGHT, 0);
+    CHECK(t.visible && t.chosen == 0);
+    key(ui, build_submenus, &t, CUI_KEY_DOWN, 0);
+    key(ui, build_submenus, &t, CUI_KEY_RIGHT, 0);
+    CHECK(t.nested && t.chosen == 0);
+    key(ui, build_submenus, &t, CUI_KEY_ESCAPE, 0);
+    CHECK(t.visible && !t.nested && t.chosen == 0);
+    key(ui, build_submenus, &t, CUI_KEY_RIGHT, 0);
+    key(ui, build_submenus, &t, CUI_KEY_ENTER, 0);
+    CHECK(t.chosen == 2);
+    run(ui, build_submenus, &t, 2);
+    CHECK(!t.visible && !t.nested);
+
+    click_at(ui, build_submenus, &t, trigger.x + 8, trigger.y + 8);
+    cui_rect parent = cui_get_rect(ui, t.parent);
+    cui_input_mouse_move(ui, parent.x + 20, parent.y + parent.h / 2);
+    run(ui, build_submenus, &t, 14);
+    CHECK(t.visible);
+    click_at(ui, build_submenus, &t, 700, 500);
+    CHECK(!t.visible);
+    t.rtl = true; t.disabled = true;
+    run(ui, build_submenus, &t, 3);
+    trigger = cui_get_rect(ui, t.trigger);
+    click_at(ui, build_submenus, &t, trigger.x + 8, trigger.y + 8);
+    cui_input_mouse_move(ui, 400, 500); run(ui, build_submenus, &t, 1);
+    key(ui, build_submenus, &t, CUI_KEY_DOWN, 0);
+    key(ui, build_submenus, &t, CUI_KEY_LEFT, 0);
+    CHECK(!t.visible);
+    t.disabled = false;
+    run(ui, build_submenus, &t, 2);
+    key(ui, build_submenus, &t, CUI_KEY_LEFT, 0);
+    CHECK(t.visible);
+    key(ui, build_submenus, &t, CUI_KEY_RIGHT, 0);
+    CHECK(!t.visible);
+    cui_destroy(ui);
+}
+
+typedef struct { bool submenu; int chosen; } cascade_bar_test;
+static void build_cascade_bar(cui_ctx *ui, void *data) {
+    cascade_bar_test *t = data;
+    t->submenu = false;
+    cui_menu_bar(ui, "cascade-bar") {
+        cui_menu_bar_menu(ui, "File") {
+            cui_submenu(ui, "Recent files") {
+                t->submenu = true;
+                if (cui_menu_item(ui, "notes.c")) t->chosen++;
+            }
+            cui_menu_item(ui, "Close");
+        }
+        cui_menu_bar_menu(ui, "Edit") { cui_menu_item(ui, "Copy"); }
+    }
+}
+static void test_cascade_bar(void) {
+    cui_ctx *ui = new_ctx();
+    cascade_bar_test t = {0};
+    run(ui, build_cascade_bar, &t, 3);
+    key(ui, build_cascade_bar, &t, CUI_KEY_F10, 0);
+    key(ui, build_cascade_bar, &t, CUI_KEY_ENTER, 0);
+    key(ui, build_cascade_bar, &t, CUI_KEY_RIGHT, 0);
+    CHECK(t.submenu && t.chosen == 0);   /* Right opens children before switching menu-bar menus */
+    key(ui, build_cascade_bar, &t, CUI_KEY_ENTER, 0);
+    CHECK(t.chosen == 1);
+    cui_destroy(ui);
+}
+
+typedef struct { char text[64]; size_t cap; int flags; cui_id id; bool disabled, ro; const char *const *items; int count; } autocomplete_test;
+static void build_autocomplete(cui_ctx *ui, void *data) {
+    autocomplete_test *t = data;
+    cui_column(ui, .pad = 20, .width = CUI_PX(300)) {
+        t->flags = cui_autocomplete(ui, "address", t->text, t->cap ? t->cap : sizeof t->text,
+            t->items, t->count, .label = "Recipient", .disabled = t->disabled, .read_only = t->ro);
+        t->id = cui_last_id(ui);
+    }
+}
+
+static void test_autocomplete(void) {
+    printf("autocomplete: filtering, acceptance, undo, free text, UTF-8, bounds and disabled state\n");
+    static const char *items[] = { "alpha", "alpine", "beta", "caf\xc3\xa9" };
+    autocomplete_test t = { .items = items, .count = 4 };
+    cui_ctx *ui = new_ctx();
+    run(ui, build_autocomplete, &t, 3);
+    cui_rect field = cui_get_rect(ui, t.id);
+    click_at(ui, build_autocomplete, &t, field.x + 20, field.y + field.h / 2);
+    type(ui, build_autocomplete, &t, "al");
+    key(ui, build_autocomplete, &t, CUI_KEY_DOWN, 0);
+    key(ui, build_autocomplete, &t, CUI_KEY_ENTER, 0);
+    CHECK(strcmp(t.text, "alpha") == 0 && (t.flags & CUI_CHANGED) && !(t.flags & CUI_SUBMITTED));
+    key(ui, build_autocomplete, &t, CUI_KEY_Z, CUI_MOD_PRIMARY);
+    CHECK(strcmp(t.text, "al") == 0);
+    key(ui, build_autocomplete, &t, CUI_KEY_A, CUI_MOD_PRIMARY);
+    type(ui, build_autocomplete, &t, "caf");
+    key(ui, build_autocomplete, &t, CUI_KEY_DOWN, 0);
+    key(ui, build_autocomplete, &t, CUI_KEY_ENTER, 0);
+    CHECK(strcmp(t.text, "caf\xc3\xa9") == 0);
+    key(ui, build_autocomplete, &t, CUI_KEY_A, CUI_MOD_PRIMARY);
+    type(ui, build_autocomplete, &t, "unlisted");
+    key(ui, build_autocomplete, &t, CUI_KEY_ENTER, 0);
+    CHECK(strcmp(t.text, "unlisted") == 0 && (t.flags & CUI_SUBMITTED));
+    key(ui, build_autocomplete, &t, CUI_KEY_A, CUI_MOD_PRIMARY);
+    type(ui, build_autocomplete, &t, "al");
+    key(ui, build_autocomplete, &t, CUI_KEY_DOWN, 0);
+    key(ui, build_autocomplete, &t, CUI_KEY_ESCAPE, 0);
+    CHECK(strcmp(t.text, "al") == 0);
+    key(ui, build_autocomplete, &t, CUI_KEY_ENTER, 0);
+    CHECK(t.flags & CUI_SUBMITTED);
+    t.cap = 5;
+    key(ui, build_autocomplete, &t, CUI_KEY_DOWN, 0);
+    key(ui, build_autocomplete, &t, CUI_KEY_ENTER, 0);
+    CHECK(strcmp(t.text, "al") == 0);   /* neither match fits, and neither is truncated */
+    t.disabled = true;
+    run(ui, build_autocomplete, &t, 2);
+    type(ui, build_autocomplete, &t, "x");
+    CHECK(strcmp(t.text, "al") == 0);
+    t.disabled = false; t.ro = true;
+    run(ui, build_autocomplete, &t, 2);
+    click_at(ui, build_autocomplete, &t, field.x + 20, field.y + field.h / 2);
+    type(ui, build_autocomplete, &t, "x");
+    CHECK(strcmp(t.text, "al") == 0);
+    t.ro = false; t.cap = 0;
+    run(ui, build_autocomplete, &t, 2);
+    click_at(ui, build_autocomplete, &t, field.x + 20, field.y + field.h / 2);
+    run(ui, build_autocomplete, &t, 3);
+    click_at(ui, build_autocomplete, &t, field.x + 20, field.y + field.h + 6 + 6 + 32 + 16);
+    CHECK(strcmp(t.text, "alpine") == 0);
+    t.items = NULL; t.count = 0;
+    run(ui, build_autocomplete, &t, 2);
+    cui_destroy(ui);
+}
+
 typedef struct { bool open; int inside, under; } trap_ctx;
 static void build_trap(cui_ctx *ui, void *u) {
     trap_ctx *t = u;
@@ -5634,6 +5796,7 @@ typedef struct {
     char buf[2048];
     char *big; size_t cap;     /* an outside buffer instead of buf, or a smaller capacity for buf */
     const char *lang;
+    float width;
     bool ro;
     char other[32];
     cui_code_editor_result r;
@@ -5644,7 +5807,7 @@ static void build_ced(cui_ctx *ui, void *u) {
     cui_column(ui, .pad = 20, .gap = 12) {
         char *b = c->big ? c->big : c->buf;
         size_t cap = c->cap ? c->cap : sizeof c->buf;
-        c->r = cui_code_editor(ui, "ed", b, cap, .lang = c->lang, .read_only = c->ro, .height = 300, .width = CUI_PX(600));
+        c->r = cui_code_editor(ui, "ed", b, cap, .lang = c->lang, .read_only = c->ro, .height = 300, .width = CUI_PX(c->width > 0 ? c->width : 600));
         c->any_changed |= c->r.changed;
         cui_input(ui, "after", c->other, sizeof c->other, .width = CUI_PX(200));
     }
@@ -5653,6 +5816,82 @@ static void ced_text(ced_ctx *c, const char *s) { snprintf(c->buf, sizeof c->buf
 /* caret (or a selection) from code; also focuses the editor */
 static void ced_sel(cui_ctx *ui, ced_ctx *c, int a, int b) { cui_code_editor_select(ui, "ed", a, b); run(ui, build_ced, c, 1); }
 static int ced_at(const ced_ctx *c, const char *needle) { const char *p = strstr(c->buf, needle); return p ? (int)(p - c->buf) : -1; }
+
+static void ced_click_action(cui_ctx *ui, ced_ctx *c, const char *label) {
+    cui_push_id(ui, "ed");
+    cui_rect r = cui_get_rect(ui, cui_make_id(ui, label));
+    cui_pop_id(ui);
+    CHECK(r.w > 0 && r.h > 0);
+    click_at(ui, build_ced, c, r.x + r.w / 2, r.y + r.h / 2);
+}
+
+static void test_find_replace(void) {
+    printf("editor: single/all replacement, atomic capacity refusal, undo, UTF-8, CRLF and read only\n");
+    cui_ctx *ui = new_ctx();
+    ced_ctx c = {0};
+    ced_text(&c, "alpha alpha ALPHA");
+    run(ui, build_ced, &c, 3);
+    cui_code_editor_find_replace(ui, "ed", "alpha", "beta");
+    run(ui, build_ced, &c, 3);
+    ced_click_action(ui, &c, "Replace");
+    CHECK(strcmp(c.buf, "beta alpha ALPHA") == 0 && c.r.changed);
+    CHECK(c.r.find_matches == 2);
+    ced_click_action(ui, &c, "Replace all");
+    CHECK(strcmp(c.buf, "beta beta beta") == 0 && c.r.changed);
+    CHECK(c.r.find_matches == 0);
+    ced_sel(ui, &c, 0, 0);
+    key(ui, build_ced, &c, CUI_KEY_ESCAPE, 0);
+    key(ui, build_ced, &c, CUI_KEY_Z, CUI_MOD_PRIMARY);
+    CHECK(strcmp(c.buf, "beta alpha ALPHA") == 0);   /* the entire batch is one undo step */
+    key(ui, build_ced, &c, CUI_KEY_Z, CUI_MOD_PRIMARY | CUI_MOD_SHIFT);
+    CHECK(strcmp(c.buf, "beta beta beta") == 0);
+
+    ced_text(&c, "a a a"); c.cap = 12;
+    cui_code_editor_find_replace(ui, "ed", "a", "long-value");
+    run(ui, build_ced, &c, 3);
+    ced_click_action(ui, &c, "Replace all");
+    CHECK(strcmp(c.buf, "a a a") == 0 && c.r.refused && !c.r.changed);
+    c.cap = 0;
+    ced_text(&c, "aaaaa");
+    cui_code_editor_find_replace(ui, "ed", "aa", "");
+    run(ui, build_ced, &c, 3);
+    ced_click_action(ui, &c, "Replace all");
+    CHECK(strcmp(c.buf, "a") == 0);   /* original, non-overlapping matches only */
+    ced_text(&c, "caf\xc3\xa9 caf\xc3\xa9");
+    cui_code_editor_find_replace(ui, "ed", "\xc3\xa9", "\xe6\xbc\xa2");
+    run(ui, build_ced, &c, 3);
+    ced_click_action(ui, &c, "Replace all");
+    CHECK(strcmp(c.buf, "caf\xe6\xbc\xa2 caf\xe6\xbc\xa2") == 0);
+    ced_text(&c, "foo\r\nFOO");
+    cui_code_editor_find_replace(ui, "ed", "foo", "bar");
+    run(ui, build_ced, &c, 3);
+    ced_click_action(ui, &c, "Replace all");
+    CHECK(strcmp(c.buf, "bar\r\nbar") == 0);
+    c.ro = true;
+    cui_code_editor_find_replace(ui, "ed", "bar", "changed");
+    run(ui, build_ced, &c, 3);
+    ced_click_action(ui, &c, "Replace all");
+    CHECK(strcmp(c.buf, "bar\r\nbar") == 0 && !c.r.changed);
+    c.ro = false; c.width = 280;
+    run(ui, build_ced, &c, 3);
+    cui_rect editor = cui_get_rect(ui, cui_make_id(ui, "ed"));
+    cui_push_id(ui, "ed");
+    cui_rect action = cui_get_rect(ui, cui_make_id(ui, "Replace all"));
+    cui_pop_id(ui);
+    CHECK(action.x >= editor.x && action.x + action.w <= editor.x + editor.w + 1);
+    cui_code_editor_find_replace(ui, "ed", "", "insert");
+    run(ui, build_ced, &c, 3);
+    ced_click_action(ui, &c, "Replace all");
+    CHECK(strcmp(c.buf, "bar\r\nbar") == 0);
+    cui_code_editor_find_replace(ui, "ed", NULL, NULL);
+    ced_sel(ui, &c, 0, 0);
+    key(ui, build_ced, &c, CUI_KEY_F, CUI_MOD_PRIMARY | CUI_MOD_ALT);
+    run(ui, build_ced, &c, 2);
+    cui_push_id(ui, "ed");
+    CHECK(cui_get_rect(ui, cui_make_id(ui, "replacement")).w > 0);
+    cui_pop_id(ui);
+    cui_destroy(ui);
+}
 
 static void test_code_editor(void) {
     printf("code editor: typing, indentation, undo, clipboard, find, brackets, capacity, virtualization\n");
@@ -7353,6 +7592,7 @@ int main(void) {
     test_display_selection();
     test_markdown();
     test_code_editor();
+    test_find_replace();
     test_diff();
     test_dials();
     test_candles();
@@ -7380,6 +7620,9 @@ int main(void) {
     test_text_capacity();
     test_dialog();
     test_menu();
+    test_submenus();
+    test_cascade_bar();
+    test_autocomplete();
     test_focus_trap();
     test_extras();
     test_reorder();

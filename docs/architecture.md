@@ -58,7 +58,7 @@ Components are grouped by family, one family per file, so a change to one compon
 | `cui_widgets.c` | text, buttons, links, badges, cards, separators, the base pieces others build on |
 | `cui_controls.c` | checkbox, switch, radio, slider, segmented control, rating |
 | `cui_textedit.c` | text fields and text areas, display selection, and the editing primitives the code editor reuses |
-| `cui_overlay.c` | popovers, menus, dialogs, sheets, toasts, tooltips, the command palette |
+| `cui_overlay.c` | popovers, cascading menus, autocomplete, dialogs, sheets, toasts, tooltips, the command palette |
 | `cui_pickers.c` | select, combobox, date and time pickers, color picker |
 | `cui_data.c`, `cui_grid.c`, `cui_treetable.c` | tables, lists, trees, the data grid, tree tables and path bars |
 | `cui_charts.c`, `cui_viz.c`, `cui_dials.c`, `cui_flame.c` | charts, heatmaps, gauges, knobs, faders, the flame graph, the trace viewer and the network waterfall (which share its ruler) |
