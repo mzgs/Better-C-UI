@@ -71,6 +71,7 @@ static inline cui_color cui__rgba(int r, int g, int b, int a) {
 }
 static inline bool cui__is_token(cui_color c) { return c.a == 0 && c.g == 0xC5 && c.b == 0x1D && c.r != 0; }
 static inline bool cui__color_set(cui_color c) { return c.a != 0 || cui__is_token(c); }
+static inline float cui__radius_override(float radius, float fallback) { return radius < 0 ? 0 : radius > 0 ? radius : fallback; }
 
 /* ---- memory ---- */
 void *cui__alloc(cui_ctx *ui, size_t size);
@@ -734,6 +735,7 @@ void cui__paint_sheen(cui_ctx *ui, cui_node *n, void *data);   /* data: float st
 #define CUI_PAINT_DATA(ui, type) ((type *)cui__frame_alloc((ui), sizeof(type)))
 
 cui_color cui__legible(cui_color fg, cui_color bg, float ratio);
+cui_color cui__style_text(cui_ctx *ui, cui_color bg, cui_color color, cui_color fallback);
 cui_color cui__shade(cui_color c, float L, float chroma_mul);
 
 /* Display selection (cui_textedit.c): text and Markdown share input and glyph hit maps. */

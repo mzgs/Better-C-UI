@@ -63,6 +63,10 @@ t->colors[CUI_TOKEN_ACCENT] = cui_oklch(0.62f, 0.19f, 145, 1);   /* your brand c
 
 `cui_set_theme` and `cui_set_accent` rebuild the colors but keep your radii, motion and font scale. To build a theme from scratch, fill all of `colors`.
 
+For a single button, use `.bg`, `.radius` and `.font_size` instead of editing the shared theme. Zero values keep the defaults; `.radius = -1` makes square corners. Backgrounds accept theme tokens, and label sizes respect `font_scale`. See [Button](components.md#button) for examples and interaction behavior.
+
+Fields, selects, badges and chips also accept optional `bg`, `color`, `radius` and `font_size` overrides. Fields/selects add `border_color`; cards expose `bg`, `radius`, `border_color` and `border`. Tabs and navigation items let you style their selected highlight and labels. Select popup/search styling and text measurement follow their trigger. See [Local styles](components.md#local-styles) for the per-component options, defaults and state precedence.
+
 Color helpers work in OKLab, like CSS `color-mix(in oklab)`:
 
 ```c

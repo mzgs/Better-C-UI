@@ -5,6 +5,7 @@ Every component, what it is for, how to use it and what it does with the keyboar
 Looking for split buttons, data grids, kanban boards, more charts, motion effects or AI interface pieces? They are in [More components](components-more.md).
 
 Contents:
+[Local styles](#local-styles) ·
 [Text](#text) ·
 [Button](#button) ·
 [Icon button](#icon-button) ·
@@ -47,6 +48,36 @@ Contents:
 [Reorderable list](#reorderable-list)
 
 ---
+
+## Local styles
+
+Style one component without changing its neighbors or the shared theme. All overrides are optional. Zero colors, radii and font sizes keep the component's existing defaults; a negative radius makes square corners. Font sizes are in points and respect `theme.font_scale`. Larger text grows controls to fit and is used for measurement, caret placement, wrapping and popup rows.
+
+| Component | Local options |
+|---|---|
+| Input, textarea, search, autocomplete | `bg`, `color`, `border_color`, `radius`, `font_size` |
+| Select, including searchable selects | `bg`, `color`, `border_color`, `radius`, `font_size`; applied to the trigger, popup, search and options |
+| Card | `bg`, `border_color`, `border`, `radius`; contents keep their own text styles |
+| Badge, chip | `bg`, `color`, `radius`, `font_size` |
+| Tabs | `bg` for the selected pill or underline, `color` for labels/icons, `font_size` |
+| Navigation item | `bg` for this item's selected highlight, `color` for its label/icon, `font_size` |
+
+```c
+cui_input(ui, "name", name, sizeof name, .radius = 6, .font_size = 16);
+cui_badge(ui, "Custom", .bg = CUI_RGB(0x345678), .color = CUI_RGB(0xffffff));
+cui_card(ui, .bg = CUI_COLOR_SURFACE_MUTED, .border = 2,
+         .border_color = CUI_COLOR_ACCENT, .radius = 6) {
+    cui_text(ui, "Only this card changes.");
+}
+```
+
+Colors accept theme tokens or concrete colors. Opaque custom backgrounds derive readable text unless `color` is explicit; translucent backgrounds use the theme foreground. Check contrast on your actual surfaces in both themes, especially for custom text, placeholder and border colors. Field labels, hints and errors keep their theme typography; `font_size` changes the editable value and placeholder. Card borders use zero for the current style's default, a positive width in points, or a negative value for no border.
+
+Search and autocomplete inherit the input's options. Autocomplete styles apply to its editable field; its suggestion list keeps the normal menu theme.
+
+Focus and error colors take precedence over field border overrides. Selected cards keep their accent border, selected chips keep their check and border, and keyboard focus rings remain visible. A chip's custom fill also responds to hover and selection. A tab's `color` applies to selected and unselected labels; its `bg` changes only the selection indicator.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/component-styles-dark.png"><img src="images/components/component-styles.png" alt="Individually styled fields, card, badge, chip, tabs and navigation"></picture>
 
 ## Text
 
@@ -95,7 +126,24 @@ cui_button(ui, "Saving", .variant = CUI_BUTTON_PRIMARY, .loading = true);
 | `loading` | Shows a spinner, ignores clicks, keeps the label so nothing jumps |
 | `disabled`, `selected`, `full_width`, `width` | |
 | `color` | Text and icon color. Pair it with `selected` for toggles: `.selected = liked, .color = liked ? CUI_COLOR_ACCENT : CUI_TRANSPARENT` |
+| `bg` | Background color or theme token; zero keeps the variant default. Hover/pressed colors and readable text are derived; an explicit `color` wins |
+| `radius` | Corner radius in points, clamped to half the height. Zero uses the theme; a negative value makes square corners |
+| `font_size` | Label size in points, multiplied by `theme.font_scale`. Zero or negative uses the size default; the button grows taller if needed |
 | `tooltip`, `shortcut` | Tooltip text and a shortcut hint |
+
+Override one button without changing the theme or its neighbors:
+
+```c
+cui_button(ui, "Brand color", .bg = CUI_RGB(0x7747ff),
+           .color = CUI_RGB(0xffffff), .radius = 6, .font_size = 16);
+cui_button(ui, "Square", .radius = -1);
+```
+
+Overrides keep the variant's border and decoration. Background and radius overrides also work on `cui_icon_button`; `font_size` affects labels only, leaving icons at their control size. Opaque backgrounds derive readable text; translucent backgrounds keep the theme foreground because their final color depends on the surface underneath. Choose custom colors with enough contrast in both themes, especially when supplying `color` or a translucent background.
+
+Automatic text and icon colors are checked against the current hover/pressed fill throughout the transition, rather than only the resting background. An explicit `color` always wins.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/button-overrides-dark.png"><img src="images/components/button-overrides.png" alt="Buttons with a custom background, square corners, a larger label and a custom icon button"></picture>
 
 Use one primary button per view. Presses scale to 0.98 over 100 ms, with immediate pressed color and no bounce. Keyboard: Tab to focus, Enter or Space to press.
 
@@ -185,6 +233,8 @@ cui_rating(ui, "stars", &stars, 5);         /* click the current value again to 
 
 `cui_rating` returns true on the frame a star is clicked. `stars` is your `int`, from 0 for no rating to the number of stars, which is the last argument: 0 or less gives 5, and 16 is the most. Ratings are whole stars.
 
+Chips also accept `bg`, `color`, `radius` and `font_size` [local styles](#local-styles), preserving their selected check mark and keyboard focus ring.
+
 Keyboard: Tab moves through the chips, and Enter or Space toggles the focused one. The rating is set with the pointer; it has no keys yet.
 
 ## Text field
@@ -207,6 +257,18 @@ cui_search(ui, "q", query, sizeof query, .placeholder = "Search projects");
 
 You own the buffer; CUI never writes past `cap`. Returns flags: `CUI_CHANGED`, `CUI_SUBMITTED`, `CUI_FOCUSED`, `CUI_BLURRED`.
 
+For a styled input, keep the buffer between frames and pass only the overrides you need:
+
+```c
+static char styled_name[128] = "";
+cui_input(ui, "styled-name", styled_name, sizeof styled_name,
+          .label = "Name", .placeholder = "Enter your name",
+          .bg = CUI_COLOR_SURFACE_MUTED, .color = CUI_COLOR_FOREGROUND,
+          .border_color = CUI_COLOR_ACCENT, .radius = 6, .font_size = 16);
+```
+
+These tokens follow light/dark mode. Focus and error colors still take precedence over `border_color`. Omitting all overrides gives the normal theme style.
+
 | Option | |
 |---|---|
 | `label`, `placeholder`, `hint`, `error` | |
@@ -214,6 +276,7 @@ You own the buffer; CUI never writes past `cap`. Returns flags: `CUI_CHANGED`, `
 | `password` | Masks the text and adds a show/hide button |
 | `clearable` | Adds a clear button when not empty (always on for `cui_search`). Hidden for `read_only` fields; `Ctrl+Z` restores the cleared text |
 | `autofocus`, `read_only`, `disabled`, `size`, `width` | |
+| `bg`, `color`, `border_color`, `radius`, `font_size` | [Local styles](#local-styles); focus/error borders take precedence, and labels/hints keep their theme size |
 
 Editing: click to place the caret, drag or Shift+arrows to select, double click selects a word, triple click selects everything. Ctrl (Option on macOS) with arrows or Backspace moves or deletes by word. Home/End, Ctrl+A, cut, copy, paste, undo and redo (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y; Cmd on macOS). Esc clears the selection, then leaves the field. Full UTF-8.
 
@@ -246,7 +309,9 @@ cui_select(ui, "country", items, 5, &country, .label = "Country");
 cui_select(ui, "lang", languages, n, &lang, .searchable = true, .placeholder = "Pick a language");
 ```
 
-`searchable` adds a filter field at the top of the list (a combobox). Options: `label`, `placeholder`, `icons`, `searchable`, `disabled`, `width`. Keyboard: Up/Down open the list and move the highlight, Enter chooses, Esc closes.
+`searchable` adds a filter field at the top of the list (a combobox). Options: `label`, `placeholder`, `icons`, `searchable`, `disabled`, `width`, plus the `bg`, `color`, `border_color`, `radius` and `font_size` [local styles](#local-styles). The popup and search field follow the trigger's styling; option rows grow to fit larger text. Keyboard: Up/Down open the list and move the highlight, Enter chooses, Esc closes.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="images/components/select-styles-dark.png"><img src="images/components/select-styles.png" alt="A styled searchable select with matching popup and larger option text"></picture>
 
 Returns true on the frame the choice changes. `country` is your `int`, the index of the chosen item. A value outside 0 to `count` - 1, such as -1, means nothing is chosen, and the field then shows `placeholder`, or "Select". Choosing an item closes the list, which scrolls once it is taller than 300 points. The search keeps the items that contain the typed text, whatever the case. For several choices use the multi-select, and for two to five options that should stay visible use a segmented control.
 
@@ -332,6 +397,8 @@ switch (tab) { /* content */ }
 
 The underline slides to the active tab. Keyboard: Left and Right. Tabs never truncate their labels: when they are wider than their container the strip scrolls sideways, fades at the edge that has more, and brings a newly selected tab into view.
 
+Use `bg` to change the selected pill or underline, `color` for the labels/icons, and `font_size` for larger labels. These [local styles](#local-styles) also work with `full_width` pill tabs; measurement and scrolling use the same font size as drawing.
+
 Returns true on the frame the selected tab changes. `tab` is your `int`: the tabs write it on a click and keep it between 0 and `count` - 1. Tabs draw only the strip, so showing the content of the selected tab is your `switch` below it. Set the index from code and the strip scrolls that tab into view. At most 32 tabs are shown. Options: `variant` (`CUI_TABS_UNDERLINE`, the default, or `CUI_TABS_PILL`), `icons` and `full_width`. For a compact choice between views of the same content, use a segmented control.
 
 ## Sidebar navigation
@@ -347,6 +414,8 @@ if (cui_nav_item(ui, "Projects", .icon = CUI_ICON_FOLDER, .selected = page == 1)
 ```
 
 All items of a `group` share one highlight that glides to the selected item.
+
+Each item accepts `bg` for its selected highlight, `color` for its label/icon, and `font_size`. The shared highlight takes the selected item's color even when it is not the first item. See [Local styles](#local-styles).
 
 `cui_nav_item` returns true on the frame it is clicked. It does not remember the selection: you keep the current page, as `page` does above, and pass `.selected` on every frame. The label is also the identity, so two items with the same label in one scope need a key: `"Settings##team"` shows "Settings". `badge` is text, so format a count yourself. Items without a `group` share one common group; name the groups when a window has two separate lists, so each keeps its own highlight. An item fills the width of its container. `cui_nav_section` draws a title above a set of items and returns nothing.
 
@@ -576,6 +645,8 @@ cui_kbd(ui, "Ctrl Shift P");
 
 Avatars without an image show initials on a color picked from the name, so the same person always gets the same color.
 
+Badges also accept `bg`, `color`, `radius` and `font_size` [local styles](#local-styles). Larger labels grow the badge's height; icons and dots keep their normal size.
+
 None of these returns anything, keeps state or reacts to the pointer, so a tooltip or a hover card cannot hang from one directly. Badge options: `tone` (any `CUI_TONE_*`, neutral when not set), `dot`, `solid`, `icon` and `size`. `cui_avatar` takes the person's name, which gives the initials and the color. Options: `size`, the diameter in points (32), `image`, a `cui_texture` that replaces the initials, `status` and `square`. `status` is "online", "busy" or "away", and any other word gives a gray dot. `cui_avatar_group` takes an array of names, how many there are, how many to show before a "+N" (4 when 0) and the size (32 when 0). `cui_kbd` takes key names separated by spaces and draws one keycap for each.
 
 ## Card and metric
@@ -594,6 +665,8 @@ cui_metric(ui, "Median build", "3m 42s", .delta = -17.6f, .lower_is_better = tru
 The arrow follows the sign of `delta`; the color says whether that is good. Set `lower_is_better` for times, errors and costs.
 
 Cards rest on a hairline border with no shadow. Card options: `pad` (24), `pad_x`, `pad_y`, `gap`, `dir`, `align`, `width`, `height`, `min_width`, `max_width`, `wrap` (row cards), `hoverable`, `muted`, `selected`. `.width = CUI_FILL, .max_width = 520` fills a phone and stops at 520 on a wide window.
+
+Use `bg`, `border_color`, `border` and `radius` for [local styles](#local-styles). `border = -1` removes the border; a positive width also adds a border to muted cards. Selection retains the accent border, and hoverable cards show a keyboard focus ring. Card styles do not change child text colors or sizes.
 
 Keyboard: a `hoverable` card takes Tab, and Enter or Space clicks it. Other cards and metrics only display.
 

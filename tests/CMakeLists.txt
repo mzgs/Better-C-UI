@@ -2,6 +2,12 @@ add_executable(cui_tests test_main.c)
 target_link_libraries(cui_tests PRIVATE cui::cui)
 add_test(NAME cui_tests COMMAND cui_tests)
 
+add_executable(cui_test_styles test_styles.c)
+target_include_directories(cui_test_styles PRIVATE ../src)
+target_compile_definitions(cui_test_styles PRIVATE $<$<BOOL:${CUI_TEXT_SHAPING}>:CUI_TEXT_SHAPING>)
+target_link_libraries(cui_test_styles PRIVATE cui::cui)
+add_test(NAME cui_test_styles COMMAND cui_test_styles)
+
 add_executable(cui_test_syntax test_syntax.c)
 target_include_directories(cui_test_syntax PRIVATE ../src)
 target_link_libraries(cui_test_syntax PRIVATE cui::cui)

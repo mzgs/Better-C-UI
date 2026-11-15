@@ -252,7 +252,7 @@ static void cui__paint_submenu_direction(cui_ctx *ui, cui_node *n, void *data) {
     ((cui__item_state *)data)->rtl = n->rtl;
 }
 
-static bool cui__menu_item(cui_ctx *ui, const char *label, const cui_menu_item_opts *o, bool submenu) {
+static bool cui__menu_item(cui_ctx *ui, const char *label, const cui_menu_item_opts *o, bool submenu, const cui_select_opts *style) {
     cui_menu_item_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
@@ -280,26 +280,30 @@ static bool cui__menu_item(cui_ctx *ui, const char *label, const cui_menu_item_o
     cui_node *n = &ui->nodes[i];
     n->dir = CUI_ROW; n->align = CUI_ALIGN_CENTER; n->gap = 10;
     n->h = CUI_PX(32);
+    float fs = cui__fs(ui, style && style->font_size > 0 ? style->font_size : ui->theme.text_body);
+    if (style && style->font_size > 0) n->h.value = CUI_MAX(32, fs * 1.3f + 12);
     n->pad[1] = 10; n->pad[3] = 10;
     n->w = CUI_FILL;
     n->self_align = CUI_ALIGN_STRETCH;
     n->radius = CUI_CORNERS(CUI__R_ITEM(ui));
+    cui_color fg = o->danger ? CUI_C(ui, DANGER) : CUI_C(ui, FOREGROUND);
+    if (style) fg = cui__style_text(ui, style->bg, style->color, fg);
     cui_color hover_bg = o->danger ? cui_alpha(CUI_C(ui, DANGER), 0.1f) : CUI_C(ui, ACTIVE);
+    if (style && cui__color_set(style->bg)) hover_bg = cui_alpha(fg, 0.10f);
     n->bg = cui_alpha(hover_bg, st->hover);
     n->opacity = disabled ? CUI__DISABLED : 1.0f;
     cui__mark_interactive(ui, i, 0);
     if (r.hovered && !disabled) cui__set_cursor(ui, CUI_CURSOR_HAND);
     cui__open(ui, i);
-    cui_color fg = o->danger ? CUI_C(ui, DANGER) : CUI_C(ui, FOREGROUND);
-    if (o->icon) cui__icon_node(ui, o->icon, 16, o->danger ? fg : CUI_C(ui, TEXT_SECONDARY));
-    int t = cui__text_node(ui, label, cui__display_len(label), CUI_FONT_BODY, cui__fs(ui, ui->theme.text_body), fg, false);
+    if (o->icon) cui__icon_node(ui, o->icon, 16, o->danger || (style && (cui__color_set(style->bg) || cui__color_set(style->color))) ? fg : CUI_C(ui, TEXT_SECONDARY));
+    int t = cui__text_node(ui, label, cui__display_len(label), CUI_FONT_BODY, fs, fg, false);
     ui->nodes[t].line_height = 1.3f;
     ui->nodes[t].w = CUI_FILL;
     if (o->shortcut) {
         int s = cui__text_node(ui, o->shortcut, -1, CUI_FONT_BODY, cui__fs(ui, ui->theme.text_sm), CUI_C(ui, TEXT_MUTED), false);
         ui->nodes[s].line_height = 1.3f;
     }
-    if (o->checked) cui__icon_node(ui, CUI_ICON_CHECK, 16, CUI_C(ui, FOREGROUND));
+    if (o->checked) cui__icon_node(ui, CUI_ICON_CHECK, 16, style ? fg : CUI_C(ui, FOREGROUND));
     if (submenu) {
         cui__icon_node(ui, CUI_ICON_CHEVRON_RIGHT, 16, CUI_C(ui, TEXT_MUTED));
         ui->nodes[i].paint = cui__paint_submenu_direction;
@@ -316,7 +320,7 @@ static bool cui__menu_item(cui_ctx *ui, const char *label, const cui_menu_item_o
 }
 
 bool cui_menu_item_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *o) {
-    return cui__menu_item(ui, label, o, false);
+    return cui__menu_item(ui, label, o, false, NULL);
 }
 
 bool cui_submenu_begin_ex(cui_ctx *ui, const char *label, const cui_menu_item_opts *o) {
@@ -324,7 +328,7 @@ bool cui_submenu_begin_ex(cui_ctx *ui, const char *label, const cui_menu_item_op
     cui__popup_build *parent = &ui->pb_stack[ui->pb_depth - 1];
     if (!parent->menu) return false;
     int index = parent->item_index;
-    bool chosen = cui__menu_item(ui, label, o, true);
+    bool chosen = cui__menu_item(ui, label, o, true, NULL);
     cui_id anchor = cui_make_id(ui, label), pid = anchor ^ 0x5AB3E4u;
     cui_popup *p = cui__popup_get(ui, pid, true);
     if (!p) return false;
@@ -428,28 +432,33 @@ bool cui_select_ex(cui_ctx *ui, const char *id_str, const char *const *items, in
         cui__field_label(ui, o->label);
     }
     float h = cui__control_height(ui, CUI_SIZE_MD);
+    float fs = cui__fs(ui, o->font_size > 0 ? o->font_size : ui->theme.text_body);
+    if (o->font_size > 0) h = CUI_MAX(h, fs * 1.3f + 12);
+    cui_color fg = cui__style_text(ui, o->bg, o->color, CUI_C(ui, FOREGROUND));
+    bool custom_text = cui__color_set(o->bg) || cui__color_set(o->color);
     int i = cui__node_new(ui, id);
     cui_node *n = &ui->nodes[i];
     n->dir = CUI_ROW; n->align = CUI_ALIGN_CENTER; n->gap = 8;
     n->h = CUI_PX(h);
     if (col >= 0) n->w = CUI_FILL; else cui__soft_width(n, o->width, 220);
     n->pad[1] = CUI__FIELD_PAD_ICON; n->pad[3] = CUI__FIELD_PAD;
-    n->radius = CUI_CORNERS(CUI__R_CONTROL(ui, h));
-    n->bg = CUI_C(ui, SURFACE);
+    n->radius = CUI_CORNERS(CUI_MIN(cui__radius_override(o->radius, ui->theme.radius_control), h * 0.5f));
+    n->bg = cui__color_set(o->bg) ? cui_color_of(ui, o->bg) : CUI_C(ui, SURFACE);
     n->border = 1;
     cui_color border = cui__control_edge(ui, st->hover);
+    if (cui__color_set(o->border_color)) border = cui_mix(cui_color_of(ui, o->border_color), CUI_C(ui, BORDER_STRONG), st->hover * 0.3f);
     n->border_color = cui_mix(border, cui__edge_on(ui), open ? 1.0f : 0.0f);
     n->opacity = disabled ? CUI__DISABLED : 1.0f;
     cui__mark_interactive(ui, i, CUI_IF_FOCUSABLE);
     if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
     cui__open(ui, i);
     bool has = *index >= 0 && *index < count;
-    if (has && o->icons && o->icons[*index]) cui__icon_node(ui, o->icons[*index], 16, CUI_C(ui, TEXT_SECONDARY));
+    if (has && o->icons && o->icons[*index]) cui__icon_node(ui, o->icons[*index], 16, custom_text ? fg : CUI_C(ui, TEXT_SECONDARY));
     const char *shown = has ? items[*index] : (o->placeholder ? o->placeholder : "Select");
-    int t = cui__text_node(ui, shown, -1, CUI_FONT_BODY, cui__fs(ui, ui->theme.text_body), has ? CUI_C(ui, FOREGROUND) : CUI_C(ui, TEXT_MUTED), false);
+    int t = cui__text_node(ui, shown, -1, CUI_FONT_BODY, fs, has ? fg : custom_text ? cui_alpha(fg, 0.65f) : CUI_C(ui, TEXT_MUTED), false);
     ui->nodes[t].line_height = 1.3f;
     ui->nodes[t].w = CUI_FILL;
-    cui__icon_node(ui, CUI_ICON_CHEVRONS_UP_DOWN, 16, CUI_C(ui, TEXT_MUTED));
+    cui__icon_node(ui, CUI_ICON_CHEVRONS_UP_DOWN, 16, custom_text ? cui_alpha(fg, 0.65f) : CUI_C(ui, TEXT_MUTED));
     cui__close(ui);
     if (r.focus_visible) {
         float *fa = cui__frame_alloc(ui, sizeof(float));
@@ -462,12 +471,18 @@ bool cui_select_ex(cui_ctx *ui, const char *id_str, const char *const *items, in
     ui->last_id = id;
 
     if (cui__popup_begin(ui, pid, id, CUI_PLACE_BOTTOM_START, 0, 6, 0, true)) {
+        cui_node *popup = &ui->nodes[cui__current(ui)];
+        if (cui__color_set(o->bg)) popup->bg = cui_color_of(ui, o->bg);
+        if (cui__color_set(o->border_color)) popup->border_color = cui_color_of(ui, o->border_color);
+        if (o->radius != 0) popup->radius = CUI_CORNERS(cui__radius_override(o->radius, ui->theme.radius_panel));
         if (o->searchable) {
             cui_input_opts io;
             memset(&io, 0, sizeof io);
             io.placeholder = "Search";
             io.autofocus = true;
             io.size = CUI_SIZE_SM;
+            io.bg = o->bg; io.color = o->color; io.border_color = o->border_color;
+            io.radius = o->radius; io.font_size = o->font_size;
             cui_id sid = cui_make_id(ui, "#q");
             if (p && p->opened_frame == ui->frame - 1) ui->focus = sid;
             int box = cui__node_new(ui, 0);
@@ -493,7 +508,7 @@ bool cui_select_ex(cui_ctx *ui, const char *id_str, const char *const *items, in
             mo.checked = k == *index;
             mo.icon = o->icons ? o->icons[k] : NULL;
             cui_push_id_int(ui, k);
-            if (cui_menu_item_ex(ui, items[k], &mo)) *index = k;
+            if (cui__menu_item(ui, items[k], &mo, false, o)) *index = k;
             cui_pop_id(ui);
             shown_count++;
         }
@@ -501,7 +516,7 @@ bool cui_select_ex(cui_ctx *ui, const char *id_str, const char *const *items, in
             int e = cui__node_new(ui, 0);
             ui->nodes[e].pad[0] = ui->nodes[e].pad[2] = 10; ui->nodes[e].pad[3] = 10;
             cui__open(ui, e);
-            cui__text_node(ui, "No results", -1, CUI_FONT_BODY, cui__fs(ui, ui->theme.text_body), CUI_C(ui, TEXT_MUTED), false);
+            cui__text_node(ui, "No results", -1, CUI_FONT_BODY, fs, custom_text ? cui_alpha(fg, 0.65f) : CUI_C(ui, TEXT_MUTED), false);
             cui__close(ui);
         }
         (void)nav;

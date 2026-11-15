@@ -210,6 +210,15 @@ static void page_buttons(cui_ctx *ui, gallery *g) {
             cui_icon_button(ui, CUI_ICON_TRASH_2, .tooltip = "Delete", .variant = CUI_BUTTON_SECONDARY);
         }
     }
+    section(ui, "Button overrides", "Change one button's background, corners or label size without changing the theme.");
+    cui_card(ui) {
+        cui_row(ui, .gap = 8, .wrap = true) {
+            cui_button(ui, "Brand color", .bg = CUI_RGB(0x7747ff), .color = CUI_RGB(0xffffff), .radius = 6);
+            cui_button(ui, "Square", .variant = CUI_BUTTON_OUTLINE, .radius = -1);
+            cui_button(ui, "Larger label", .font_size = 20);
+            cui_icon_button(ui, CUI_ICON_HEART, .tooltip = "Custom favorite", .bg = CUI_COLOR_ACCENT_SUBTLE, .radius = 6);
+        }
+    }
     section(ui, "States", "Loading keeps the label so the layout does not jump.");
     cui_card(ui) {
         cui_row(ui, .gap = 8, .wrap = true) {
@@ -266,6 +275,25 @@ static void page_buttons(cui_ctx *ui, gallery *g) {
 }
 
 static void page_inputs(cui_ctx *ui, gallery *g) {
+    section(ui, "Local styles", "Style individual fields, cards and labels while keeping the app's theme.");
+    cui_card(ui, .bg = CUI_COLOR_SURFACE_MUTED, .border_color = CUI_COLOR_ACCENT, .border = 2, .radius = 6, .gap = 16) {
+        static char custom_name[64] = "Maya Okafor", custom_notes[160] = "A larger, readable note.";
+        static const char *custom_roles[] = { "Designer", "Engineer", "Researcher" };
+        static int custom_role;
+        static bool custom_chip;
+        cui_box(ui, .dir = CUI_GRID, .columns = 2, .min_column_width = 240, .gap = 16) {
+            cui_input(ui, "custom-name", custom_name, sizeof custom_name, .label = "Name", .radius = -1, .font_size = 16,
+                      .bg = CUI_COLOR_SURFACE, .border_color = CUI_COLOR_ACCENT);
+            cui_select(ui, "custom-role", custom_roles, 3, &custom_role, .label = "Role", .searchable = true,
+                       .bg = CUI_COLOR_SURFACE, .radius = 6, .font_size = 16, .border_color = CUI_COLOR_ACCENT, .width = CUI_FILL);
+        }
+        cui_textarea(ui, "custom-notes", custom_notes, sizeof custom_notes, .height = 80, .font_size = 16,
+                     .bg = CUI_COLOR_SURFACE, .radius = 6, .border_color = CUI_COLOR_ACCENT);
+        cui_row(ui, .gap = 8, .wrap = true) {
+            cui_badge(ui, "Custom badge", .bg = CUI_RGB(0x345678), .color = CUI_RGB(0xffffff), .radius = 4, .font_size = 14);
+            cui_chip(ui, "Custom chip", &custom_chip, .bg = CUI_COLOR_ACCENT_SUBTLE, .radius = 6, .font_size = 14);
+        }
+    }
     section(ui, "Selectable text", "Drag to select, then copy with Command+C or Ctrl+C.");
     cui_text(ui, "Select this sentence, or use Tab, Shift+arrows and copy.", .selectable = true);
     section(ui, "Autocomplete", "Type to filter, or keep your own value. Arrows and Enter choose a suggestion.");
@@ -364,6 +392,16 @@ static void page_selection(cui_ctx *ui, gallery *g) {
 }
 
 static void page_navigation(cui_ctx *ui, gallery *g) {
+    section(ui, "Local styles", "A custom selection color and larger labels, with the same keyboard controls.");
+    cui_card(ui, .gap = 12) {
+        static int custom_tab, custom_nav;
+        const char *custom_tabs[] = { "Profile", "Activity", "Access" };
+        cui_tabs(ui, "custom-tabs", custom_tabs, 3, &custom_tab, .variant = CUI_TABS_PILL,
+                 .bg = CUI_COLOR_ACCENT_SUBTLE, .font_size = 16);
+        for (int k = 0; k < 2; k++)
+            if (cui_nav_item(ui, custom_tabs[k], .group = "custom-navigation", .selected = custom_nav == k,
+                             .bg = CUI_COLOR_ACCENT_SUBTLE, .font_size = 16)) custom_nav = k;
+    }
     section(ui, "Tabs", "The indicator slides to the active tab.");
     cui_card(ui, .gap = 16) {
         const char *tabs[4] = { "Overview", "Analytics", "Reports", "Settings" };

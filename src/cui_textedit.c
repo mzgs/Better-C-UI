@@ -820,7 +820,7 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
     cui_pop_disabled(ui);
     if (rf.hovered) cui__set_cursor(ui, CUI_CURSOR_TEXT);
     bool was_focused = ui->focus == id;
-    float size = cui__fs(ui, o->size == CUI_SIZE_SM ? ui->theme.text_sm : ui->theme.text_body);
+    float size = cui__fs(ui, o->font_size > 0 ? o->font_size : o->size == CUI_SIZE_SM ? ui->theme.text_sm : ui->theme.text_body);
     cui_font font = CUI_FONT_BODY;
     if (ui->tf_override) {   /* inline edit: type that matches the text it replaces */
         font = ui->tf_font;
@@ -852,6 +852,9 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
     int len = (int)strlen(buf);
     bool has_error = o->error && *o->error;
     float h = multiline ? (o->height > 0 ? o->height : 96) : cui__control_height(ui, o->size);
+    if (o->font_size > 0) h = CUI_MAX(h, line_h + (multiline ? 16 : 12));
+    cui_color fg = cui__style_text(ui, o->bg, o->color, CUI_C(ui, FOREGROUND));
+    cui_color muted = cui__color_set(o->bg) || cui__color_set(o->color) ? cui_alpha(fg, 0.65f) : CUI_C(ui, TEXT_MUTED);
 
     int outer = -1;
     if (style == CUI__FIELD_BOXED && (o->label || o->hint || o->error)) {
@@ -869,18 +872,20 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
     bn->gap = 8;
     bool fill_h = multiline && o->height < 0;
     bn->h = fill_h ? CUI_FILL : CUI_PX(h);
-    if (fill_h) bn->min_h = 80;
+    if (fill_h) bn->min_h = o->font_size > 0 ? CUI_MAX(80, line_h + 16) : 80;
     bn->w = outer >= 0 ? CUI_FILL : (o->width.kind ? o->width : CUI_FILL);
     bn->min_w = 80;
     if (style == CUI__FIELD_BOXED) {
-        float rad = CUI_MIN(ui->theme.radius_control, h * 0.5f);
+        float rad = CUI_MIN(cui__radius_override(o->radius, ui->theme.radius_control), h * 0.5f);
         bn->radius = CUI_CORNERS(rad);
         bn->pad[1] = bn->pad[3] = CUI__FIELD_PAD;
         if (multiline) { bn->pad[0] = bn->pad[2] = 8; }
         if (o->icon || search_icon) bn->pad[3] = CUI__FIELD_PAD_ICON;
         bn->bg = disabled ? CUI_C(ui, SURFACE_MUTED) : CUI_C(ui, SURFACE);
+        if (cui__color_set(o->bg)) bn->bg = cui_color_of(ui, o->bg);
         bn->border = 1;
         cui_color border = cui__control_edge(ui, e->hover);
+        if (cui__color_set(o->border_color)) border = cui_mix(cui_color_of(ui, o->border_color), CUI_C(ui, BORDER_STRONG), e->hover * 0.3f);
         cui_color focus_c = cui__edge_on(ui);
         border = cui_mix(border, focus_c, e->focus);
         if (has_error) border = CUI_C(ui, DANGER);
@@ -894,7 +899,7 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
     cui__open(ui, box);
     const char *icon = o->icon ? o->icon : search_icon;
     if (o->prefix) {
-        int pt = cui__text_node(ui, o->prefix, -1, CUI_FONT_BODY, size, CUI_C(ui, TEXT_MUTED), false);
+        int pt = cui__text_node(ui, o->prefix, -1, CUI_FONT_BODY, size, muted, false);
         ui->nodes[pt].line_height = 1.3f;
         ui->nodes[pt].self_align = CUI_ALIGN_CENTER;
         ui->nodes[box].gap = 4;
@@ -903,7 +908,7 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
         int ib = cui__node_new(ui, 0);
         if (multiline) ui->nodes[ib].pad[0] = (line_h - 16) * 0.5f;
         cui__open(ui, ib);
-        cui__icon_node(ui, icon, 16, CUI_C(ui, TEXT_MUTED));
+        cui__icon_node(ui, icon, 16, muted);
         cui__close(ui);
     }
     int ar = cui__leaf(ui, area_id, CUI_FILL, multiline ? CUI_FILL : CUI_PX(line_h));
@@ -920,9 +925,9 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
     p->caret_phase = ui->time - ui->caret_time;
     p->font = font; p->size = size;
     p->placeholder = o->placeholder;
-    p->text = CUI_C(ui, FOREGROUND);
-    p->placeholder_color = CUI_C(ui, TEXT_MUTED);
-    p->caret = cui__emphasis(ui);
+    p->text = fg;
+    p->placeholder_color = muted;
+    p->caret = cui__color_set(o->bg) || cui__color_set(o->color) ? fg : cui__emphasis(ui);
     p->selection = ui->accent == CUI_ACCENT_NEUTRAL ? cui_alpha(cui_oklch(0.6f, 0.13f, 250, 1), 0.28f) : cui_alpha(CUI_C(ui, ACCENT), 0.26f);
     p->line_h = line_h;
     if (multiline) {
@@ -934,7 +939,7 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
     if (p->focused) cui__wakeup_after(ui, 0.53f);
 
     if (o->suffix) {
-        int st_ = cui__text_node(ui, o->suffix, -1, CUI_FONT_BODY, size, CUI_C(ui, TEXT_MUTED), false);
+        int st_ = cui__text_node(ui, o->suffix, -1, CUI_FONT_BODY, size, muted, false);
         ui->nodes[st_].line_height = 1.3f;
         ui->nodes[st_].self_align = CUI_ALIGN_CENTER;
     }
@@ -943,6 +948,7 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
         cui_button_opts bo;
         memset(&bo, 0, sizeof bo);
         bo.size = CUI_SIZE_SM;
+        if (cui__color_set(o->bg) || cui__color_set(o->color)) bo.color = muted;
         cui_push_id_int(ui, (int)id);
         if (cui_icon_button_ex(ui, CUI_ICON_X, &bo)) {
             cui__undo_push(ui, e, buf);   /* Ctrl+Z brings the text back */
@@ -963,7 +969,7 @@ int cui__text_field(cui_ctx *ui, cui_id id, char *buf, size_t cap, const cui_inp
         cui_button_opts bo;
         memset(&bo, 0, sizeof bo);
         bo.size = CUI_SIZE_SM;
-        bo.color = CUI_COLOR_TEXT_MUTED;   /* quiet like the field's leading icon */
+        bo.color = muted;   /* quiet like the field's leading icon */
         bo.tooltip = e->show_password ? "Hide password" : "Show password";
         cui_push_id_int(ui, (int)id);
         if (cui_icon_button_ex(ui, e->show_password ? CUI_ICON_EYE_OFF : CUI_ICON_EYE, &bo)) e->show_password = !e->show_password;

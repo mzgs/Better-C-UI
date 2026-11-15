@@ -6,6 +6,8 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Fixed
 
+- Custom button backgrounds keep readable automatic text and icon colors during hover, press and release, including mid-gray fills that switch between light and dark text. Explicit text colors remain unchanged.
+
 - The video example's fullscreen button now enters native fullscreen, shows an exit button, and supports Escape to restore the window. Added `cui_app_set_fullscreen` / `cui_app_is_fullscreen` for app hosts.
 
 - Video seek-bar dragging no longer repeats seeks while the pointer is held still and the playback clock updates, preventing repeated footage after scrubbing.
@@ -19,6 +21,10 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 - **WebView is a separate add-on**: enable `CUI_WEBVIEW`, include `<cui/cui_webview.h>` and link `cui::webview` (installed packages request `COMPONENTS webview`). The core keeps the layout placeholder and has no browser libraries, even when the add-on is built. Native sources live in `addons/webview/`; pkg-config and amalgamated distributions provide separate add-on artifacts. Existing WebView callers must update their include/link settings.
 
 ### Added
+
+- **Local component styles**: optional background, text color, corner radius and font size overrides for fields, searchable selects, badges and chips; custom card backgrounds/borders/corners; and custom selected backgrounds and label sizes/colors for tabs and navigation. Select popups and search fields follow their trigger. Larger text updates editing and layout geometry; focus/error borders and selected marks remain visible. Hoverable cards and chips now show keyboard focus rings.
+
+- **Per-button styling**: `cui_button` accepts `.bg`, `.radius` and `.font_size` overrides without changing the shared theme. Custom backgrounds derive hover/pressed feedback and readable text; explicit `.color` wins. Icon buttons support background and radius overrides too. Zero values preserve existing defaults; use a negative radius for square corners.
 
 - **Video audio/subtitle selection**: the libmpv add-on exposes cached language-labelled track lists, asynchronous audio/subtitle selection, automatic/default selection, subtitles off, and external subtitle loading without duplicates. The video example adds audio and subtitle menus plus an Open subtitle dialog. See [playback integration](docs/integration.md#optional-libmpv-playback).
 

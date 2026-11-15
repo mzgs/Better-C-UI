@@ -465,10 +465,16 @@ bool cui_chip_ex(cui_ctx *ui, const char *label, bool *selected, const cui_chip_
     cui_node *n = &ui->nodes[i];
     n->dir = CUI_ROW; n->align = CUI_ALIGN_CENTER; n->gap = 6;
     n->h = CUI_PX(30); n->pad[1] = n->pad[3] = 12;
-    n->radius = CUI_CORNERS(15);
+    float fs = cui__fs(ui, o->font_size > 0 ? o->font_size : ui->theme.text_sm + 0.5f);
+    if (o->font_size > 0) n->h.value = CUI_MAX(30, fs * 1.3f + 10);
+    n->radius = CUI_CORNERS(CUI_MIN(cui__radius_override(o->radius, 15), n->h.value * 0.5f));
     n->self_align = CUI__ALIGN_NOSTRETCH;
     cui_color base_bg = cui_mix(cui__rgba(0, 0, 0, 0), CUI_C(ui, HOVER), st->hover);
     n->bg = cui_mix(base_bg, CUI_C(ui, ACCENT_SUBTLE), st->sel);
+    if (cui__color_set(o->bg)) {
+        cui_color custom = cui_color_of(ui, o->bg);
+        n->bg = cui_mix(custom, CUI_C(ui, FOREGROUND), st->hover * 0.06f + st->sel * 0.08f);
+    }
     n->border = 1;
     n->border_color = cui_mix(cui__quiet_edge(ui, st->hover), cui_mix(CUI_C(ui, ACCENT), CUI_C(ui, BACKGROUND), 0.45f), st->sel);
     n->scale = st->press.x;
@@ -477,10 +483,12 @@ bool cui_chip_ex(cui_ctx *ui, const char *label, bool *selected, const cui_chip_
     if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
     cui__open(ui, i);
     cui_color fg = cui_mix(CUI_C(ui, FOREGROUND), CUI_C(ui, ACCENT_STRONG), st->sel);
+    fg = cui__style_text(ui, cui__color_set(o->bg) ? n->bg : CUI_TRANSPARENT, o->color, fg);
     if (sel) cui__icon_node(ui, CUI_ICON_CHECK, 14, fg);
-    else if (o->icon) cui__icon_node(ui, o->icon, 14, CUI_C(ui, TEXT_SECONDARY));
-    cui__label_text(ui, label, CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_sm + 0.5f), fg);
+    else if (o->icon) cui__icon_node(ui, o->icon, 14, cui__color_set(o->color) || cui__color_set(o->bg) ? fg : CUI_C(ui, TEXT_SECONDARY));
+    cui__label_text(ui, label, CUI_FONT_MEDIUM, fs, fg);
     cui__close(ui);
+    cui__focus_ring(ui, i, r.focus_visible ? 1.0f : 0.0f);
     ui->last_id = id;
     return changed || (r.clicked && !selected);
 }
@@ -510,7 +518,7 @@ static void cui__paint_highlight(cui_ctx *ui, cui_node *n, void *data) {
 
 /* Shared builder for segmented controls and tabs. kind: 0 segmented, 1 tabs underline, 2 tabs pill */
 static bool cui__segments(cui_ctx *ui, const char *id_str, const char *const *items, const char *const *icons, int count,
-                          int *index, int kind, cui_control_size size, bool full_width) {
+                          int *index, int kind, cui_control_size size, bool full_width, const cui_tabs_opts *style) {
     if (count <= 0) return false;
     if (count > 32) count = 32;
     cui_id id = cui_make_id(ui, id_str);
@@ -553,6 +561,10 @@ static bool cui__segments(cui_ctx *ui, const char *id_str, const char *const *it
     /* squeezed (a phone): segments drop to 8px side padding before their labels truncate. The row
        keeps asking for its natural width, so it gets the roomy padding back once there is room */
     float seg_pad = kind == 0 ? 14 : 10, natural = 0, lfs = cui__fs(ui, size == CUI_SIZE_SM ? ui->theme.text_sm : ui->theme.text_body);
+    if (style && style->font_size > 0) {
+        lfs = cui__fs(ui, style->font_size);
+        h = CUI_MAX(h, lfs * 1.3f + 16);
+    }
     bool tight = false;
     if (!full_width && kind != 1) {
         for (int k = 0; k < count; k++) {
@@ -600,6 +612,7 @@ static bool cui__segments(cui_ctx *ui, const char *id_str, const char *const *it
             p->bg = CUI_C(ui, ACTIVE);
             p->radius = CUI_MIN(ui->theme.radius_control, inner_h * 0.5f);
         }
+        if (style && cui__color_set(style->bg)) p->bg = cui_color_of(ui, style->bg);
         ui->nodes[hl].paint = cui__paint_highlight;
         ui->nodes[hl].paint_data = p;
     }
@@ -627,8 +640,9 @@ static bool cui__segments(cui_ctx *ui, const char *id_str, const char *const *it
         }
         cui__open(ui, it);
         cui_color fg = sel ? CUI_C(ui, FOREGROUND) : cui_mix(CUI_C(ui, TEXT_SECONDARY), CUI_C(ui, FOREGROUND), st->hover[k] * 0.7f);
+        if (style) fg = cui__style_text(ui, sel && kind == 2 ? style->bg : CUI_TRANSPARENT, style->color, fg);
         if (icons && icons[k]) cui__icon_node(ui, icons[k], 16, fg);
-        if (items[k] && cui__display_len(items[k]) > 0) cui__label_text(ui, items[k], CUI_FONT_MEDIUM, cui__fs(ui, size == CUI_SIZE_SM ? ui->theme.text_sm : ui->theme.text_body), fg);
+        if (items[k] && cui__display_len(items[k]) > 0) cui__label_text(ui, items[k], CUI_FONT_MEDIUM, lfs, fg);
         cui__close(ui);
         if (ir[k].focus_visible) {
             ui->nodes[it].flags |= CUI_NF_PAINT_AFTER;
@@ -657,7 +671,7 @@ bool cui_segmented_ex(cui_ctx *ui, const char *id, const char *const *items, int
     cui_segmented_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
-    return cui__segments(ui, id, items, o->icons, count, index, 0, o->size, o->full_width);
+    return cui__segments(ui, id, items, o->icons, count, index, 0, o->size, o->full_width, NULL);
 }
 
 bool cui_tabs_ex(cui_ctx *ui, const char *id, const char *const *items, int count, int *index, const cui_tabs_opts *o) {
@@ -665,7 +679,7 @@ bool cui_tabs_ex(cui_ctx *ui, const char *id, const char *const *items, int coun
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
     bool pill = o->variant == CUI_TABS_PILL;
-    if (pill && o->full_width) return cui__segments(ui, id, items, o->icons, count, index, 2, CUI_SIZE_MD, true);
+    if (pill && o->full_width) return cui__segments(ui, id, items, o->icons, count, index, 2, CUI_SIZE_MD, true, o);
     /* Tabs never truncate: when they are wider than their container the
      * strip scrolls sideways, fades at the edge with more, and brings a newly
      * selected tab into view. */
@@ -695,7 +709,7 @@ bool cui_tabs_ex(cui_ctx *ui, const char *id, const char *const *items, int coun
         ui->nodes[col].paint = cui__paint_tab_baseline;
         ui->nodes[col].paint_data = bc;
     }
-    bool r = cui__segments(ui, id, items, o->icons, count, index, pill ? 2 : 1, CUI_SIZE_MD, o->full_width);
+    bool r = cui__segments(ui, id, items, o->icons, count, index, pill ? 2 : 1, CUI_SIZE_MD, o->full_width, o);
     cui__scroll_end_ex(ui);
     return r;
 }
@@ -709,6 +723,7 @@ typedef struct {
     uint64_t keyboard_frame;
     cui_id first_id;
     int first_node;
+    int highlight_node;
     float target_dy, target_h;
     bool has_target, init;
     cui_transition y, h;
@@ -734,6 +749,7 @@ bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *o) {
     if (first) {
         g->frame = ui->frame;
         g->first_id = id;
+        g->highlight_node = -1;
     }
     if (o->selected && cui__has_prev_rect(ui, id) && cui__has_prev_rect(ui, g->first_id)) {
         cui_rect me = cui__prev_rect(ui, id), f0 = cui__prev_rect(ui, g->first_id);
@@ -753,6 +769,8 @@ bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *o) {
     cui_node *n = &ui->nodes[i];
     n->dir = CUI_ROW; n->align = CUI_ALIGN_CENTER; n->gap = 10;
     n->h = CUI_PX(32);
+    float fs = cui__fs(ui, o->font_size > 0 ? o->font_size : ui->theme.text_body);
+    if (o->font_size > 0) n->h.value = CUI_MAX(32, fs * 1.3f + 10);
     n->pad[1] = 10; n->pad[3] = 10;
     n->w = CUI_FILL;
     n->self_align = CUI_ALIGN_STRETCH;
@@ -764,6 +782,7 @@ bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *o) {
     if (first && g->init) {
         /* the gliding highlight, positioned relative to the first item */
         int hl = cui__absolute(ui, 0, 0, g->y.x, 0, g->h.x);
+        g->highlight_node = hl;
         cui_node *hn = &ui->nodes[hl];
         hn->abs_anchor = i;
         hn->w = CUI_PX(0);
@@ -777,10 +796,15 @@ bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *o) {
         hn->fx = 0;
         /* width follows the anchor; resolved in paint */
     }
+    if (o->selected && g->highlight_node >= 0) {
+        cui__hl_paint *highlight = ui->nodes[g->highlight_node].paint_data;
+        if (cui__color_set(o->bg)) highlight->bg = cui_color_of(ui, o->bg);
+    }
     cui__open(ui, i);
     cui_color fg = o->selected ? CUI_C(ui, FOREGROUND) : cui_mix(CUI_C(ui, TEXT_SECONDARY), CUI_C(ui, FOREGROUND), st->hover * 0.6f);
-    if (o->icon) cui__icon_node(ui, o->icon, 16, o->selected ? CUI_C(ui, FOREGROUND) : CUI_C(ui, TEXT_SECONDARY));
-    int t = cui__text_node(ui, label, cui__display_len(label), o->selected ? CUI_FONT_MEDIUM : CUI_FONT_BODY, cui__fs(ui, ui->theme.text_body), fg, false);
+    fg = cui__style_text(ui, o->selected ? o->bg : CUI_TRANSPARENT, o->color, fg);
+    if (o->icon) cui__icon_node(ui, o->icon, 16, cui__color_set(o->color) || (o->selected && cui__color_set(o->bg)) ? fg : o->selected ? CUI_C(ui, FOREGROUND) : CUI_C(ui, TEXT_SECONDARY));
+    int t = cui__text_node(ui, label, cui__display_len(label), o->selected ? CUI_FONT_MEDIUM : CUI_FONT_BODY, fs, fg, false);
     ui->nodes[t].line_height = 1.3f;
     ui->nodes[t].w = CUI_FILL;
     if (o->badge) {

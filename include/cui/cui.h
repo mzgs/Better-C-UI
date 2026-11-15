@@ -468,6 +468,10 @@ typedef struct cui_card_opts {
     bool hoverable;            /* lifts slightly on hover and returns clicks */
     bool muted;                /* muted surface, no border */
     bool selected;             /* accent border */
+    cui_color bg;              /* zero = themed surface */
+    cui_color border_color;    /* resting border; selection keeps its accent */
+    float border;              /* 0 = default, <0 = none, >0 = width in points */
+    float radius;              /* 0 = theme, <0 = square, >0 = radius in points */
 } cui_card_opts;
 CUI_API bool cui_card_begin(cui_ctx *ui, const cui_card_opts *opts);   /* returns true when clicked (hoverable) */
 CUI_API void cui_card_end(cui_ctx *ui);
@@ -574,6 +578,9 @@ typedef struct cui_button_opts {
     const char *shortcut;      /* shown as a hint in the tooltip, e.g. "Ctrl S" */
     cui_size width;
     cui_color color;           /* text and icon color, e.g. CUI_COLOR_ACCENT for a toggled icon */
+    cui_color bg;              /* background override; zero = variant default. Hover/press and readable text are derived; color wins. */
+    float radius;              /* 0 = theme, <0 = square, >0 = radius in points (clamped to half height) */
+    float font_size;           /* label size in points, scaled by theme.font_scale; <=0 = size default. Height grows to fit. */
 } cui_button_opts;
 
 CUI_API bool cui_button_ex(cui_ctx *ui, const char *label, const cui_button_opts *opts);
@@ -607,7 +614,14 @@ CUI_API bool cui_slider_ex(cui_ctx *ui, const char *label, float *value, float m
 CUI_API bool cui_range_slider(cui_ctx *ui, const char *label, float *lo, float *hi, float min, float max);
 CUI_API bool cui_rating(cui_ctx *ui, const char *id, int *value, int max);
 
-typedef struct cui_chip_opts { int _; const char *icon; bool disabled; } cui_chip_opts;
+typedef struct cui_chip_opts {
+    int _;
+    const char *icon;
+    bool disabled;
+    cui_color bg, color;       /* optional background and text/icon color; selection keeps its check and border */
+    float radius;             /* 0 = default, <0 = square, >0 = radius in points */
+    float font_size;          /* <=0 = default; respects font_scale, height grows to fit */
+} cui_chip_opts;
 CUI_API bool cui_chip_ex(cui_ctx *ui, const char *label, bool *selected, const cui_chip_opts *opts);
 
 /* ------------------------------------------------------------------------ */
@@ -633,6 +647,10 @@ typedef struct cui_input_opts {
     float height;              /* textarea: height in points; negative fills the space */
     const char *prefix;        /* muted text before the value, e.g. "$" or "https://" */
     const char *suffix;        /* muted text after the value, e.g. "USD" or "kg" */
+    cui_color bg, color;       /* optional field background and editable text color */
+    cui_color border_color;    /* resting border; focus and error colors take precedence */
+    float radius;             /* 0 = theme, <0 = square, >0 = radius in points */
+    float font_size;          /* <=0 = size default; respects font_scale and edit geometry. Labels/hints keep their size. */
 } cui_input_opts;
 
 /* Single line text field. Returns CUI_CHANGED / CUI_SUBMITTED (Enter) flags. */
@@ -671,6 +689,10 @@ typedef struct cui_select_opts {
     bool searchable;           /* combobox: filter options by typing */
     bool disabled;
     cui_size width;
+    cui_color bg, color;       /* optional trigger, popup and option text colors */
+    cui_color border_color;    /* resting border; the open/focus indicator takes precedence */
+    float radius;             /* 0 = defaults, <0 = square, >0 = trigger/popup corner radius */
+    float font_size;          /* <=0 = default; trigger, search and options scale together */
 } cui_select_opts;
 CUI_API bool cui_select_ex(cui_ctx *ui, const char *id, const char *const *items, int count, int *index, const cui_select_opts *opts);
 
@@ -687,7 +709,15 @@ CUI_API bool cui_color_picker(cui_ctx *ui, const char *id, cui_color *value);
 /* ------------------------------------------------------------------------ */
 
 typedef enum cui_tabs_variant { CUI_TABS_UNDERLINE = 0, CUI_TABS_PILL } cui_tabs_variant;
-typedef struct cui_tabs_opts { int _; cui_tabs_variant variant; const char *const *icons; bool full_width; } cui_tabs_opts;
+typedef struct cui_tabs_opts {
+    int _;
+    cui_tabs_variant variant;
+    const char *const *icons;
+    bool full_width;
+    cui_color bg;              /* selected pill background or underline color; zero = default */
+    cui_color color;           /* label/icon color; zero = state default */
+    float font_size;          /* <=0 = default; respects font_scale, height grows to fit */
+} cui_tabs_opts;
 CUI_API bool cui_tabs_ex(cui_ctx *ui, const char *id, const char *const *items, int count, int *index, const cui_tabs_opts *opts);
 
 /* Sidebar navigation item with a gliding selection highlight shared by all
@@ -698,6 +728,9 @@ typedef struct cui_nav_opts {
     const char *badge;         /* small text at the right edge of the item, e.g. a count */
     bool selected;             /* the current page: medium weight text, and the group's highlight glides to it */
     const char *group;         /* items with the same group name share one highlight; `NULL` puts them in one common group */
+    cui_color bg;              /* this item's selected highlight; zero = default */
+    cui_color color;           /* label/icon color; zero = state default */
+    float font_size;          /* <=0 = default; respects font_scale, height grows to fit */
 } cui_nav_opts;
 CUI_API bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *opts);
 CUI_API void cui_nav_section(cui_ctx *ui, const char *title);
@@ -852,6 +885,9 @@ typedef struct cui_badge_opts {
     bool solid;                /* filled with the tone's color instead of a light tint of it */
     const char *icon;
     cui_control_size size;
+    cui_color bg, color;       /* optional background and text/icon color; zero = tone default */
+    float radius;             /* 0 = default, <0 = square, >0 = radius in points */
+    float font_size;          /* <=0 = size default; respects font_scale, height grows to fit */
 } cui_badge_opts;
 CUI_API void cui_badge_ex(cui_ctx *ui, const char *text, const cui_badge_opts *opts);
 

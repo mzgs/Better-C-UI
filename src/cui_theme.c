@@ -88,6 +88,16 @@ cui_color cui__legible(cui_color fg, cui_color bg, float ratio) {
     return fg;
 }
 
+cui_color cui__style_text(cui_ctx *ui, cui_color bg, cui_color color, cui_color fallback) {
+    if (cui__color_set(color)) return cui_color_of(ui, color);
+    if (!cui__color_set(bg)) return fallback;
+    bg = cui_color_of(ui, bg);
+    cui_color fg = CUI_C(ui, FOREGROUND);
+    if (bg.a != 255) return fg;
+    /* Two bounded passes also cover a full light-to-dark foreground change. */
+    return cui__legible(cui__legible(fg, bg, 4.5f), bg, 4.5f);
+}
+
 /* c at OKLab lightness L with its chroma scaled: clean deep or pale steps of one hue */
 cui_color cui__shade(cui_color c, float L, float chroma_mul) {
     cui__lab o = cui__to_oklab(c);

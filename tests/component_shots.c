@@ -86,10 +86,60 @@ SCENE(buttons) {
         cui_icon_button(ui, CUI_ICON_SETTINGS, .tooltip = "Settings");
     }
 }
+SCENE(button_overrides) {
+    cui_row(ui, .gap = 8, .wrap = true) {
+        cui_button(ui, "Brand color", .bg = CUI_RGB(0x7747ff), .color = CUI_RGB(0xffffff), .radius = 6);
+        cui_button(ui, "Square", .variant = CUI_BUTTON_OUTLINE, .radius = -1);
+        cui_button(ui, "Larger label", .font_size = 20);
+        cui_icon_button(ui, CUI_ICON_HEART, .tooltip = "Custom favorite", .bg = CUI_COLOR_ACCENT_SUBTLE, .radius = 6);
+    }
+}
 SCENE(segmented) {
     const char *items[] = { "List", "Board", "Timeline" };
     const char *icons[] = { CUI_ICON_LIST, CUI_ICON_LAYOUT_DASHBOARD, CUI_ICON_HISTORY };
     cui_segmented(ui, "s", items, 3, &i_seg, .icons = icons);
+}
+SCENE(component_styles) {
+    static char name[64] = "Maya Okafor", notes[160] = "Room for a larger note.";
+    static const char *roles[] = { "Designer", "Engineer", "Researcher" };
+    static int role, tab, nav;
+    static bool chip = true;
+    cui_card(ui, .width = CUI_FILL, .bg = CUI_COLOR_SURFACE_MUTED, .border = 2,
+             .border_color = CUI_COLOR_ACCENT, .radius = 6, .pad = 20, .gap = 16) {
+        cui_label(ui, "Local styles");
+        cui_box(ui, .dir = CUI_GRID, .columns = 2, .min_column_width = 240, .gap = 16) {
+            cui_input(ui, "styled-name", name, sizeof name, .label = "Name", .font_size = 16, .radius = -1,
+                      .bg = CUI_COLOR_SURFACE, .border_color = CUI_COLOR_ACCENT);
+            cui_select(ui, "styled-role", roles, 3, &role, .label = "Role", .searchable = true,
+                       .font_size = 16, .radius = 6, .bg = CUI_COLOR_SURFACE, .border_color = CUI_COLOR_ACCENT, .width = CUI_FILL);
+        }
+        cui_textarea(ui, "styled-notes", notes, sizeof notes, .height = 80, .font_size = 16,
+                     .radius = 6, .bg = CUI_COLOR_SURFACE, .border_color = CUI_COLOR_ACCENT);
+        cui_row(ui, .gap = 8, .wrap = true, .align = CUI_ALIGN_CENTER) {
+            cui_badge(ui, "Custom badge", .bg = CUI_RGB(0x345678), .color = CUI_RGB(0xffffff), .radius = 4, .font_size = 14);
+            cui_chip(ui, "Custom chip", &chip, .bg = CUI_COLOR_ACCENT_SUBTLE, .radius = 6, .font_size = 14);
+        }
+        const char *views[] = { "Profile", "Activity", "Access" };
+        cui_tabs(ui, "styled-tabs", views, 3, &tab, .variant = CUI_TABS_PILL, .font_size = 16, .bg = CUI_COLOR_ACCENT_SUBTLE);
+        for (int k = 0; k < 2; k++)
+            if (cui_nav_item(ui, views[k], .group = "styled-nav", .selected = nav == k,
+                             .font_size = 16, .bg = CUI_COLOR_ACCENT_SUBTLE)) nav = k;
+    }
+}
+static void scene_select_styles(cui_ctx *ui, int f) {
+    static const char *items[] = { "Designer", "Engineer", "Researcher" };
+    static int choice;
+    if (f < 0) {
+        int step = -f - 1;
+        if (step == 3) { cui_input_key(ui, CUI_KEY_TAB, true, 0); cui_input_key(ui, CUI_KEY_TAB, false, 0); }
+        if (step == 4) { cui_input_key(ui, CUI_KEY_DOWN, true, 0); cui_input_key(ui, CUI_KEY_DOWN, false, 0); }
+        return;
+    }
+    cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .bg = CUI_COLOR_BACKGROUND, .pad = frame_pad(ui)) {
+        cui_select(ui, "styled-open", items, 3, &choice, .label = "Role", .searchable = true, .font_size = 18,
+                   .bg = CUI_COLOR_SURFACE_MUTED, .color = CUI_COLOR_FOREGROUND, .radius = 6,
+                   .border_color = CUI_COLOR_ACCENT, .width = CUI_FILL);
+    }
 }
 SCENE(toggles) {
     cui_row(ui, .gap = 40, .align = CUI_ALIGN_START, .wrap = true) {
@@ -4141,6 +4191,9 @@ int main(int argc, char **argv) {
         { "text-selection", scene_text_selection, 560, 210, true },
         { "markdown-selection", scene_markdown_selection, 560, 330, true },
         { "buttons", scene_buttons, 760, 110, true }, { "segmented", scene_segmented, 420, 110, true },
+        { "button-overrides", scene_button_overrides, 600, 110, true },
+        { "component-styles", scene_component_styles, 720, 600, true },
+        { "select-styles", scene_select_styles, 360, 360, true },
         { "toggles", scene_toggles, 680, 150, true }, { "slider", scene_slider, 480, 170, true },
         { "inputs", scene_inputs, 680, 230, true }, { "textarea", scene_textarea, 540, 200, false },
         { "pickers", scene_pickers, 680, 130, false }, { "select", scene_select_open, 320, 330, true },

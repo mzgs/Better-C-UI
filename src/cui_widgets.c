@@ -367,13 +367,26 @@ static bool cui__button_impl(cui_ctx *ui, const char *label, const char *icon_on
     cui_button_variant v = o->variant;
     if (v == CUI_BUTTON_DEFAULT) v = (icon_only || ui->button_group_depth > 0) ? CUI_BUTTON_GHOST : CUI_BUTTON_SECONDARY;
     cui__btn_colors col = cui__button_colors(ui, v, o->selected);
-    if (o->color.r | o->color.g | o->color.b | o->color.a) col.fg = cui_color_of(ui, o->color);
+    bool custom_bg = (o->bg.r | o->bg.g | o->bg.b | o->bg.a) != 0;
+    bool custom_fg = (o->color.r | o->color.g | o->color.b | o->color.a) != 0;
+    if (custom_bg) {
+        col.bg = cui_color_of(ui, o->bg);
+        /* A translucent fill takes its contrast from the app's surface. */
+        col.fg = col.bg.a == 255 ? cui__legible(CUI_C(ui, FOREGROUND), col.bg, 4.5f) : CUI_C(ui, FOREGROUND);
+        col.bg_hover = cui_mix(col.bg, col.fg, 0.12f);
+        col.bg_press = cui_mix(col.bg, col.fg, 0.06f);
+    }
+    if (custom_fg) col.fg = cui_color_of(ui, o->color);
     cui__transition(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER, CUI__EASE_FEEDBACK);
     cui__transition(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, 0, CUI__EASE_STATE);
     cui__transition(ui, &st->press, r.pressed ? CUI__PRESS : 1.0f, CUI__T_PRESS, CUI__EASE_FEEDBACK);
 
     float h = cui__control_height(ui, o->size);
     float fs = o->size == CUI_SIZE_SM ? ui->theme.text_sm : o->size == CUI_SIZE_LG ? ui->theme.text_lg - 1 : ui->theme.text_body;
+    if (!icon_only && o->font_size > 0) {
+        fs = o->font_size;
+        h = CUI_MAX(h, cui__fs(ui, fs) * 1.3f + 12);
+    }
     float icon_size = o->size == CUI_SIZE_SM ? 14 : o->size == CUI_SIZE_LG ? 18 : 16;
     float pad = o->size == CUI_SIZE_SM ? 11 : o->size == CUI_SIZE_LG ? 18 : 14;
     if (v == CUI_BUTTON_LINK) pad = 2;
@@ -393,10 +406,11 @@ static bool cui__button_impl(cui_ctx *ui, const char *label, const char *icon_on
     if (o->full_width) { n->w = CUI_FILL; n->self_align = CUI_ALIGN_STRETCH; }
     else if (o->width.kind != CUI_SIZE_FIT) n->w = o->width;
     else n->self_align = CUI__ALIGN_NOSTRETCH;
-    float rad = CUI_MIN(ui->theme.radius_control, h * 0.5f);
+    float rad = o->radius < 0 ? 0 : CUI_MIN(o->radius > 0 ? o->radius : ui->theme.radius_control, h * 0.5f);
     n->radius = CUI_CORNERS(rad);
     cui_color bg = cui_mix(col.bg, col.bg_hover, st->hover.x);
     if (r.pressed) bg = col.bg_press;
+    if (custom_bg && !custom_fg && bg.a == 255) col.fg = cui__style_text(ui, bg, CUI_TRANSPARENT, col.fg);
     n->bg = bg;
     if (col.border.a) { n->border = 1; n->border_color = cui_mix(col.border, col.border_hover, st->hover.x); }
     n->scale = st->press.x;
@@ -460,12 +474,14 @@ void cui_badge_ex(cui_ctx *ui, const char *text, const cui_badge_opts *o) {
     cui_color tone = cui__tone_color(ui, o->tone);
     bool neutral = o->tone == CUI_TONE_NEUTRAL;
     float h = o->size == CUI_SIZE_SM ? 20 : o->size == CUI_SIZE_LG ? 26 : 22;
+    float fs = cui__fs(ui, o->font_size > 0 ? o->font_size : ui->theme.text_sm);
+    if (o->font_size > 0) h = CUI_MAX(h, fs * 1.2f + 8);
     int i = cui__node_new(ui, 0);
     cui_node *n = &ui->nodes[i];
     n->dir = CUI_ROW; n->align = CUI_ALIGN_CENTER; n->gap = 5;
     n->h = CUI_PX(h);
     n->pad[1] = n->pad[3] = o->size == CUI_SIZE_SM ? 7 : 8;
-    n->radius = CUI_CORNERS(o->size == CUI_SIZE_SM ? 5 : 6);
+    n->radius = CUI_CORNERS(CUI_MIN(cui__radius_override(o->radius, o->size == CUI_SIZE_SM ? 5 : 6), h * 0.5f));
     n->self_align = CUI__ALIGN_NOSTRETCH;
     cui_color fg;
     if (o->solid) {
@@ -477,6 +493,8 @@ void cui_badge_ex(cui_ctx *ui, const char *text, const cui_badge_opts *o) {
         n->bg = neutral ? CUI_C(ui, ACTIVE) : cui_mix(surf, tone, ui->mode == CUI_THEME_DARK ? 0.18f : 0.12f);
         fg = neutral ? CUI_C(ui, TEXT_SECONDARY) : cui__legible(cui_mix(CUI_C(ui, FOREGROUND), tone, ui->mode == CUI_THEME_DARK ? 0.80f : 0.88f), n->bg, 4.5f);
     }
+    if (cui__color_set(o->bg)) n->bg = cui_color_of(ui, o->bg);
+    fg = cui__style_text(ui, o->bg, o->color, fg);
     cui__open(ui, i);
     if (o->dot) {
         int dot = cui__leaf(ui, 0, CUI_PX(6), CUI_PX(6));
@@ -484,7 +502,7 @@ void cui_badge_ex(cui_ctx *ui, const char *text, const cui_badge_opts *o) {
         ui->nodes[dot].radius = CUI_CORNERS(3);
     }
     if (o->icon) cui__icon_node(ui, o->icon, 12, fg);
-    int t = cui__text_node(ui, text, -1, CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_sm), fg, false);
+    int t = cui__text_node(ui, text, -1, CUI_FONT_MEDIUM, fs, fg, false);
     ui->nodes[t].line_height = 1.2f;
     cui__close(ui);
 }
@@ -652,18 +670,25 @@ bool cui_card_begin(cui_ctx *ui, const cui_card_opts *o) {
     if (o->min_width > 0) n->min_w = o->min_width;
     if (o->max_width > 0) n->max_w = o->max_width;
     if (o->wrap && o->dir == CUI_ROW) n->flags |= CUI_NF_ROW_WRAP;
-    n->radius = CUI_CORNERS(ui->theme.radius_surface);
+    n->radius = CUI_CORNERS(cui__radius_override(o->radius, ui->theme.radius_surface));
     if (o->muted) n->bg = CUI_C(ui, SURFACE_MUTED);
     else {
         n->bg = CUI_C(ui, SURFACE);
         n->border = 1;
         n->border_color = o->selected ? CUI_C(ui, ACCENT) : cui_mix(CUI_C(ui, BORDER), CUI_C(ui, BORDER_STRONG), hover);
     }
+    if (cui__color_set(o->bg)) n->bg = cui_color_of(ui, o->bg);
+    if (o->border != 0) n->border = CUI_MAX(0, o->border);
+    if (o->muted && o->border > 0) n->border_color = CUI_C(ui, BORDER);
+    if (cui__color_set(o->border_color) && !o->selected)
+        n->border_color = cui_mix(cui_color_of(ui, o->border_color), CUI_C(ui, BORDER_STRONG), hover);
+    if (o->selected && n->border > 0) n->border_color = CUI_C(ui, ACCENT);
     if (o->hoverable) {
         n->elevation = CUI_ELEVATION_RAISED;
         n->elevation_alpha = hover;
         cui__mark_interactive(ui, i, CUI_IF_FOCUSABLE);
         if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
+        cui__focus_ring(ui, i, r.focus_visible ? 1.0f : 0.0f);
     }
     cui__open(ui, i);
     if (id) ui->last_id = id;

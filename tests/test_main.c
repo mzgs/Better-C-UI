@@ -511,6 +511,127 @@ static uint32_t frame_hash(cui_ctx *ui) {
     return h;
 }
 
+typedef struct { cui_button_opts opts; cui_id custom, other, icon; int clicks, icon_clicks; } button_style_ctx;
+static void build_button_style(cui_ctx *ui, void *u) {
+    button_style_ctx *b = u;
+    cui_column(ui, .pad = 20, .gap = 12, .width = CUI_FILL) {
+        if (cui_button_ex(ui, "Label##custom", &b->opts)) b->clicks++;
+        b->custom = cui_last_id(ui);
+        cui_button(ui, "Label##default", .variant = CUI_BUTTON_GHOST);
+        b->other = cui_last_id(ui);
+        if (cui_icon_button_ex(ui, CUI_ICON_HEART, &b->opts)) b->icon_clicks++;
+        b->icon = cui_last_id(ui);
+    }
+}
+
+static cui_color button_style_pixel(cui_ctx *ui, float x, float y) {
+    const cui_draw_data *dd = cui_get_draw_data(ui);
+    unsigned char *px = malloc((size_t)dd->width_px * dd->height_px * 4);
+    cui_sw_render(g_sw, dd, px, dd->width_px, dd->height_px, dd->width_px * 4, CUI_SW_RGBA);
+    unsigned char *p = px + ((size_t)(int)y * dd->width_px + (int)x) * 4;
+    cui_color c = { p[0], p[1], p[2], p[3] };
+    free(px);
+    return c;
+}
+
+static void test_button_style(void) {
+    printf("buttons: local background, radius, scaled text and interaction in light/dark and RTL\n");
+    for (int dark = 0; dark < 2; dark++) for (int rtl = 0; rtl < 2; rtl++) {
+        cui_ctx *ui = cui_create(&(cui_ctx_desc){ .renderer = cui_sw_iface(g_sw),
+            .theme = dark ? CUI_THEME_DARK : CUI_THEME_LIGHT,
+            .direction = rtl ? CUI_DIRECTION_RTL : CUI_DIRECTION_LTR });
+        cui_set_viewport(ui, 360, 260, 1);
+        cui_set_reduced_motion(ui, !rtl);
+        cui_theme_get(ui)->font_scale = 1.25f;
+        button_style_ctx b = { .opts = { .variant = CUI_BUTTON_GHOST } };
+        run(ui, build_button_style, &b, 2);
+        cui_rect original = rect_of(ui, b.other);
+        CHECK_NEAR(rect_of(ui, b.custom).w, original.w, 0.01);
+        CHECK_NEAR(rect_of(ui, b.custom).h, original.h, 0.01);
+
+        b.opts.bg = CUI_RGB(0xcc2244);
+        b.opts.radius = -1;
+        b.opts.font_size = 32;
+        run(ui, build_button_style, &b, 2);
+        cui_rect r = rect_of(ui, b.custom), icon = rect_of(ui, b.icon);
+        CHECK_NEAR(r.w, cui_measure_text(ui, CUI_FONT_MEDIUM, 40, "Label", -1).width + 28, 0.1);
+        CHECK(r.h >= 40 * 1.3f + 12);
+        CHECK_NEAR(rect_of(ui, b.other).w, original.w, 0.01);
+        CHECK_NEAR(rect_of(ui, b.other).h, original.h, 0.01);
+        CHECK(icon.w == 36 && icon.h == 36);
+        CHECK(r.x >= 0 && r.x + r.w <= 360);
+        cui_color square = button_style_pixel(ui, r.x + 1, r.y + 1);
+        CHECK(square.r == 0xcc && square.g == 0x22 && square.b == 0x44);
+        cui_color ip = button_style_pixel(ui, icon.x + 1, icon.y + 1);
+        CHECK(ip.r == 0xcc && ip.g == 0x22 && ip.b == 0x44);
+
+        b.opts.radius = 1000;
+        run(ui, build_button_style, &b, 1);
+        cui_color rounded = button_style_pixel(ui, r.x + 1, r.y + 1);
+        CHECK(rounded.r != square.r || rounded.g != square.g || rounded.b != square.b);
+        b.opts.radius = 6;
+        cui_vec2 c = center(r);
+        cui_input_mouse_move(ui, c.x, c.y);
+        run(ui, build_button_style, &b, 20);
+        cui_color hover = button_style_pixel(ui, c.x, r.y + 6);
+        CHECK(hover.r != square.r || hover.g != square.g || hover.b != square.b);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        run(ui, build_button_style, &b, 1);
+        cui_color pressed = button_style_pixel(ui, c.x, r.y + 6);
+        CHECK(pressed.r != hover.r || pressed.g != hover.g || pressed.b != hover.b);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        run(ui, build_button_style, &b, 1);
+        CHECK(b.clicks == 1);
+        cui_input_mouse_leave(ui);
+        cui_input_key(ui, CUI_KEY_TAB, true, 0); cui_input_key(ui, CUI_KEY_TAB, false, 0);
+        run(ui, build_button_style, &b, 1);
+        cui_input_key(ui, CUI_KEY_TAB, true, CUI_MOD_SHIFT); cui_input_key(ui, CUI_KEY_TAB, false, CUI_MOD_SHIFT);
+        run(ui, build_button_style, &b, 1);
+        cui_input_key(ui, CUI_KEY_ENTER, true, 0); cui_input_key(ui, CUI_KEY_ENTER, false, 0);
+        run(ui, build_button_style, &b, 1);
+        CHECK(b.clicks == 2);
+        b.opts.disabled = true;
+        click_at(ui, build_button_style, &b, c.x, c.y);
+        CHECK(b.clicks == 2);
+        b.opts.disabled = false;
+        b.opts.loading = true;
+        click_at(ui, build_button_style, &b, c.x, c.y);
+        CHECK(b.clicks == 2);
+        b.opts.loading = false;
+        c = center(rect_of(ui, b.icon));
+        click_at(ui, build_button_style, &b, c.x, c.y);
+        CHECK(b.icon_clicks == 1);
+        cui_input_mouse_leave(ui);
+        b.opts.bg = CUI_COLOR_ACCENT;
+        run(ui, build_button_style, &b, 20);
+        r = rect_of(ui, b.custom);
+        cui_color token = cui_color_of(ui, CUI_COLOR_ACCENT);
+        cui_color actual = button_style_pixel(ui, r.x + r.w / 2, r.y + 6);
+        CHECK(actual.r == token.r && actual.g == token.g && actual.b == token.b);
+        b.opts.bg = CUI_COLOR_ACCENT_SUBTLE;
+        run(ui, build_button_style, &b, 1);
+        const cui_draw_data *dd = cui_get_draw_data(ui);
+        cui_color fg = cui_color_of(ui, CUI_COLOR_FOREGROUND);
+        bool found_fg = false;
+        for (int i = 0; i < dd->vertex_count; i++) {
+            const cui_vertex *v = &dd->vertices[i];
+            if (v->mode == CUI_SHADE_TEXT && v->y >= r.y && v->y < r.y + r.h &&
+                v->color.r == fg.r && v->color.g == fg.g && v->color.b == fg.b) found_fg = true;
+        }
+        CHECK(found_fg);
+        b.opts.color = CUI_RGB(0x18b480);
+        run(ui, build_button_style, &b, 1);
+        dd = cui_get_draw_data(ui);
+        found_fg = false;
+        for (int i = 0; i < dd->vertex_count; i++) {
+            const cui_vertex *v = &dd->vertices[i];
+            if (v->mode == CUI_SHADE_TEXT && v->color.r == 0x18 && v->color.g == 0xb4 && v->color.b == 0x80) found_fg = true;
+        }
+        CHECK(found_fg);
+        cui_destroy(ui);
+    }
+}
+
 static void test_textarea_and_clear(void) {
     printf("text input: textarea wheel, focus flags, clear button undo\n");
     cui_ctx *ui = new_ctx();
@@ -7596,6 +7717,7 @@ int main(void) {
     test_layout_autogrid();
     test_layout_narrow_table();
     test_button_click();
+    test_button_style();
     test_click_then_keys();
     test_keyboard_nav();
     test_toggles_and_slider();
