@@ -689,7 +689,7 @@ typedef struct cui_select_opts {
     bool searchable;           /* combobox: filter options by typing */
     bool disabled;
     cui_size width;
-    cui_color bg, color;       /* optional trigger, popup and option text colors */
+    cui_color bg, color;       /* optional trigger/popup fill and text; automatic text tracks highlighted fills, color wins */
     cui_color border_color;    /* resting border; the open/focus indicator takes precedence */
     float radius;             /* 0 = defaults, <0 = square, >0 = trigger/popup corner radius */
     float font_size;          /* <=0 = default; trigger, search and options scale together */
@@ -729,7 +729,7 @@ typedef struct cui_nav_opts {
     bool selected;             /* the current page: medium weight text, and the group's highlight glides to it */
     const char *group;         /* items with the same group name share one highlight; `NULL` puts them in one common group */
     cui_color bg;              /* this item's selected highlight; zero = default */
-    cui_color color;           /* label/icon color; zero = state default */
+    cui_color color;           /* label/icon/badge color; zero = state default, readable on an opaque custom highlight */
     float font_size;          /* <=0 = default; respects font_scale, height grows to fit */
 } cui_nav_opts;
 CUI_API bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *opts);

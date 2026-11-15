@@ -36,6 +36,11 @@ static float style_luminance(cui_color c) {
     return 0.2126f * channels[0] + 0.7152f * channels[1] + 0.0722f * channels[2];
 }
 
+static void style_check_contrast(cui_color fg, cui_color bg) {
+    float f = style_luminance(fg), b = style_luminance(bg);
+    CHECK((CUI_MAX(f, b) + 0.05f) / (CUI_MIN(f, b) + 0.05f) >= 4.5f);
+}
+
 static void style_button_frame(cui_ctx *ui, int gray, bool icon, cui_color color) {
     cui_begin_frame(ui, 1.0f / 60);
     cui_color bg = cui__rgba(gray, gray, gray, 255);
@@ -174,6 +179,78 @@ static void style_select_frame(cui_ctx *ui, style_select *s) {
 static void style_select_key(cui_ctx *ui, style_select *s, cui_key key) {
     cui_input_key(ui, key, true, 0); cui_input_key(ui, key, false, 0);
     style_select_frame(ui, s);
+}
+
+static void test_style_select_contrast(int dark, int rtl) {
+    static const char *icons[] = { CUI_ICON_INBOX, CUI_ICON_FOLDER, CUI_ICON_SETTINGS };
+    for (int reduced = 0; reduced < 2; reduced++) {
+        cui_ctx *ui = style_context(dark, rtl);
+        cui_set_reduced_motion(ui, reduced != 0);
+        style_select s = { .opts = { .bg = CUI_RGB(0x777777), .icons = icons } };
+        style_select_frame(ui, &s); style_select_frame(ui, &s);
+        cui_id id = cui_make_id(ui, "select");
+        ui->focus = id; ui->focus_visible = true;
+        style_select_key(ui, &s, CUI_KEY_DOWN);
+        static const int grays[] = { 0, 100, 118, 119, 128, 255 };
+        for (int g = 0; g < CUI_COUNTOF(grays); g++) {
+            s.opts.bg = cui__rgba(grays[g], grays[g], grays[g], 255);
+            for (int frame = 0; frame < 24; frame++) {
+                style_select_frame(ui, &s);
+                int rows = 0;
+                for (int i = 0; i < ui->node_count; i++) {
+                    cui_node *n = &ui->nodes[i];
+                    if (!n->text || n->parent < 0 || ui->nodes[n->parent].id == id) continue;
+                    cui_node *row = &ui->nodes[n->parent];
+                    cui_color bg = s.opts.bg, overlay = row->bg;
+                    bg.r = (uint8_t)((overlay.r * overlay.a + bg.r * (255 - overlay.a) + 127) / 255);
+                    bg.g = (uint8_t)((overlay.g * overlay.a + bg.g * (255 - overlay.a) + 127) / 255);
+                    bg.b = (uint8_t)((overlay.b * overlay.a + bg.b * (255 - overlay.a) + 127) / 255);
+                    style_check_contrast(n->text_color, bg);
+                    if (strcmp(n->text, frame < 12 ? "Beta" : "Alpha") == 0)
+                        cui_input_mouse_move(ui, row->rect.x + row->rect.w / 2, row->rect.y + row->rect.h / 2);
+                    rows++;
+                }
+                CHECK(rows >= 3);
+            }
+        }
+        s.opts.color = CUI_RGB(0xfa4567);
+        style_select_frame(ui, &s);
+        for (int i = 0; i < ui->node_count; i++) {
+            cui_node *n = &ui->nodes[i];
+            if (n->text && n->parent >= 0 && ui->nodes[n->parent].id != id)
+                CHECK(style_equal(n->text_color, s.opts.color));
+        }
+        cui_destroy(ui);
+    }
+}
+
+static void test_style_nav_contrast(int dark, int rtl) {
+    cui_ctx *ui = style_context(dark, rtl);
+    for (int test = 0; test < 5; test++) {
+        cui_color bg = test == 0 ? CUI_RGB(0xffffff) : CUI_RGB(0x000000);
+        if (test == 4) bg = CUI_TRANSPARENT;
+        cui_color color = test == 2 ? CUI_RGB(0xfa4567) : CUI_TRANSPARENT;
+        for (int frame = 0; frame < 4; frame++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_column(ui, .width = CUI_FILL, .pad = 20) {
+                cui_nav_item(ui, "First", .group = "nav-contrast");
+                cui_nav_item(ui, "Inbox", .group = "nav-contrast", .selected = test != 3,
+                             .badge = "12", .bg = bg, .color = color);
+            }
+            cui_end_frame(ui);
+        }
+        bool badge = false;
+        for (int i = 0; i < ui->node_count; i++) {
+            cui_node *n = &ui->nodes[i];
+            if (!n->text || strcmp(n->text, "12") != 0) continue;
+            badge = true;
+            if (test == 2) CHECK(style_equal(n->text_color, color));
+            else if (test >= 3) CHECK(style_equal(n->text_color, CUI_C(ui, TEXT_SECONDARY)));
+            else style_check_contrast(n->text_color, bg);
+        }
+        CHECK(badge);
+    }
+    cui_destroy(ui);
 }
 
 static void test_style_select(int dark, int rtl) {
@@ -327,6 +404,8 @@ int main(void) {
     for (int dark = 0; dark < 2; dark++) for (int rtl = 0; rtl < 2; rtl++) {
         test_style_fields(dark, rtl);
         test_style_select(dark, rtl);
+        test_style_select_contrast(dark, rtl);
+        test_style_nav_contrast(dark, rtl);
         test_style_surfaces(dark, rtl);
     }
     printf("component styles: %d checks, %d failed\n", style_checks, style_failed);

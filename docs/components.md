@@ -60,7 +60,7 @@ Style one component without changing its neighbors or the shared theme. All over
 | Card | `bg`, `border_color`, `border`, `radius`; contents keep their own text styles |
 | Badge, chip | `bg`, `color`, `radius`, `font_size` |
 | Tabs | `bg` for the selected pill or underline, `color` for labels/icons, `font_size` |
-| Navigation item | `bg` for this item's selected highlight, `color` for its label/icon, `font_size` |
+| Navigation item | `bg` for this item's selected highlight, `color` for its label/icon/badge, `font_size` |
 
 ```c
 cui_input(ui, "name", name, sizeof name, .radius = 6, .font_size = 16);
@@ -311,6 +311,8 @@ cui_select(ui, "lang", languages, n, &lang, .searchable = true, .placeholder = "
 
 `searchable` adds a filter field at the top of the list (a combobox). Options: `label`, `placeholder`, `icons`, `searchable`, `disabled`, `width`, plus the `bg`, `color`, `border_color`, `radius` and `font_size` [local styles](#local-styles). The popup and search field follow the trigger's styling; option rows grow to fit larger text. Keyboard: Up/Down open the list and move the highlight, Enter chooses, Esc closes.
 
+On opaque custom backgrounds, automatic option text and icons keep at least 4.5:1 contrast against the highlighted fill throughout hover transitions. An explicit `color` takes precedence.
+
 <picture><source media="(prefers-color-scheme: dark)" srcset="images/components/select-styles-dark.png"><img src="images/components/select-styles.png" alt="A styled searchable select with matching popup and larger option text"></picture>
 
 Returns true on the frame the choice changes. `country` is your `int`, the index of the chosen item. A value outside 0 to `count` - 1, such as -1, means nothing is chosen, and the field then shows `placeholder`, or "Select". Choosing an item closes the list, which scrolls once it is taller than 300 points. The search keeps the items that contain the typed text, whatever the case. For several choices use the multi-select, and for two to five options that should stay visible use a segmented control.
@@ -415,7 +417,7 @@ if (cui_nav_item(ui, "Projects", .icon = CUI_ICON_FOLDER, .selected = page == 1)
 
 All items of a `group` share one highlight that glides to the selected item.
 
-Each item accepts `bg` for its selected highlight, `color` for its label/icon, and `font_size`. The shared highlight takes the selected item's color even when it is not the first item. See [Local styles](#local-styles).
+Each item accepts `bg` for its selected highlight, `color` for its label/icon/badge, and `font_size`. Badge text also derives a readable color on opaque custom highlights. The shared highlight takes the selected item's color even when it is not the first item. See [Local styles](#local-styles).
 
 `cui_nav_item` returns true on the frame it is clicked. It does not remember the selection: you keep the current page, as `page` does above, and pass `.selected` on every frame. The label is also the identity, so two items with the same label in one scope need a key: `"Settings##team"` shows "Settings". `badge` is text, so format a count yourself. Items without a `group` share one common group; name the groups when a window has two separate lists, so each keeps its own highlight. An item fills the width of its container. `cui_nav_section` draws a title above a set of items and returns nothing.
 

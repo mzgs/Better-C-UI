@@ -808,7 +808,8 @@ bool cui_nav_item_ex(cui_ctx *ui, const char *label, const cui_nav_opts *o) {
     ui->nodes[t].line_height = 1.3f;
     ui->nodes[t].w = CUI_FILL;
     if (o->badge) {
-        int b = cui__text_node(ui, o->badge, -1, CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_xs), CUI_C(ui, TEXT_SECONDARY), false);
+        cui_color badge_fg = cui__style_text(ui, o->selected ? o->bg : CUI_TRANSPARENT, o->color, CUI_C(ui, TEXT_SECONDARY));
+        int b = cui__text_node(ui, o->badge, -1, CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_xs), badge_fg, false);
         ui->nodes[b].flags |= CUI_NF_TABULAR;
         ui->nodes[b].line_height = 1.2f;
     }

@@ -291,6 +291,17 @@ static bool cui__menu_item(cui_ctx *ui, const char *label, const cui_menu_item_o
     cui_color hover_bg = o->danger ? cui_alpha(CUI_C(ui, DANGER), 0.1f) : CUI_C(ui, ACTIVE);
     if (style && cui__color_set(style->bg)) hover_bg = cui_alpha(fg, 0.10f);
     n->bg = cui_alpha(hover_bg, st->hover);
+    if (style && !cui__color_set(style->color)) {
+        cui_color fill = cui_color_of(ui, style->bg);
+        if (fill.a == 255) {
+            /* Contrast follows the visible fill, including its hover overlay. */
+            float a = n->bg.a / 255.0f;
+            fill = cui__rgba((int)(fill.r * (1 - a) + n->bg.r * a + 0.5f),
+                             (int)(fill.g * (1 - a) + n->bg.g * a + 0.5f),
+                             (int)(fill.b * (1 - a) + n->bg.b * a + 0.5f), 255);
+            fg = cui__style_text(ui, fill, CUI_TRANSPARENT, fg);
+        }
+    }
     n->opacity = disabled ? CUI__DISABLED : 1.0f;
     cui__mark_interactive(ui, i, 0);
     if (r.hovered && !disabled) cui__set_cursor(ui, CUI_CURSOR_HAND);

@@ -6,6 +6,8 @@ What changed in Better-C-UI, newest first. Component previews and desktop exampl
 
 ### Fixed
 
+- Styled select options retain readable automatic text and icons throughout highlighting; navigation badges follow custom selection backgrounds and explicit text colors.
+
 - Custom button backgrounds keep readable automatic text and icon colors during hover, press and release, including mid-gray fills that switch between light and dark text. Explicit text colors remain unchanged.
 
 - The video example's fullscreen button now enters native fullscreen, shows an exit button, and supports Escape to restore the window. Added `cui_app_set_fullscreen` / `cui_app_is_fullscreen` for app hosts.
