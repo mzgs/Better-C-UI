@@ -152,6 +152,16 @@ With Visual Studio on Windows, run `build\examples\Release\hello.exe` instead.
 
 Linux needs the X11 development headers (`libx11-dev`). Windows and macOS need nothing beyond the compiler, CMake and system SDK.
 
+### Using Better-C-UI with an AI agent
+
+Give your agent this repository's URL and ask it to read [Getting started](docs/getting-started.md) before adding CUI to your app. No tool-specific skill is required.
+
+- **Build setup:** use the CMake snippet above after creating your executable with `add_executable(my_app main.c)`. Link `cui::cui` and call `cui_app_target(my_app)`; include `<cui/cui.h>` and `<cui/cui_app.h>` in your C99 code.
+- **Use actual APIs:** check the [public headers](include/cui/), [component docs](docs/components.md), [more components](docs/components-more.md) and [examples](examples/) from the library revision your app uses. The [recipes](docs/recipes.md) provide complete programs.
+- **Keep app state between frames:** describe the UI each frame through `cui_app_run` or `cui_app_frame`. Components return interactions; keep values such as text buffers, selections and counters in your app's state. See [Building an app](docs/apps.md).
+- **Choose updates deliberately:** `GIT_TAG main` picks up library updates when you reconfigure and rebuild. Pin a commit for reproducible releases. Already shipped apps need a new app build to receive those updates.
+- **Verify the result:** build the app and exercise its UI on the target platform, including keyboard input, narrow windows and light/dark themes. Report the commands run and anything left unchecked.
+
 ## What is in it
 
 | Group | Components |
