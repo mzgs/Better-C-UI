@@ -351,7 +351,7 @@ int cui__tokenize(const cui__lang *L, bool json, const char *s, int n, bool *in_
             continue;
         }
         char c = s[i];
-        if (c == ' ' || c == '\t') { int st = i; while (i < n && (s[i] == ' ' || s[i] == '\t')) i++; EMIT(st, i - st, CUI__TK_TEXT); continue; }
+        if (c == ' ' || c == '\t') { int st = i; while (i < n && s[i] == c) i++; EMIT(st, i - st, CUI__TK_TEXT); continue; }
         if (cui__syntax_at(s, n, i, L->block_start, false)) {
             int st = i;
             i += (int)strlen(L->block_start);
@@ -503,6 +503,10 @@ float cui__draw_code_line(cui_ctx *ui, const char *lang, const char *s, int n, b
         x += cui__text_width(ui, CUI_FONT_MONO, size, s + tk[t].start, tk[t].len, true);
         pos = tk[t].start + tk[t].len;
     }
+    if (pos < n && x <= max_x) {
+        cui__draw_text_line(ui, CUI_FONT_MONO, size, x, y, colors[CUI__TK_TEXT], s + pos, n - pos, true);
+        x += cui__text_width(ui, CUI_FONT_MONO, size, s + pos, n - pos, true);
+    }
     return x;
 }
 
@@ -552,9 +556,11 @@ static void cui__paint_code(cui_ctx *ui, cui_node *n, void *data) {
         int nt = p->syntax ? cui__syntax_tokens(p->syntax + i, p->code + i, e - i, toks, tok_cap) :
                             cui__tokenize(&p->lang, p->json, p->code + i, e - i, &block, toks, 256);
         float x = x0;
+        int pos = 0;
         for (int k = 0; k < nt; k++) {
             const char *s = p->code + i + toks[k].start;
             int len = toks[k].len;
+            pos = toks[k].start + len;
             /* tabs become four spaces */
             if (len > 0 && s[0] == '\t') {
                 float tw = cui__text_width(ui, CUI_FONT_MONO, p->size, "    ", 4, true);
@@ -571,6 +577,14 @@ static void cui__paint_code(cui_ctx *ui, cui_node *n, void *data) {
             if (toks[k].kind != CUI__TK_TEXT || s[0] != ' ')
                 cui__draw_text_line(ui, CUI_FONT_MONO, p->size, x, ty, p->colors[toks[k].kind], s, len, true);
             x += cui__text_width(ui, CUI_FONT_MONO, p->size, s, len, true);
+        }
+        if (pos < e - i) {
+            const char *s = p->code + i + pos;
+            int rem = (e - i) - pos;
+            float rw = cui__text_width(ui, CUI_FONT_MONO, p->size, s, rem, true);
+            cui__selection_line(ui, p->selection, p->selection_offset + i + pos,
+                CUI_FONT_MONO, p->size, s, rem, (cui_rect){ x, y - 1, rw, p->lh }, true, 0);
+            cui__draw_text_line(ui, CUI_FONT_MONO, p->size, x, ty, p->colors[CUI__TK_TEXT], s, rem, true);
         }
         y += p->lh;
         line++;

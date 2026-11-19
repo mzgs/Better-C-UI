@@ -262,7 +262,7 @@ bool cui_data_grid_begin_ex(cui_ctx *ui, const char *id_str, const cui_grid_colu
             cui__mark_interactive(ui, h, CUI_IF_DRAG);
             if (rr.hovered || active) {
                 cui__set_cursor(ui, CUI_CURSOR_RESIZE_EW);
-                int bar = cui__absolute(ui, 0, 5, 9, 2, CUI__GRID_HEAD - 18);
+                int bar = cui__absolute(ui, 0, st->widths[k] - 1, 9, 2, CUI__GRID_HEAD - 18);
                 ui->nodes[bar].bg = active ? cui__emphasis(ui) : CUI_C(ui, BORDER_STRONG);
                 ui->nodes[bar].radius = CUI_CORNERS(1);
                 (void)bar;
@@ -644,7 +644,7 @@ bool cui_filter_bar(cui_ctx *ui, const char *id_str, const cui_filter_field *fie
         }
         cui_menu_end(ui);
     }
-    if (avail > 0) ui->nodes[ui->last_node].h = CUI_PX(30);
+    if (avail > 0 && ui->nodes[row].last >= 0) ui->nodes[ui->nodes[row].last].h = CUI_PX(30);
     bool any = false;
     for (int k = 0; k < count; k++) if (selected[k]) any = true;
     if (any || (search && search[0])) {

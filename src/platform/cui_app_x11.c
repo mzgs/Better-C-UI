@@ -312,12 +312,18 @@ bool cui__plat_gl_create(cui_app *app, bool vsync) {
     int attrs[] = { GLX_CONTEXT_MAJOR_VERSION_ARB_, 3, GLX_CONTEXT_MINOR_VERSION_ARB_, 3,
                     GLX_CONTEXT_PROFILE_MASK_ARB_, GLX_CONTEXT_CORE_PROFILE_BIT_ARB_,
                     GLX_CONTEXT_FLAGS_ARB_, GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB_, None };
+    XSync(x->dpy, False);
     int (*old)(Display *, XErrorEvent *) = XSetErrorHandler(cui__x11_error_handler);
     cui__x11_err_flag = 0;
     x->ctx = create(x->dpy, x->fbc, NULL, True, attrs);
     XSync(x->dpy, False);
+    if (!x->ctx || cui__x11_err_flag) {
+        if (x->ctx) { x->DestroyContext(x->dpy, x->ctx); XSync(x->dpy, False); }
+        XSetErrorHandler(old);
+        x->ctx = NULL;
+        return false;
+    }
     XSetErrorHandler(old);
-    if (!x->ctx || cui__x11_err_flag) { x->ctx = NULL; return false; }
     if (!x->MakeCurrent(x->dpy, x->win, x->ctx)) { x->DestroyContext(x->dpy, x->ctx); x->ctx = NULL; return false; }
     PFN_glXSwapIntervalEXT sie = (PFN_glXSwapIntervalEXT)x->GetProcAddress((const unsigned char *)"glXSwapIntervalEXT");
     PFN_glXSwapIntervalMESA sim = (PFN_glXSwapIntervalMESA)x->GetProcAddress((const unsigned char *)"glXSwapIntervalMESA");
@@ -395,7 +401,10 @@ void cui__plat_set_title(cui_app *app, const char *title) {
 
 void cui__plat_set_size(cui_app *app, int w, int h) {
     cui__x11 *x = cui__x(app);
-    XResizeWindow(x->dpy, x->win, (unsigned)(w * x->scale), (unsigned)(h * x->scale));
+    int pw = (int)(w * x->scale), ph = (int)(h * x->scale);
+    if (pw < 1) pw = 1;
+    if (ph < 1) ph = 1;
+    XResizeWindow(x->dpy, x->win, (unsigned)pw, (unsigned)ph);
     XFlush(x->dpy);
 }
 
@@ -447,15 +456,16 @@ static void cui__x11_handle_selection_request(cui__x11 *x, XSelectionRequestEven
     ev.target = req->target;
     ev.time = req->time;
     ev.property = None;
-    if (x->clip_owned) {
+    if (x->clip_owned && req->selection == x->clipboard) {
+        Atom prop = req->property != None ? req->property : req->target;
         if (req->target == x->targets) {
             Atom list[3] = { x->targets, x->utf8_string, XA_STRING };
-            XChangeProperty(x->dpy, req->requestor, req->property, XA_ATOM, 32, PropModeReplace, (unsigned char *)list, 3);
-            ev.property = req->property;
+            XChangeProperty(x->dpy, req->requestor, prop, XA_ATOM, 32, PropModeReplace, (unsigned char *)list, 3);
+            ev.property = prop;
         } else if (req->target == x->utf8_string || req->target == XA_STRING) {
-            XChangeProperty(x->dpy, req->requestor, req->property, req->target, 8, PropModeReplace,
+            XChangeProperty(x->dpy, req->requestor, prop, req->target, 8, PropModeReplace,
                             (unsigned char *)x->clip_owned, (int)strlen(x->clip_owned));
-            ev.property = req->property;
+            ev.property = prop;
         }
     }
     XSendEvent(x->dpy, req->requestor, False, 0, (XEvent *)&ev);
@@ -470,21 +480,25 @@ static const char *cui__x11_get_clip(void *user) {
     if (owner == None) return NULL;
     XConvertSelection(x->dpy, x->clipboard, x->utf8_string, x->cui_sel, x->win, CurrentTime);
     XFlush(x->dpy);
+    Atom incr = XInternAtom(x->dpy, "INCR", False);
     double start = cui__plat_now();
     while (cui__plat_now() - start < 0.5) {
         XEvent ev;
         if (XCheckTypedWindowEvent(x->dpy, x->win, SelectionNotify, &ev)) {
-            if (ev.xselection.property == None) return NULL;
-            Atom type;
-            int fmt;
-            unsigned long n, rest;
+            if (ev.xselection.selection != x->clipboard) continue;
+            if (ev.xselection.property == None || ev.xselection.property != x->cui_sel) return NULL;
+            Atom type = None;
+            int fmt = 0;
+            unsigned long n = 0, rest = 0;
             unsigned char *data = NULL;
-            XGetWindowProperty(x->dpy, x->win, x->cui_sel, 0, 1 << 24, True, AnyPropertyType, &type, &fmt, &n, &rest, &data);
+            int status = XGetWindowProperty(x->dpy, x->win, x->cui_sel, 0, 1 << 24, True, AnyPropertyType, &type, &fmt, &n, &rest, &data);
             free(x->clip_read);
             x->clip_read = NULL;
-            if (data) {
-                x->clip_read = malloc(n + 1);
-                if (x->clip_read) { memcpy(x->clip_read, data, n); x->clip_read[n] = 0; }
+            if (status == Success && data) {
+                if (fmt == 8 && type != incr) {
+                    x->clip_read = malloc(n + 1);
+                    if (x->clip_read) { memcpy(x->clip_read, data, n); x->clip_read[n] = 0; }
+                }
                 XFree(data);
             }
             return x->clip_read;
@@ -714,20 +728,28 @@ static void cui__x11_event(cui_app *app, XEvent *ev) {
             if (bit) cui_input_key(ui, CUI_KEY_NONE, down, down ? (mods | bit) : (mods & ~bit));
         }
         if (down) {
-            char buf[64];
+            char buf[64], *dyn = NULL, *out = buf;
             KeySym sym = 0;
-            int n;
+            int n = 0;
             if (x->ic) {
-                Status st;
+                Status st = 0;
                 n = Xutf8LookupString(x->ic, &ev->xkey, buf, (int)sizeof buf - 1, &sym, &st);
+                if (st == XBufferOverflow && n > 0) {
+                    dyn = malloc((size_t)n + 1);
+                    if (dyn) {
+                        out = dyn;
+                        n = Xutf8LookupString(x->ic, &ev->xkey, dyn, n, &sym, &st);
+                    } else n = 0;
+                }
                 if (st != XLookupChars && st != XLookupBoth) n = 0;
             } else {
                 n = XLookupString(&ev->xkey, buf, (int)sizeof buf - 1, &sym, NULL);
             }
             if (n > 0 && !(mods & CUI_MOD_CTRL)) {
-                buf[n] = 0;
-                cui_input_text(ui, buf);
+                out[n] = 0;
+                cui_input_text(ui, out);
             }
+            free(dyn);
         }
         break;
     }

@@ -26,6 +26,7 @@ void cui__free(cui_ctx *ui, void *p) { if (p) ui->alloc.free(p, ui->alloc.user);
 /* Frame arena: a main block that grows between frames, plus overflow blocks
  * for the current frame so pointers handed out stay valid. */
 void *cui__frame_alloc(cui_ctx *ui, size_t size) {
+    if (size == 0) size = 1;
     size = (size + 15) & ~(size_t)15;
     if (ui->arena_used + size <= ui->arena_cap) {
         void *p = ui->arena + ui->arena_used;
@@ -320,6 +321,7 @@ static void cui__state_rehash(cui_ctx *ui, int nb) {
 }
 
 static cui_state_entry *cui__state_find(cui_ctx *ui, cui_id id) {
+    if (!id) return NULL;
     int b = (int)(id & (uint32_t)(ui->bucket_count - 1));
     for (int i = ui->state_buckets[b]; i >= 0; i = ui->states[i].next)
         if (ui->states[i].id == id) return &ui->states[i];
@@ -327,6 +329,8 @@ static cui_state_entry *cui__state_find(cui_ctx *ui, cui_id id) {
 }
 
 cui_state_entry *cui__state_entry(cui_ctx *ui, cui_id id) {
+    /* 0 marks a free slot in ui->states[]; remap a caller-supplied 0 so it stays trackable and GC-safe. */
+    if (!id) id = 1u;
     cui_state_entry *e = cui__state_find(ui, id);
     if (e) { e->last_frame = ui->frame; return e; }
     int idx;
@@ -671,7 +675,7 @@ cui_interact cui__interact(cui_ctx *ui, cui_id id, int flags) {
          cui_key_pressed(ui, CUI_KEY_HOME) || cui_key_pressed(ui, CUI_KEY_END)))
         ui->focus_visible = true;
     r.focus_visible = r.focused && ui->focus_visible;
-    if (r.focused && ui->focus_visible && !(flags & CUI_IF_TEXT)) {
+    if (r.focused && ui->focus_visible && !covered && !(flags & CUI_IF_TEXT)) {
         if (cui_key_pressed(ui, CUI_KEY_ENTER) || cui_key_pressed(ui, CUI_KEY_SPACE)) {
             r.clicked = true;
             r.keyboard_activate = true;
@@ -739,7 +743,7 @@ float cui__transition(cui_ctx *ui, cui_transition *s, float target, float durati
 
 float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, float bounce) {
     float motion = ui->theme.motion;
-    if (motion <= 0.0f || ui->frame <= 1) { s->x = target; s->v = 0; return target; }
+    if (motion <= 0.0f || duration <= 0.0f || ui->frame <= 1) { s->x = target; s->v = 0; return target; }
     if (s->x == target && s->v == 0) return target;
     duration *= motion;
     float w = 2.0f * CUI_PI / duration;
@@ -762,7 +766,7 @@ float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, floa
 
 float cui__tween(cui_ctx *ui, float *x, float target, float duration) {
     float motion = ui->theme.motion;
-    if (motion <= 0.0f || ui->frame <= 1) { *x = target; return target; }
+    if (motion <= 0.0f || duration <= 0.0f || ui->frame <= 1) { *x = target; return target; }
     if (*x == target) return target;
     duration *= motion;
     float a = 1.0f - expf(-cui__animation_dt(ui) * 4.6f / duration);

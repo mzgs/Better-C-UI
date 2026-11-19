@@ -146,7 +146,7 @@ void cui_sw_destroy(cui_sw_renderer *r) {
     free(r);
 }
 
-void cui_sw_set_threads(cui_sw_renderer *r, int threads) { r->threads = threads < 1 ? 1 : (threads > 32 ? 32 : threads); }
+void cui_sw_set_threads(cui_sw_renderer *r, int threads) { if (r) r->threads = threads < 1 ? 1 : (threads > 32 ? 32 : threads); }
 void cui_sw_set_incremental(cui_sw_renderer *r, bool on) { if (r) { r->incremental = on; r->last_px = NULL; } }
 bool cui_sw_last_damage(const cui_sw_renderer *r, int *x, int *y, int *w, int *h) {
     if (!r) return false;
@@ -198,12 +198,39 @@ static inline float cui__sat(float x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
 #define CUI__SHADOW_Z0 (-4.0f)
 #define CUI__SHADOW_Z1 2.8f
 static float cui__shadow_lut[CUI__SHADOW_N + 2];
-static void cui__shadow_lut_init(void) {
-    if (cui__shadow_lut[0] != 0) return;
-    for (int i = CUI__SHADOW_N + 1; i >= 0; i--) {   /* entry 0 last: it marks the table done */
+static void cui__shadow_lut_build(void) {
+    for (int i = 0; i <= CUI__SHADOW_N + 1; i++) {
         float z = CUI__SHADOW_Z0 + (CUI__SHADOW_Z1 - CUI__SHADOW_Z0) * (float)i / CUI__SHADOW_N;
         cui__shadow_lut[i] = 0.5f * (1.0f - cui__erf(z));
     }
+}
+#if defined(_WIN32)
+static volatile LONG cui__shadow_lut_state;   /* 0 = uninit, 1 = building, 2 = ready */
+static void cui__shadow_lut_init(void) {
+    if (InterlockedCompareExchange(&cui__shadow_lut_state, 2, 2) == 2) return;
+    if (InterlockedCompareExchange(&cui__shadow_lut_state, 1, 0) == 0) {
+        cui__shadow_lut_build();
+        InterlockedExchange(&cui__shadow_lut_state, 2);
+    } else {
+        while (InterlockedCompareExchange(&cui__shadow_lut_state, 2, 2) != 2) Sleep(0);
+    }
+}
+#else
+static pthread_once_t cui__shadow_lut_once = PTHREAD_ONCE_INIT;
+static void cui__shadow_lut_init(void) {
+    pthread_once(&cui__shadow_lut_once, cui__shadow_lut_build);
+}
+#endif
+
+static inline int cui__sw_clamp_floor(float v, int lo, int hi) {
+    if (!(v > (float)lo)) return lo;
+    if (v >= (float)hi) return hi;
+    return (int)floorf(v);
+}
+static inline int cui__sw_clamp_ceil(float v, int lo, int hi) {
+    if (!(v > (float)lo)) return lo;
+    if (v >= (float)hi) return hi;
+    return (int)ceilf(v);
 }
 static inline float cui__shadow_falloff(float z) {
     if (z <= CUI__SHADOW_Z0) return 1.0f;
@@ -317,8 +344,8 @@ static void cui__raster_tri(const cui__sw_job *job, const cui_vertex *a, const c
     if (fabsf(area) < 1e-8f) return;
     float minx = CUI_MIN(a->x, CUI_MIN(b->x, c->x)), maxx = CUI_MAX(a->x, CUI_MAX(b->x, c->x));
     float miny = CUI_MIN(a->y, CUI_MIN(b->y, c->y)), maxy = CUI_MAX(a->y, CUI_MAX(b->y, c->y));
-    int x0 = CUI_MAX(cx0, (int)floorf(minx)), x1 = CUI_MIN(cx1, (int)ceilf(maxx));
-    int y0 = CUI_MAX(cy0, (int)floorf(miny)), y1 = CUI_MIN(cy1, (int)ceilf(maxy));
+    int x0 = cui__sw_clamp_floor(minx, cx0, cx1), x1 = cui__sw_clamp_ceil(maxx, cx0, cx1);
+    int y0 = cui__sw_clamp_floor(miny, cy0, cy1), y1 = cui__sw_clamp_ceil(maxy, cy0, cy1);
     if (x0 >= x1 || y0 >= y1) return;
     float inv = 1.0f / area;
     /* top-left fill rule: a pixel on an edge shared by two triangles is
@@ -351,7 +378,7 @@ static void cui__raster_tri(const cui__sw_job *job, const cui_vertex *a, const c
             sx0 = CUI_MIN(sx0, xi); sx1 = CUI_MAX(sx1, xi);
         }
         if (sx1 < sx0) continue;
-        int rx0 = CUI_MAX(x0, (int)floorf(sx0) - 1), rx1 = CUI_MIN(x1, (int)ceilf(sx1) + 1);
+        int rx0 = cui__sw_clamp_floor(sx0 - 1.0f, x0, x1), rx1 = cui__sw_clamp_ceil(sx1 + 1.0f, x0, x1);
         for (int x = rx0; x < rx1; x++) {
             float px = (float)x + 0.5f;
             float e0 = (b->x - px) * (c->y - py) - (b->y - py) * (c->x - px);
@@ -417,8 +444,8 @@ static bool cui__raster_quad(const cui__sw_job *job, const cui_vertex *v0, const
     if (memcmp(&v0->color, &v1->color, 4) != 0 || memcmp(&v2->color, &v3->color, 4) != 0) return false;
     int mode = (int)(v0->mode + 0.5f);
     float qx0 = v0->x, qy0 = v0->y, qx1 = v1->x, qy1 = v3->y;
-    int x0 = CUI_MAX(cx0, (int)ceilf(qx0 - 0.5f)), x1 = CUI_MIN(cx1, (int)ceilf(qx1 - 0.5f));
-    int y0 = CUI_MAX(cy0, (int)ceilf(qy0 - 0.5f)), y1 = CUI_MIN(cy1, (int)ceilf(qy1 - 0.5f));
+    int x0 = cui__sw_clamp_ceil(qx0 - 0.5f, cx0, cx1), x1 = cui__sw_clamp_ceil(qx1 - 0.5f, cx0, cx1);
+    int y0 = cui__sw_clamp_ceil(qy0 - 0.5f, cy0, cy1), y1 = cui__sw_clamp_ceil(qy1 - 0.5f, cy0, cy1);
     if (x0 >= x1 || y0 >= y1) return true;
     bool bgra = job->fmt == CUI_SW_BGRA;
     int ri = bgra ? 2 : 0, bi = bgra ? 0 : 2;
@@ -672,7 +699,7 @@ static void cui__sw_tile_hashes(cui_sw_renderer *r, const cui_draw_data *dd, uin
 }
 
 void cui_sw_render(cui_sw_renderer *r, const cui_draw_data *dd, void *pixels, int width, int height, int stride, cui_sw_format fmt) {
-    if (!r || !dd || !pixels) return;
+    if (!r || !dd || !pixels || width <= 0 || height <= 0 || stride < 0 || (size_t)stride < (size_t)width * 4) return;
     if (!r->incremental) {
         r->nchanged = 0; r->changed_overflow = false;
         cui__sw_paint_rect(r, dd, pixels, width, height, stride, fmt, 0, 0, width, height);

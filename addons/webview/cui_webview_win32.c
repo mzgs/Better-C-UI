@@ -44,6 +44,7 @@ typedef struct {
     EventRegistrationToken start_token, finish_token, source_token, progress_token, message_token;
     EventRegistrationToken key_token, frame_token;
     bool key_registered;
+    DWORD com_thread;
 } cui__webview_win32;
 
 static WCHAR *cui__webview_win_wide(const char *text) {
@@ -65,7 +66,11 @@ static char *cui__webview_win_utf8(LPCWSTR wide) {
 /* Pending callbacks retain this allocation, never the app or public handle. */
 static ULONG cui__webview_win_release(cui__webview_win32 *w) {
     ULONG refs = (ULONG)InterlockedDecrement(&w->refs);
-    if (!refs) free(w);
+    if (!refs) {
+        DWORD tid = w->com_thread;
+        free(w);
+        if (tid && GetCurrentThreadId() == tid) CoUninitialize();
+    }
     return refs;
 }
 
@@ -325,7 +330,7 @@ void *cui__webview_native_create(cui__webview *v) {
     if (FAILED(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED))) return NULL;
     cui__webview_win32 *w = calloc(1, sizeof *w);
     if (!w) { CoUninitialize(); return NULL; }
-    w->refs = 1; w->owner = v;
+    w->refs = 1; w->owner = v; w->com_thread = GetCurrentThreadId();
     w->environment_handler.lpVtbl = &cui__wv_env_vtable;
     w->controller_handler.lpVtbl = &cui__wv_ctrl_vtable;
     w->key_handler.lpVtbl = &cui__wv_key_vtable;
@@ -357,7 +362,6 @@ void *cui__webview_native_create(cui__webview *v) {
         w->owner = NULL;
         if (w->host) DestroyWindow(w->host);
         cui__webview_win_release(w);
-        CoUninitialize();
         return NULL;
     }
     return w;
@@ -386,7 +390,6 @@ void cui__webview_native_destroy(cui__webview *v) {
     if (IsChild(w->host, GetFocus())) SetFocus(w->parent);
     DestroyWindow(w->host);
     cui__webview_win_release(w);
-    CoUninitialize();
     v->native = NULL;
 }
 
@@ -532,6 +535,7 @@ bool cui__webview_native_startup_script(cui__webview *v, const char *script, cui
 }
 bool cui__webview_native_user_agent(cui__webview *v) {
     cui__webview_win32 *w = v->native;
+    if (!w || !w->web) return false;
     ICoreWebView2Settings *settings = NULL;
     ICoreWebView2Settings2 *settings2 = NULL;
     HRESULT error = ICoreWebView2_get_Settings(w->web, &settings);

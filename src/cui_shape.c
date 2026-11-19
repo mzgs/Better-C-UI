@@ -113,7 +113,9 @@ static int ignored(shape *s,int i,unsigned flags,off lookup) {
     if (cl==3 && s->f->gdef) {
         off p=s->f->gdef;
         if (flags&16) {
+            if (u16(s->f,p+2)<2) return 0;
             off sets=rel(s->f,p,u16(s->f,p+12));
+            if (!sets) return 0;
             unsigned index=u16(s->f,lookup+6+2*u16(s->f,lookup+4));
             if (index>=u16(s->f,sets+2) || coverage(s->f,rel(s->f,sets,u32(s->f,sets+4+4*index)),s->g[i].id)<0) return 1;
         } else if ((flags>>8) && klass(s->f,rel(s->f,p,u16(s->f,p+10)),s->g[i].id)!=(int)(flags>>8)) return 1;
@@ -156,6 +158,7 @@ static int context(shape *s,off p,int i,int chained,unsigned flags,off lookup,in
     }
     for (unsigned r=0;r<rules;r++) {
         off q=fmt==3?p+2:rel(f,set,u16(f,set+2+2*r));
+        if (!q) continue;
         int at=i,n,positions[256]; unsigned records=0;
         if (chained) {
             n=u16(f,q); q+=2;
@@ -227,18 +230,23 @@ static int subtable(shape *s,off p,unsigned type,int i,unsigned flags,off lookup
         }
         if (type==2 || type==3) {
             if (fmt!=1 || ci>=(int)u16(f,p+4)) return 0;
-            off q=rel(f,p,u16(f,p+6+2*ci)); int n=u16(f,q);
+            off q=rel(f,p,u16(f,p+6+2*ci));
+            if (!q) return 0;
+            int n=u16(f,q);
             if (type==3) { if (n) s->g[i].id=u16(f,q+2); return n!=0; }
             if (n>s->cap-s->n+1) { s->failed=1; return 0; }
             memmove(s->g+i+n,s->g+i+1,(size_t)(s->n-i-1)*sizeof *s->g);
             cui_shape_glyph old=s->g[i];
             for (int k=0;k<n;k++) { s->g[i+k]=old; s->g[i+k].id=u16(f,q+2+2*k); }
-            s->n+=n-1; return n?n:1;
+            s->n+=n-1; return n?n:-1;
         }
         if (type==4 && fmt==1 && ci<(int)u16(f,p+4)) {
             off set=rel(f,p,u16(f,p+6+2*ci));
+            if (!set) return 0;
             for (unsigned k=0;k<u16(f,set);k++) {
-                off q=rel(f,set,u16(f,set+2+2*k)); int n=u16(f,q+2),at=i;
+                off q=rel(f,set,u16(f,set+2+2*k));
+                if (!q) continue;
+                int n=u16(f,q+2),at=i;
                 int positions[256]; positions[0]=i;
                 if (n<1 || n>256) continue;
                 int ok=1;
@@ -269,7 +277,9 @@ static int subtable(shape *s,off p,unsigned type,int i,unsigned flags,off lookup
         if (j>=s->n) return 0;
         off q=0;
         if (fmt==1 && ci<(int)u16(f,p+8)) {
-            off set=rel(f,p,u16(f,p+10+2*ci)); int sz=2+value_size(v1)+value_size(v2);
+            off set=rel(f,p,u16(f,p+10+2*ci));
+            if (!set) return 0;
+            int sz=2+value_size(v1)+value_size(v2);
             for (unsigned k=0;k<u16(f,set);k++) {
                 off r=set+2+k*sz;
                 if (s->g[j].id==(int)u16(f,r)) { q=r+2; break; }
@@ -290,11 +300,13 @@ static int subtable(shape *s,off p,unsigned type,int i,unsigned flags,off lookup
         if (j<0) return 0;
         int bi=coverage(f,rel(f,p,u16(f,p+4)),s->g[j].id);
         off marks=rel(f,p,u16(f,p+8)),bases=rel(f,p,u16(f,p+10));
+        if (!marks || !bases) return 0;
         unsigned classes=u16(f,p+6),mc=u16(f,marks+2+4*ci);
         if (bi<0 || ci>=(int)u16(f,marks) || mc>=classes || bi>=(int)u16(f,bases)) return 0;
         off a=0;
         if (type==5) {
             off attach=rel(f,bases,u16(f,bases+2+2*bi));
+            if (!attach) return 0;
             int n=u16(f,attach),component=s->g[i].component?s->g[i].component-1:n-1;
             if (component<0 || component>=n) return 0;
             a=rel(f,attach,u16(f,attach+2+2*(component*classes+mc)));
@@ -310,7 +322,7 @@ static int subtable(shape *s,off p,unsigned type,int i,unsigned flags,off lookup
     return 0;
 }
 static int apply(shape *s,unsigned index,int i,int depth) {
-    if (depth>12 || i<0 || i>=s->n || index>=u16(s->f,s->list)) return 0;
+    if (depth>12 || i<0 || i>=s->n || !s->list || index>=u16(s->f,s->list)) return 0;
     if (++s->operations>1000000) { s->failed=1; return 0; }
     off p=rel(s->f,s->list,u16(s->f,s->list+2+2*index));
     unsigned flags=u16(s->f,p+2);
@@ -323,6 +335,7 @@ static int apply(shape *s,unsigned index,int i,int depth) {
 }
 static off language(cui_shape_font *f,off layout,off script) {
     off list=rel(f,layout,u16(f,layout+4)),found=0,default_script=0;
+    if (!list) return 0;
     for (unsigned k=0;k<u16(f,list);k++) {
         off r=list+2+6*k,tag=u32(f,r);
         if (tag==script) found=rel(f,list,u16(f,r+4));
@@ -334,17 +347,18 @@ static off language(cui_shape_font *f,off layout,off script) {
 static void feature(shape *s,off lang,off tag,int form) {
     cui_shape_font *f=s->f;
     off features=rel(f,s->layout,u16(f,s->layout+6));
-    if (!lang) return;
+    if (!lang || !features) return;
     for (unsigned k=0;k<u16(f,lang+4);k++) {
         unsigned index=u16(f,lang+6+2*k);
         if (index>=u16(f,features)) continue;
         off r=features+2+6*index;
         if (u32(f,r)!=tag) continue;
         off p=rel(f,features,u16(f,r+4));
+        if (!p) continue;
         for (unsigned l=0;l<u16(f,p+2);l++) {
             unsigned lookup=u16(f,p+4+2*l);
             for (int i=0;i<s->n;) {
-                if (form<0 || s->g[i].form==form) { int n=apply(s,lookup,i,0); i+=n>0?n:1; }
+                if (form<0 || s->g[i].form==form) { int n=apply(s,lookup,i,0); if (n>=0) i+=n>0?n:1; }
                 else i++;
             }
         }
@@ -424,7 +438,7 @@ static int joining(uint32_t cp) {
     return 0;
 }
 int cui__shape(cui_shape_font *f,cui_shape_glyph *g,int count,int capacity,uint32_t script,int rtl,int tabular) {
-    if (count<0 || count>capacity || !f->cmap) return -1;
+    if (count<0 || count>capacity || !f->cmap || !f->metrics || !f->hmtx) return -1;
     count=normalize(f,g,count,script==TAG('a','r','a','b'));
     shape s={f,g,count,capacity,rtl,0,0,0,0,0};
     int prev=-1,prev_type=0;

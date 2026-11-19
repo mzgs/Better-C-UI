@@ -191,9 +191,9 @@ static const char *cui__file_date(cui_ctx *ui, int64_t t, time_t now) {
     time_t tt = (time_t)t;
     struct tm a, b;
 #if defined(_WIN32)
-    localtime_s(&a, &tt); localtime_s(&b, &now);
+    if (localtime_s(&a, &tt) != 0 || localtime_s(&b, &now) != 0) return "";
 #else
-    localtime_r(&tt, &a); localtime_r(&now, &b);
+    if (!localtime_r(&tt, &a) || !localtime_r(&now, &b)) return "";
 #endif
     if (a.tm_year == b.tm_year && a.tm_yday == b.tm_yday) return cui__frame_printf(ui, "%s, %d:%02d", cui__today_text(ui), a.tm_hour, a.tm_min);
     if (a.tm_year == b.tm_year) return cui__frame_printf(ui, "%s %d, %d:%02d", cui__month_short(ui, a.tm_mon), a.tm_mday, a.tm_hour, a.tm_min);
@@ -801,7 +801,7 @@ cui_file_browser_result cui_file_browser_ex(cui_ctx *ui, const char *id_str, cha
     if (!s->init) { s->sel = -1; s->init = true; }
     char before[CUI__FB_PATH];
     snprintf(before, sizeof before, "%s", path);
-    if (s->reload || strcmp(s->loaded, path) != 0 || (s->loading && !s->job && o->list)) {
+    if (s->reload || strcmp(s->loaded, before) != 0 || (s->loading && !s->job && o->list)) {
         cui__fb_load(ui, s, path, o); s->reload = false;
         if (s->loading) cui__wakeup_after(ui, 1.0f / 60.0f);
     } else cui__fb_poll(ui, s, o);

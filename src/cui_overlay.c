@@ -1164,13 +1164,15 @@ cui_date cui_date_today(void) {
 
 static int cui__days_in_month(int y, int m) {
     static const int dm[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    m = CUI_CLAMP(m, 1, 12);
     if (m == 2 && ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0)) return 29;
-    return dm[(m - 1) % 12];
+    return dm[m - 1];
 }
 
 /* 0 = Monday */
 static int cui__weekday(int y, int m, int d) {
     static const int t[12] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
+    m = CUI_CLAMP(m, 1, 12);
     if (m < 3) y -= 1;
     int w = (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;  /* 0 = Sunday */
     return (w + 6) % 7;
@@ -1184,7 +1186,9 @@ bool cui_calendar(cui_ctx *ui, const char *id_str, cui_date *value) {
     cui_date today = cui_date_today();
     if (!st->init) {
         cui_date base = (value && value->year) ? *value : today;
-        st->view_y = base.year; st->view_m = base.month; st->init = true;
+        st->view_y = base.year;
+        st->view_m = (base.month >= 1 && base.month <= 12) ? base.month : today.month;
+        st->init = true;
     }
     bool changed = false;
     cui_push_id(ui, id_str);

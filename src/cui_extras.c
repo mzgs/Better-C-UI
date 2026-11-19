@@ -156,16 +156,17 @@ static void cui__tag_rebuild(char *buf, size_t cap, const char *src, const int *
     snprintf(buf, cap, "%s", tmp);
 }
 
-static void cui__tag_add(char *buf, size_t cap, const char *tag) {
+static bool cui__tag_add(char *buf, size_t cap, const char *tag) {
     while (*tag == ' ') tag++;
     size_t tl = strlen(tag);
     while (tl > 0 && tag[tl - 1] == ' ') tl--;
-    if (tl == 0) return;
+    if (tl == 0) return false;
     size_t len = strlen(buf);
-    if (len + tl + 3 >= cap) return;
+    if (len + tl + 3 >= cap) return false;
     if (len) { buf[len++] = ','; buf[len++] = ' '; }
     memcpy(buf + len, tag, tl);
     buf[len + tl] = 0;
+    return true;
 }
 
 bool cui_tag_input_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, const cui_tag_opts *o) {
@@ -253,11 +254,14 @@ bool cui_tag_input_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, co
         char *p = st->typing, *c;
         while ((c = strchr(p, ',')) != NULL) {
             *c = 0;
-            if (!full) cui__tag_add(buf, cap, p);
+            if (!full && cui__tag_add(buf, cap, p)) {
+                n++;
+                full = o->max_tags > 0 && n >= o->max_tags;
+                changed = true;
+            }
             p = c + 1;
         }
         memmove(st->typing, p, strlen(p) + 1);
-        changed = true;
     }
     if ((f & CUI_SUBMITTED) && st->typing[0] && !full) {
         cui__tag_add(buf, cap, st->typing);
@@ -710,6 +714,7 @@ void cui_reorder_begin(cui_ctx *ui, const char *id_str, int *order, int count) {
     cui__reorder_state *st = b->st;
     if (!st->init) { st->from = -1; st->init = true; }   /* state memory starts zeroed */
     if (st->from >= b->count) st->from = -1;
+    if (st->pending && (st->press_pos < 0 || st->press_pos >= b->count)) st->pending = false;
     /* slot geometry from last frame */
     b->have_rects = true;
     for (int k = 0; k < b->count; k++) {

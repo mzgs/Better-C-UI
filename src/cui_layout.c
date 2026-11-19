@@ -832,8 +832,7 @@ static void cui__place(cui_ctx *ui, int i) {
 }
 
 static cui_rect cui__anchor_rect(cui_ctx *ui, cui_id anchor) {
-    cui_state_entry *e = cui__state_entry(ui, anchor);
-    return e->rect;
+    return anchor ? cui__prev_rect(ui, anchor) : (cui_rect){ 0, 0, 0, 0 };
 }
 
 static void cui__layout_float(cui_ctx *ui, int i) {
@@ -855,7 +854,7 @@ static void cui__layout_float(cui_ctx *ui, int i) {
     else if (n->h.kind == CUI_SIZE_PERCENT) n->rect.h = vh * n->h.value / 100.0f;
     else if (n->h.kind == CUI_SIZE_GROW) n->rect.h = vh;
     else n->rect.h = n->pref_h;
-    if (n->placement != CUI__PLACE_FULL) n->rect.h = CUI_MIN(n->rect.h, CUI_MIN(n->max_h, vh - 2 * margin));
+    if (n->placement != CUI__PLACE_FULL) n->rect.h = CUI_MAX(0.0f, CUI_MIN(n->rect.h, CUI_MIN(n->max_h, CUI_MAX(0.0f, vh - 2 * margin))));
     float W = n->rect.w, H = n->rect.h, off = n->offset;
     float x = 0, y = 0;
     if (n->placement == CUI__PLACE_FULL) { x = 0; y = 0; }
@@ -1005,13 +1004,16 @@ static void cui__paint_text_lines(cui_ctx *ui, cui_node *n) {
 static void cui__paint_node(cui_ctx *ui, int i, cui_rect clip) {
     cui_node *n = &ui->nodes[i];
     cui_rect r = n->rect;
-    /* cull nodes outside the clip (and their subtree) */
-    if (!(n->flags & CUI_NF_FLOATING)) {
-        cui_rect vis = cui__rect_intersect(cui__xform_rect(ui, r), clip);
-        if ((vis.w <= 0 || vis.h <= 0) && !(r.w == 0 || r.h == 0)) return;
-    }
     bool xf = n->opacity < 0.999f || n->scale != 1.0f || n->tx != 0 || n->ty != 0;
     if (xf) cui__push_xform(ui, n->scale, r.x + r.w * 0.5f, r.y + r.h * 0.5f, n->opacity, n->tx, n->ty);
+    /* cull nodes outside the clip (and their subtree), after applying the node's own transform */
+    if (!(n->flags & CUI_NF_FLOATING)) {
+        cui_rect vis = cui__rect_intersect(cui__xform_rect(ui, r), clip);
+        if ((vis.w <= 0 || vis.h <= 0) && !(r.w == 0 || r.h == 0)) {
+            if (xf) cui__pop_xform(ui);
+            return;
+        }
+    }
     if (n->flags & (CUI_NF_INTERACTIVE | CUI_NF_BLOCKER | CUI_NF_HIT_OPAQUE | CUI_NF_SCROLL_X | CUI_NF_SCROLL_Y)) {
         cui_rect hr = (n->flags & CUI_NF_BLOCKER) ? r : cui__rect_intersect(cui__xform_rect(ui, r), clip);
         cui__add_hit(ui, n->id, hr, n->flags);

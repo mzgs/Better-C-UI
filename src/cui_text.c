@@ -601,7 +601,8 @@ int cui__text_wrap(cui_ctx *ui, cui_font font, float size, const char *text, int
         const char *saved = ui->text_paragraph;
         int saved_len = ui->text_paragraph_len;
         ui->text_paragraph = text; ui->text_paragraph_len = len;
-        int n = 0, start = 0;
+        int n = 0, cap = 0, start = 0;
+        cui_text_layout_line *built = NULL;
         for (;;) {
             int end = start, best = start, next = start;
             float best_width = 0;
@@ -615,22 +616,25 @@ int cui__text_wrap(cui_ctx *ui, cui_font font, float size, const char *text, int
                 if (next == len || text[next] == '\n') break;
                 end = next;
             }
-            if (lines && n < max_lines) lines[n] = (cui_text_layout_line){start, best, best_width};
-            n++;
+            if (n >= cap) {
+                cap = cap ? cap * 2 : 16;
+                built = cui__realloc(ui, built, (size_t)cap * sizeof *built);
+            }
+            built[n++] = (cui_text_layout_line){start, best, best_width};
             if (next == len) break;
             start = next;
             if (text[start] == '\n') start++;
         }
         ui->text_paragraph = saved; ui->text_paragraph_len = saved_len;
-        /* Retain completed breaks, so next frame never remeasures wrap candidates. */
-        if (lines && n <= max_lines) {
-            p = cui__paragraph(ui, text, len, requested);
-            cui_text_layout_line *copy = p ? cui__alloc(ui, (size_t)n * sizeof *copy) : NULL;
-            if (copy) {
-                memcpy(copy, lines, (size_t)n * sizeof *copy);
-                cui__free(ui, p->wrap_lines); p->wrap_lines = copy;
-                p->wrap_count = n; p->wrap_font = font; p->wrap_size = size; p->wrap_width = width;
-            }
+        if (lines && max_lines > 0)
+            memcpy(lines, built, (size_t)CUI_MIN(max_lines, n) * sizeof *lines);
+        /* Retain completed breaks even on the measure-only pass so the paint pass reuses them. */
+        p = cui__paragraph(ui, text, len, requested);
+        if (p) {
+            cui__free(ui, p->wrap_lines); p->wrap_lines = built;
+            p->wrap_count = n; p->wrap_font = font; p->wrap_size = size; p->wrap_width = width;
+        } else {
+            cui__free(ui, built);
         }
         return n;
     }
@@ -714,6 +718,13 @@ static void cui__atlas_grow(cui_ctx *ui) {
     for (int y = 0; y < ui->atlas_h; y++) memcpy(na + (size_t)y * (size_t)nw, ui->atlas + (size_t)y * (size_t)ui->atlas_w, (size_t)ui->atlas_w);
     cui__free(ui, ui->atlas);
     ui->atlas = na;
+    /* rescale UVs of text vertices already emitted in this frame so the doubled atlas stays valid immediately */
+    for (int i = 0; i < ui->dl.vtx_count; i++) {
+        if ((int)ui->dl.vtx[i].mode == CUI_SHADE_TEXT) {
+            ui->dl.vtx[i].u *= 0.5f;
+            ui->dl.vtx[i].v *= 0.5f;
+        }
+    }
     /* glyph uvs are computed from atlas size at draw time, so cached glyphs stay valid */
     ui->atlas_w = nw; ui->atlas_h = nh;
     ui->atlas_dirty = true;
@@ -721,9 +732,10 @@ static void cui__atlas_grow(cui_ctx *ui) {
 }
 
 static bool cui__atlas_pack(cui_ctx *ui, int w, int h, int *ox, int *oy) {
+    if (w + 2 > CUI_ATLAS_MAX || h + 2 > CUI_ATLAS_MAX) return false;
     for (;;) {
         if (ui->pack_x + w + 1 > ui->atlas_w) { ui->pack_x = 1; ui->pack_y += ui->pack_row_h + 1; ui->pack_row_h = 0; }
-        if (ui->pack_y + h + 1 <= ui->atlas_h) break;
+        if (ui->pack_x + w + 1 <= ui->atlas_w && ui->pack_y + h + 1 <= ui->atlas_h) break;
         if (ui->atlas_w >= CUI_ATLAS_MAX) return false;
         cui__atlas_grow(ui);
     }
@@ -793,15 +805,17 @@ static int cui__glyph_ord_cmp(const void *a, const void *b) {
 static void cui__atlas_compact(cui_ctx *ui) {
     uint32_t now = (uint32_t)ui->frame;
     size_t area = 0;
-    int live = 0;
+    int live = 0, max_dim = 0;
     for (int i = 0; i < ui->glyph_count; i++) {
         cui_glyph *g = &ui->glyphs[i];
         if (now - g->stamp > CUI__ATLAS_KEEP) continue;
         area += (size_t)(g->w + 1) * (size_t)(g->h + 1);
+        if (g->w > max_dim) max_dim = g->w;
+        if (g->h > max_dim) max_dim = g->h;
         live++;
     }
     int nw = ui->atlas_w;
-    while (nw > CUI_ATLAS_MIN && area * 2 <= (size_t)(nw / 2) * (size_t)(nw / 2)) nw /= 2;
+    while (nw > CUI_ATLAS_MIN && nw / 2 >= max_dim + 2 && area * 2 <= (size_t)(nw / 2) * (size_t)(nw / 2)) nw /= 2;
     if (nw == ui->atlas_w) return;
     cui__glyph_ord *ord = cui__alloc(ui, sizeof *ord * (size_t)CUI_MAX(live, 1));
     cui_glyph *ng = cui__alloc(ui, sizeof *ng * (size_t)CUI_MAX(live, 1));
@@ -817,7 +831,7 @@ static void cui__atlas_compact(cui_ctx *ui) {
         cui_glyph g = ui->glyphs[ord[k].i];
         if (g.w > 0 && g.h > 0) {
             if (px + g.w + 1 > nw) { px = 1; py += row + 1; row = 0; }
-            if (py + g.h + 1 > nw) { cui__free(ui, ord); cui__free(ui, ng); cui__free(ui, na); return; }   /* does not fit after all */
+            if (px + g.w + 1 > nw || py + g.h + 1 > nw) { cui__free(ui, ord); cui__free(ui, ng); cui__free(ui, na); return; }   /* does not fit after all */
             for (int y = 0; y < g.h; y++)
                 memcpy(na + (size_t)(py + y) * (size_t)nw + (size_t)px, ui->atlas + (size_t)(g.ay + y) * (size_t)ui->atlas_w + g.ax, g.w);
             g.ax = (uint16_t)px; g.ay = (uint16_t)py;
@@ -1102,7 +1116,6 @@ static void cui__draw_run(cui_ctx *ui, cui_font font, float size, float x, float
     float baseline = y + base->ascent * size;
     if (base->is_icon) baseline = y + size;
     float by_px = roundf(baseline * s);
-    float inv_w = 1.0f / (float)ui->atlas_w, inv_h = 1.0f / (float)ui->atlas_h;
     cui__glyph_iter it;
     cui__iter_init(&it, ui, font, size, text, len, tabular);
     while (cui__iter_next(&it)) {
@@ -1132,6 +1145,7 @@ static void cui__draw_run(cui_ctx *ui, cui_font font, float size, float x, float
         }
         cui_glyph *g = cui__glyph_get(ui, it.gfont, it.gi, gs_px, subpx);
         if (!g || !g->w) continue;
+        float inv_w = 1.0f / (float)ui->atlas_w, inv_h = 1.0f / (float)ui->atlas_h;
         float qx0 = fl + g->x0, qy0 = gy + g->y0;
         cui__draw_glyph_quad(ui, qx0, qy0, qx0 + g->w, qy0 + g->h,
                              g->ax * inv_w, g->ay * inv_h, (g->ax + g->w) * inv_w, (g->ay + g->h) * inv_h, gc);
@@ -1154,15 +1168,38 @@ void cui__draw_text_ellipsis(cui_ctx *ui, cui_font font, float size, float x, fl
     float avail = max_w - ew;
     if (avail <= 0) return;
     /* find the longest prefix that fits */
-    cui_font rf = cui__resolve_font(ui, font);
-    cui__glyph_iter it;
-    cui__iter_init(&it, ui, rf, size, text, len, tabular);
     int cut = 0;
     float cut_w = 0;
-    while (cui__iter_next(&it)) {
-        if (it.x > avail) break;
-        cut = it.end;
-        cut_w = it.x;
+#ifdef CUI_TEXT_SHAPING
+    if (cui__text_needs_shaping(ui, text, len)) {
+        cui__text_cluster *cl = cui__frame_alloc(ui, (size_t)len * sizeof *cl);
+        int nc = cui__text_clusters(ui, font, size, text, len, tabular, cl);
+        /* cui__text_clusters emits clusters in visual order; collect distinct logical ends ascending. */
+        uint8_t *mark = cui__frame_alloc(ui, (size_t)len + 1);
+        for (int k = 0; k < nc; k++)
+            if (cl[k].end > 0 && cl[k].end <= len) mark[cl[k].end] = 1;
+        int *ends = cui__frame_alloc(ui, (size_t)CUI_MAX(nc, 1) * sizeof *ends);
+        int ne = 0;
+        for (int b = 1; b <= len; b++) if (mark[b]) ends[ne++] = b;
+        int lo = 0, hi = ne;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2;
+            float mw = cui__text_width(ui, font, size, text, ends[mid - 1], tabular);
+            if (mw <= avail) { lo = mid; cut_w = mw; }
+            else hi = mid - 1;
+        }
+        cut = lo > 0 ? ends[lo - 1] : 0;
+    } else
+#endif
+    {
+        cui_font rf = cui__resolve_font(ui, font);
+        cui__glyph_iter it;
+        cui__iter_init(&it, ui, rf, size, text, len, tabular);
+        while (cui__iter_next(&it)) {
+            if (it.x > avail) break;
+            cut = it.end;
+            cut_w = it.x;
+        }
     }
     while (cut > 0 && text[cut - 1] == ' ') { cut--; cut_w = cui__text_width(ui, font, size, text, cut, tabular); }
     /* right-to-left text ends on the left, so its ellipsis goes there */

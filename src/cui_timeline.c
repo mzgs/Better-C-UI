@@ -204,6 +204,7 @@ static double cui__tl_step(cui_ctx *ui, const cui__tl_paint *p, double k, float 
         static const double fr[] = { 1, 2, 5, 10 };
         static const double sec[] = { 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 18000, 36000 };
         double F = floor(fps + 0.5);
+        if (F < 1) F = 1;
         for (int i = 0; i < 4; i++) if (fr[i] < F) cand[nc++] = fr[i] / fps;
         for (int i = 0; i < 16; i++) cand[nc++] = sec[i] * F / fps;
     } else {
@@ -679,6 +680,12 @@ static void cui__tl_clamp(cui_timeline_view *v, float s0, float s1, float min_ra
     v->start = s;
     v->end = s + range;
     if (range == ext) v->end = s1;
+    if (!(v->end > v->start)) {
+        if (v->start < s1) v->end = nextafterf(v->start, s1);
+        else { v->end = s1; v->start = nextafterf(s1, s0); }
+    }
+    if (v->end > s1) { v->end = s1; v->start = nextafterf(s1, s0); }
+    if (!(v->end > v->start)) { v->start = s0; v->end = s1; }
 }
 
 /* geometric zoom between two views around the point that stays put (as the flame graph) */
@@ -936,6 +943,7 @@ static void cui__tle_drag(cui__tle_frame *f) {
         cui__set_cursor(ui, CUI_CURSOR_RESIZE_EW);
     } break;
     case TL_MARK_IN: case TL_MARK_OUT: {
+        if (!f->range_on) break;
         if (f->snap) t = cui__tl_snap(t, fps);
         if (st->mode == TL_MARK_IN) *o->in = cui__clampf(t, s0, CUI_MAX(s0, *o->out - f->frame));
         else *o->out = cui__clampf(t, CUI_MIN(s1, *o->in + f->frame), s1);

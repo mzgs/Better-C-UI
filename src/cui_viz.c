@@ -33,7 +33,7 @@ static cui_color cui__viz_empty(cui_ctx *ui) {
 
 /* one hue, light to dark (light mode) or dim to bright (dark mode) */
 static cui_color cui__viz_seq(cui_ctx *ui, cui_color base, float t) {
-    t = cui__clampf(t, 0, 1);
+    t = isfinite(t) ? cui__clampf(t, 0, 1) : 0;
     bool dark = ui->mode == CUI_THEME_DARK;
     cui_color e = cui__viz_empty(ui);
     cui_color lo = cui_mix(e, base, dark ? 0.28f : 0.2f);
@@ -136,10 +136,21 @@ static float *cui__copy_floats(cui_ctx *ui, const float *v, int n) {
     return o;
 }
 
+static const char **cui__viz_copy_strs(cui_ctx *ui, const char *const *v, int n) {
+    if (!v || n <= 0) return NULL;
+    const char **o = cui__frame_alloc(ui, sizeof(char *) * (size_t)n);
+    for (int k = 0; k < n; k++) o[k] = v[k] ? cui__frame_strdup(ui, v[k], -1) : NULL;
+    return o;
+}
+
 static cui_viz_item *cui__copy_items(cui_ctx *ui, const cui_viz_item *v, int n) {
     cui_viz_item *o = cui__frame_alloc(ui, sizeof(cui_viz_item) * (size_t)CUI_MAX(1, n));
     if (v && n > 0) memcpy(o, v, sizeof(cui_viz_item) * (size_t)n);
-    for (int k = 0; k < n; k++) if (!(o[k].value >= 0)) o[k].value = 0;   /* negatives and NaN count as nothing */
+    else if (n > 0) memset(o, 0, sizeof(cui_viz_item) * (size_t)n);
+    for (int k = 0; k < n; k++) {
+        if (!isfinite(o[k].value) || o[k].value < 0) o[k].value = 0;   /* negatives, NaN and Inf count as nothing */
+        o[k].label = o[k].label ? cui__frame_strdup(ui, o[k].label, -1) : NULL;
+    }
     return o;
 }
 
@@ -236,6 +247,7 @@ int cui_heatmap_ex(cui_ctx *ui, const char *id_str, const float *values, int row
     cui_heatmap_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!values) { rows = 0; cols = 0; }
     rows = CUI_MAX(0, rows); cols = CUI_MAX(0, cols);
     cui_id id = cui_make_id(ui, id_str);
     cui__viz_state *st = cui__viz_state_get(ui, id);
@@ -243,10 +255,14 @@ int cui_heatmap_ex(cui_ctx *ui, const char *id_str, const float *values, int row
     cui_rect pr = cui__prev_rect(ui, id);
     cui__hm_geo g = cui__hm_layout(ui, pr, rows, cols, o);
     float lo = o->min, hi = o->max;
-    if (!(o->max > o->min)) {
-        lo = 1e30f; hi = -1e30f;
-        for (int k = 0; k < rows * cols; k++) { lo = CUI_MIN(lo, values[k]); hi = CUI_MAX(hi, values[k]); }
-        if (rows * cols == 0) { lo = 0; hi = 1; }
+    if (!isfinite(lo) || !isfinite(hi) || !(hi > lo)) {
+        bool any = false;
+        lo = 0; hi = 1;
+        for (int k = 0; k < rows * cols; k++) {
+            if (!isfinite(values[k])) continue;
+            if (!any) { lo = hi = values[k]; any = true; }
+            else { lo = CUI_MIN(lo, values[k]); hi = CUI_MAX(hi, values[k]); }
+        }
         if (hi <= lo) hi = lo + 1;
     }
     int hover = -1;
@@ -259,6 +275,9 @@ int cui_heatmap_ex(cui_ctx *ui, const char *id_str, const float *values, int row
     memset(p, 0, sizeof *p);
     p->v = cui__copy_floats(ui, values, rows * cols);
     p->rows = rows; p->cols = cols; p->lo = lo; p->hi = hi; p->o = *o;
+    p->o.row_labels = cui__viz_copy_strs(ui, o->row_labels, rows);
+    p->o.col_labels = cui__viz_copy_strs(ui, o->col_labels, cols);
+    p->o.format = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
     p->base = cui__viz_base(ui, o->color);
     p->intro = st->intro.x;
     p->hover = st->hover_t > 0.01f ? st->shown : -1;
@@ -266,10 +285,10 @@ int cui_heatmap_ex(cui_ctx *ui, const char *id_str, const float *values, int row
     if (p->hover >= 0) {
         int i = p->hover / cols, j = p->hover % cols;
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
-        const char *rl = o->row_labels && o->row_labels[i] ? o->row_labels[i] : cui__frame_printf(ui, "Row %d", i + 1);
-        const char *cl = o->col_labels && o->col_labels[j] ? o->col_labels[j] : cui__frame_printf(ui, "%d", j + 1);
+        const char *rl = p->o.row_labels && p->o.row_labels[i] ? p->o.row_labels[i] : cui__frame_printf(ui, "Row %d", i + 1);
+        const char *cl = p->o.col_labels && p->o.col_labels[j] ? p->o.col_labels[j] : cui__frame_printf(ui, "%d", j + 1);
         p->tip.title = cui__frame_printf(ui, "%s \xc2\xb7 %s", rl, cl);
-        cui__tip_row(&p->tip, "Value", cui__fmt_value(ui, o->format, values[p->hover]), cui__viz_seq(ui, p->base, (values[p->hover] - lo) / (hi - lo)));
+        cui__tip_row(&p->tip, "Value", cui__fmt_value(ui, p->o.format, p->v[p->hover]), cui__viz_seq(ui, p->base, (p->v[p->hover] - lo) / (hi - lo)));
     }
     float h = g.grid_h + (o->col_labels ? 22 : 0) + 30;
     cui_size w = o->width.kind ? o->width : (o->cell > 0 ? CUI_PX(g.lw + cols * (g.cell + g.gap) - g.gap) : CUI_FILL);
@@ -290,7 +309,7 @@ typedef struct {
 
 
 static int cui__cal_level(float v, float maxv) {
-    if (v <= 0 || maxv <= 0) return 0;
+    if (!isfinite(v) || v <= 0 || !isfinite(maxv) || maxv <= 0) return 0;
     int l = 1 + (int)floorf(v / maxv * 4 - 0.0001f);
     return CUI_CLAMP(l, 1, 4);
 }
@@ -354,6 +373,7 @@ int cui_calendar_heatmap_ex(cui_ctx *ui, const char *id_str, cui_date start, con
     cui_calendar_heatmap_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!values) days = 0;
     days = CUI_MAX(0, days);
     cui_id id = cui_make_id(ui, id_str);
     cui__viz_state *st = cui__viz_state_get(ui, id);
@@ -364,17 +384,22 @@ int cui_calendar_heatmap_ex(cui_ctx *ui, const char *id_str, cui_date start, con
     int weeks = (wd0 + days + 6) / 7;
     float cell = o->cell > 0 ? o->cell : 11, gap = cell >= 10 ? 3 : 2, step = cell + gap;
     float full_w = CUI__CAL_LW + weeks * step - gap;
+    int skipped = 0;
     if (pr.w > 0 && pr.w + 0.5f < full_w) {
         /* narrower than the whole range: show the most recent weeks that fit */
         int fit = CUI_MAX(1, (int)floorf((pr.w - CUI__CAL_LW + gap) / step));
         if (fit < weeks) {
-            int skip = (weeks - fit) * 7 - wd0;
-            values += skip; days -= skip; base += skip;
+            int skip = CUI_CLAMP((weeks - fit) * 7 - wd0, 0, days);
+            values += skip; days -= skip; base += skip; skipped = skip;
             wd0 = 0; weeks = fit;
         }
     }
     float maxv = 0, total = 0;
-    for (int k = 0; k < days; k++) { maxv = CUI_MAX(maxv, values[k]); total += values[k] > 0 ? values[k] : 0; }
+    for (int k = 0; k < days; k++) {
+        if (!isfinite(values[k])) continue;
+        maxv = CUI_MAX(maxv, values[k]);
+        total += values[k] > 0 ? values[k] : 0;
+    }
     int hover = -1;
     if (r.hovered) {
         int w = (int)floorf((ui->mx - pr.x - CUI__CAL_LW) / step), k = (int)floorf((ui->my - pr.y - CUI__CAL_TOP) / step);
@@ -389,20 +414,22 @@ int cui_calendar_heatmap_ex(cui_ctx *ui, const char *id_str, cui_date start, con
     p->v = cui__copy_floats(ui, values, days);
     p->days = days; p->wd0 = wd0; p->weeks = weeks; p->base_day = base; p->maxv = maxv; p->total = total;
     p->cell = cell; p->gap = gap; p->base = cui__viz_base(ui, o->color); p->o = *o;
+    p->o.unit = o->unit ? cui__frame_strdup(ui, o->unit, -1) : NULL;
+    p->o.format = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
     p->intro = st->intro.x;
-    p->hover = st->hover_t > 0.01f && st->shown < days ? st->shown : -1;
+    p->hover = st->hover_t > 0.01f && st->shown >= 0 && st->shown < days ? st->shown : -1;
     if (p->hover >= 0) {
         cui_date dd = cui_date_from_days(base + p->hover);
         int wd = ((base + p->hover + 3) % 7 + 7) % 7;
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
         p->tip.title = cui__frame_printf(ui, "%s, %s %d, %d", cui__weekday_short(ui, wd), cui__month_short(ui, dd.month - 1), dd.day, dd.year);
-        cui__tip_row(&p->tip, o->unit ? o->unit : "Value", cui__fmt_value(ui, o->format, values[p->hover]),
-                     cui__cal_color(ui, p->base, cui__cal_level(values[p->hover], maxv)));
+        cui__tip_row(&p->tip, p->o.unit ? p->o.unit : "Value", cui__fmt_value(ui, p->o.format, p->v[p->hover]),
+                     cui__cal_color(ui, p->base, cui__cal_level(p->v[p->hover], maxv)));
     }
     float h = CUI__CAL_TOP + 7 * step - gap + 12 + CUI_MIN(cell, 12) + 2;
     int node = cui__viz_node(ui, id, CUI_FIT, CUI_PX(h), cui__paint_calendar, p, hover >= 0);
     cui__soft_width(&ui->nodes[node], CUI_FIT, full_w);
-    return r.clicked ? hover : -1;
+    return r.clicked && hover >= 0 ? hover + skipped : -1;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -499,6 +526,7 @@ int cui_treemap_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *items_in
     cui_treemap_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!items_in) count = 0;
     count = CUI_MAX(0, count);
     cui_id id = cui_make_id(ui, id_str);
     cui__viz_state *st = cui__viz_state_get(ui, id);
@@ -522,13 +550,14 @@ int cui_treemap_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *items_in
     cui__viz_hover(ui, st, hover);
     cui__treemap_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
-    p->items = items; p->count = count; p->order = order; p->total = total; p->format = o->format;
+    p->items = items; p->count = count; p->order = order; p->total = total;
+    p->format = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
     p->intro = st->intro.x;
-    p->hover = st->hover_t > 0.01f && st->shown < count ? st->shown : -1;
+    p->hover = st->hover_t > 0.01f && st->shown >= 0 && st->shown < count ? st->shown : -1;
     if (p->hover >= 0) {
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
         p->tip.title = items[p->hover].label ? items[p->hover].label : "";
-        cui__tip_row(&p->tip, "Value", cui__fmt_value(ui, o->format, items[p->hover].value), cui__tm_color(ui, items, order, p->hover));
+        cui__tip_row(&p->tip, "Value", cui__fmt_value(ui, p->format, items[p->hover].value), cui__tm_color(ui, items, order, p->hover));
         cui__tip_row(&p->tip, "Share", cui__pct(ui, items[p->hover].value, total), cui__rgba(0, 0, 0, 0));
     }
     cui__viz_node(ui, id, o->width.kind ? o->width : CUI_FILL, CUI_PX(o->height > 0 ? o->height : 300), cui__paint_treemap, p, hover >= 0);
@@ -638,6 +667,7 @@ int cui_radar_chart_ex(cui_ctx *ui, const char *id_str, const cui_series *series
     cui_radar_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!series) count = 0;
     count = CUI_MAX(0, count); na = CUI_MAX(0, na);
     cui_id id = cui_make_id(ui, id_str);
     cui__viz_state *st = cui__viz_state_get(ui, id);
@@ -652,8 +682,11 @@ int cui_radar_chart_ex(cui_ctx *ui, const char *id_str, const cui_series *series
             tight = CUI_MAX(tight, cui__text_width(ui, CUI_FONT_MEDIUM, fsx, axes[i], -1, false) + 18);
     if (pr.w > 0 && pr.w < full + 180) size = CUI_CLAMP(floorf(pr.w - 2 * tight), min_size, full);
     float maxv = 0;
-    for (int k = 0; k < count; k++)
-        for (int i = 0; i < series[k].count && i < na; i++) maxv = CUI_MAX(maxv, series[k].values[i]);
+    for (int k = 0; k < count; k++) {
+        if (!series[k].values) continue;
+        for (int i = 0; i < series[k].count && i < na; i++)
+            if (isfinite(series[k].values[i])) maxv = CUI_MAX(maxv, series[k].values[i]);
+    }
     float lo, hi, step;
     if (o->max > 0) { hi = o->max; step = o->max / 4; }
     else { cui__nice_range(0, maxv > 0 ? maxv : 1, 4, &lo, &hi, &step); }
@@ -672,18 +705,24 @@ int cui_radar_chart_ex(cui_ctx *ui, const char *id_str, const cui_series *series
     cui__radar_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
     p->series = cui__frame_alloc(ui, sizeof(cui_series) * (size_t)CUI_MAX(1, count));
-    for (int k = 0; k < count; k++) { p->series[k] = series[k]; p->series[k].values = cui__copy_floats(ui, series[k].values, series[k].count); }
+    for (int k = 0; k < count; k++) {
+        p->series[k] = series[k];
+        p->series[k].count = series[k].values ? CUI_MAX(0, series[k].count) : 0;
+        p->series[k].name = series[k].name ? cui__frame_strdup(ui, series[k].name, -1) : NULL;
+        p->series[k].values = cui__copy_floats(ui, series[k].values, p->series[k].count);
+    }
     p->axes = cui__frame_alloc(ui, sizeof(char *) * (size_t)CUI_MAX(1, na));
-    for (int i = 0; i < na; i++) p->axes[i] = axes ? axes[i] : NULL;
+    for (int i = 0; i < na; i++) p->axes[i] = axes && axes[i] ? cui__frame_strdup(ui, axes[i], -1) : NULL;
     p->count = count; p->na = na; p->maxv = hi; p->step = step; p->o = *o; p->size = size;
+    p->o.format = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
     p->intro = st->intro.x;
-    p->hover = st->hover_t > 0.01f && st->shown < na ? st->shown : -1;
+    p->hover = st->hover_t > 0.01f && st->shown >= 0 && st->shown < na ? st->shown : -1;
     if (p->hover >= 0) {
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
-        p->tip.title = axes && axes[p->hover] ? axes[p->hover] : "";
+        p->tip.title = p->axes[p->hover] ? p->axes[p->hover] : "";
         for (int k = 0; k < count; k++)
-            cui__tip_row(&p->tip, series[k].name ? series[k].name : "", p->hover < series[k].count ? cui__fmt_value(ui, o->format, series[k].values[p->hover]) : "-",
-                         cui__viz_color(ui, series[k].color, k));
+            cui__tip_row(&p->tip, p->series[k].name ? p->series[k].name : "", p->hover < p->series[k].count ? cui__fmt_value(ui, p->o.format, p->series[k].values[p->hover]) : "-",
+                         cui__viz_color(ui, p->series[k].color, k));
     }
     float h = size + 52 + (count >= 2 && !o->no_legend ? 30 : 0);
     int node = cui__viz_node(ui, id, CUI_FIT, CUI_PX(h), cui__paint_radar, p, hover >= 0);
@@ -751,6 +790,7 @@ int cui_funnel_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *stages, i
     cui_funnel_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!stages) count = 0;
     count = CUI_MAX(0, count);
     cui_id id = cui_make_id(ui, id_str);
     cui__viz_state *st = cui__viz_state_get(ui, id);
@@ -772,13 +812,14 @@ int cui_funnel_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *stages, i
     cui__fn_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
     p->items = items; p->count = count; p->maxv = maxv; p->o = *o; p->base = cui__viz_base(ui, o->color); p->lw = lw;
+    p->o.format = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
     p->intro = st->intro.x;
-    p->hover = st->hover_t > 0.01f && st->shown < count ? st->shown : -1;
+    p->hover = st->hover_t > 0.01f && st->shown >= 0 && st->shown < count ? st->shown : -1;
     if (p->hover >= 0) {
         int k = p->hover;
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
         p->tip.title = items[k].label ? items[k].label : "";
-        cui__tip_row(&p->tip, "Count", cui__fmt_value(ui, o->format, items[k].value), cui__rgba(0, 0, 0, 0));
+        cui__tip_row(&p->tip, "Count", cui__fmt_value(ui, p->o.format, items[k].value), cui__rgba(0, 0, 0, 0));
         cui__tip_row(&p->tip, "Of the first stage", cui__pct(ui, items[k].value, items[0].value), cui__rgba(0, 0, 0, 0));
         if (k > 0) cui__tip_row(&p->tip, "From the stage before", cui__pct(ui, items[k].value, items[k - 1].value), cui__rgba(0, 0, 0, 0));
     }
@@ -811,7 +852,7 @@ static cui__sk_geo cui__sk_layout(cui_ctx *ui, cui_rect r, const char *const *na
     g.links = cui__frame_alloc(ui, sizeof(cui_sankey_link) * (size_t)CUI_MAX(1, nl));
     int m = 0;
     for (int l = 0; l < nl; l++)
-        if (links_in[l].from >= 0 && links_in[l].from < nn && links_in[l].to >= 0 && links_in[l].to < nn && links_in[l].from != links_in[l].to && links_in[l].value > 0)
+        if (links_in[l].from >= 0 && links_in[l].from < nn && links_in[l].to >= 0 && links_in[l].to < nn && links_in[l].from != links_in[l].to && isfinite(links_in[l].value) && links_in[l].value > 0)
             g.links[m++] = links_in[l];
     g.nl = nl = m;
     g.node = cui__frame_alloc(ui, sizeof(cui_rect) * (size_t)CUI_MAX(1, nn));
@@ -888,7 +929,7 @@ static cui__sk_geo cui__sk_layout(cui_ctx *ui, cui_rect r, const char *const *na
         while (b >= 0 && g.node[g.links[ord[b]].from].y > g.node[g.links[v].from].y) { ord[b + 1] = ord[b]; b--; }
         ord[b + 1] = v;
     }
-    memset(off, 0, sizeof(float) * (size_t)nn);
+    if (nn > 0) memset(off, 0, sizeof(float) * (size_t)nn);
     for (int q = 0; q < nl; q++) { int l = ord[q]; int b = g.links[l].to; g.ty[l] = g.node[b].y + off[b]; off[b] += g.links[l].value * g.k; }
     return g;
 }
@@ -986,8 +1027,10 @@ int cui_sankey_ex(cui_ctx *ui, const char *id_str, const char *const *nodes, int
     cui_rect pr = cui__prev_rect(ui, id);
     float nw = o->node_width > 0 ? o->node_width : 12;
     float h = o->height > 0 ? o->height : 300;
+    const char **names_copy = cui__viz_copy_strs(ui, nodes, nn);
+    const char *fmt_copy = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
     int hn = -1, hl = -1;
-    cui__sk_geo g = cui__sk_layout(ui, pr.w > 0 ? pr : (cui_rect){ 0, 0, 600, h }, nodes, nn, links ? links : (cui_sankey_link[1]){ { 0, 0, 0 } }, nl, nw, o->format);
+    cui__sk_geo g = cui__sk_layout(ui, pr.w > 0 ? pr : (cui_rect){ 0, 0, 600, h }, names_copy, nn, links ? links : (cui_sankey_link[1]){ { 0, 0, 0 } }, nl, nw, fmt_copy);
     if (r.hovered && pr.w > 0) {
         for (int i = 0; i < g.nn; i++) {
             cui_rect q = g.node[i];
@@ -1008,23 +1051,23 @@ int cui_sankey_ex(cui_ctx *ui, const char *id_str, const char *const *nodes, int
     cui__sk_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
     p->g = g;   /* names and the filtered links; the paint lays out again in its own rect */
-    p->format = o->format; p->nw = nw;
+    p->format = fmt_copy; p->nw = nw;
     p->intro = st->intro.x; p->t = st->hover_t;
     p->hover_node = p->hover_link = -1;
-    if (st->hover_t > 0.01f) {
+    if (st->hover_t > 0.01f && st->shown >= 0) {
         if (st->shown < nn) p->hover_node = st->shown;
         else if (st->shown - nn < g.nl) p->hover_link = st->shown - nn;
     }
     p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
     if (p->hover_node >= 0) {
         int i = p->hover_node;
-        p->tip.title = nodes && nodes[i] ? nodes[i] : "";
-        if (g.in[i] > 0) cui__tip_row(&p->tip, "In", cui__fmt_value(ui, o->format, g.in[i]), cui__rgba(0, 0, 0, 0));
-        if (g.out[i] > 0) cui__tip_row(&p->tip, "Out", cui__fmt_value(ui, o->format, g.out[i]), cui__rgba(0, 0, 0, 0));
+        p->tip.title = names_copy && names_copy[i] ? names_copy[i] : "";
+        if (g.in[i] > 0) cui__tip_row(&p->tip, "In", cui__fmt_value(ui, fmt_copy, g.in[i]), cui__rgba(0, 0, 0, 0));
+        if (g.out[i] > 0) cui__tip_row(&p->tip, "Out", cui__fmt_value(ui, fmt_copy, g.out[i]), cui__rgba(0, 0, 0, 0));
     } else if (p->hover_link >= 0) {
         cui_sankey_link *L = &g.links[p->hover_link];
-        p->tip.title = cui__frame_printf(ui, "%s \xe2\x86\x92 %s", nodes && nodes[L->from] ? nodes[L->from] : "", nodes && nodes[L->to] ? nodes[L->to] : "");
-        cui__tip_row(&p->tip, "Flow", cui__fmt_value(ui, o->format, L->value), g.color[L->to] < 0 ? CUI_C(ui, TEXT_MUTED) : cui__viz_color(ui, (cui_color){ 0 }, g.color[L->to]));
+        p->tip.title = cui__frame_printf(ui, "%s \xe2\x86\x92 %s", names_copy && names_copy[L->from] ? names_copy[L->from] : "", names_copy && names_copy[L->to] ? names_copy[L->to] : "");
+        cui__tip_row(&p->tip, "Flow", cui__fmt_value(ui, fmt_copy, L->value), g.color[L->to] < 0 ? CUI_C(ui, TEXT_MUTED) : cui__viz_color(ui, (cui_color){ 0 }, g.color[L->to]));
         if (g.out[L->from] > 0) cui__tip_row(&p->tip, "Of the source", cui__pct(ui, L->value, g.out[L->from]), cui__rgba(0, 0, 0, 0));
     } else p->tip.title = NULL;
     cui__viz_node(ui, id, o->width.kind ? o->width : CUI_FILL, CUI_PX(h), cui__paint_sankey, p, hover >= 0);
@@ -1070,6 +1113,7 @@ int cui_waffle_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *items_in,
     cui_waffle_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!items_in) count = 0;
     count = CUI_MAX(0, count);
     cui_id id = cui_make_id(ui, id_str);
     cui__viz_state *st = cui__viz_state_get(ui, id);
@@ -1082,16 +1126,18 @@ int cui_waffle_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *items_in,
     cui_viz_item *items = cui__copy_items(ui, items_in, count);
     float total = 0;
     for (int k = 0; k < count; k++) total += items[k].value;
+    bool valid_total = count > 0 && total > 0 && isfinite(total);
     /* cells per item by largest remainder */
     int *owner = cui__frame_alloc(ui, sizeof(int) * (size_t)cells);
     int *nc = cui__frame_alloc(ui, sizeof(int) * (size_t)CUI_MAX(1, count));
     float *rem = cui__copy_floats(ui, NULL, count);
     int used = 0;
     for (int k = 0; k < count; k++) {
-        float exact = total > 0 ? items[k].value / total * cells : 0;
+        float exact = valid_total ? items[k].value / total * cells : 0;
+        if (!isfinite(exact) || exact < 0) exact = 0;
         nc[k] = (int)floorf(exact); rem[k] = exact - nc[k]; used += nc[k];
     }
-    while (total > 0 && used < cells) {
+    while (valid_total && used < cells) {
         int best = 0;
         for (int k = 1; k < count; k++) if (rem[k] > rem[best]) best = k;
         nc[best]++; rem[best] = -1; used++;
@@ -1122,13 +1168,14 @@ int cui_waffle_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *items_in,
     cui__viz_hover(ui, st, hover);
     cui__wf_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
-    p->items = items; p->count = count; p->owner = owner; p->cols = cols; p->rows = rows; p->cell = cell; p->gap = gap; p->total = total; p->format = o->format;
+    p->items = items; p->count = count; p->owner = owner; p->cols = cols; p->rows = rows; p->cell = cell; p->gap = gap; p->total = total;
+    p->format = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
     p->intro = st->intro.x;
-    p->hover = st->hover_t > 0.01f && st->shown < count ? st->shown : -1;
+    p->hover = st->hover_t > 0.01f && st->shown >= 0 && st->shown < count ? st->shown : -1;
     if (p->hover >= 0) {
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
         p->tip.title = items[p->hover].label ? items[p->hover].label : "";
-        cui__tip_row(&p->tip, "Value", cui__fmt_value(ui, o->format, items[p->hover].value), cui__viz_color(ui, items[p->hover].color, p->hover));
+        cui__tip_row(&p->tip, "Value", cui__fmt_value(ui, p->format, items[p->hover].value), cui__viz_color(ui, items[p->hover].color, p->hover));
         cui__tip_row(&p->tip, "Share", cui__pct(ui, items[p->hover].value, total), cui__rgba(0, 0, 0, 0));
     }
     p->stack = stack; p->right = under_w;
@@ -1212,6 +1259,7 @@ int cui_split_bar_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *items_
     cui_split_bar_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!items_in) count = 0;
     count = CUI_MAX(0, count);
     cui_id id = cui_make_id(ui, id_str);
     cui__viz_state *st = cui__viz_state_get(ui, id);
@@ -1243,12 +1291,13 @@ int cui_split_bar_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *items_
     cui__sb_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
     p->items = items; p->count = count; p->total = total; p->o = *o; p->bh = bh;
+    p->o.format = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
     p->intro = st->intro.x;
-    p->hover = st->hover_t > 0.01f && st->shown < count ? st->shown : -1;
+    p->hover = st->hover_t > 0.01f && st->shown >= 0 && st->shown < count ? st->shown : -1;
     if (p->hover >= 0) {
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
         p->tip.title = items[p->hover].label ? items[p->hover].label : "";
-        cui__tip_row(&p->tip, "Value", cui__fmt_value(ui, o->format, items[p->hover].value), cui__viz_color(ui, items[p->hover].color, p->hover));
+        cui__tip_row(&p->tip, "Value", cui__fmt_value(ui, p->o.format, items[p->hover].value), cui__viz_color(ui, items[p->hover].color, p->hover));
         cui__tip_row(&p->tip, "Share", cui__pct(ui, items[p->hover].value, total), cui__rgba(0, 0, 0, 0));
     }
     float width = pr.w > 0 ? pr.w : 400;
@@ -1293,6 +1342,7 @@ int cui_bar_list_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *items_i
     cui_bar_list_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!items_in) count = 0;
     count = CUI_MAX(0, count);
     cui_id id = cui_make_id(ui, id_str);
     cui_interact r = cui__interact(ui, id, 0);
@@ -1411,6 +1461,7 @@ int cui_activity_rings_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *r
     cui_rings_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!rings) count = 0;
     count = CUI_CLAMP(count, 0, 8);
     cui_id id = cui_make_id(ui, id_str);
     cui_interact r = cui__interact(ui, id, 0);
@@ -1420,12 +1471,13 @@ int cui_activity_rings_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *r
     float size = o->size > 0 ? o->size : 150;
     cui__rings_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
+    p->items = cui__copy_items(ui, rings, count);
     float lw = 0;   /* the legend beside the rings */
     if (o->legend) {
         float fs = cui__fs(ui, ui->theme.text_sm), vw = 0;
         for (int k = 0; k < count; k++) {
-            p->label_w = CUI_MAX(p->label_w, cui__text_width(ui, CUI_FONT_BODY, fs, rings[k].label ? rings[k].label : "", -1, false));
-            vw = CUI_MAX(vw, cui__text_width(ui, CUI_FONT_MEDIUM, fs, cui__pct(ui, rings[k].value, 1), -1, true));
+            p->label_w = CUI_MAX(p->label_w, cui__text_width(ui, CUI_FONT_BODY, fs, p->items[k].label ? p->items[k].label : "", -1, false));
+            vw = CUI_MAX(vw, cui__text_width(ui, CUI_FONT_MEDIUM, fs, cui__pct(ui, p->items[k].value, 1), -1, true));
         }
         lw = CUI__RING_LEGEND_GAP + 16 + p->label_w + 14 + vw;
     }
@@ -1435,7 +1487,7 @@ int cui_activity_rings_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *r
     float th = o->thickness > 0 ? o->thickness : CUI_MAX(8.0f, size * 0.1f);
     p->prog = cui__copy_floats(ui, NULL, count);
     for (int k = 0; k < count; k++) {
-        float v = rings[k].value >= 0 ? CUI_MIN(rings[k].value, 4.0f) : 0;
+        float v = p->items[k].value >= 0 ? CUI_MIN(p->items[k].value, 4.0f) : 0;
         cui__spring(ui, &sp[k], v, 0.9f + 0.1f * k, 0.0f);
         p->prog[k] = sp[k].x;
     }
@@ -1448,17 +1500,19 @@ int cui_activity_rings_ex(cui_ctx *ui, const char *id_str, const cui_viz_item *r
             if (fabsf(dist - rad) <= th * 0.5f + 1.5f) hover = k;
         }
     }
-    if (o->legend && r.hovered && hover < 0) {   /* a legend row picks out its ring */
+    if (o->legend && r.hovered && hover < 0 && count > 0) {   /* a legend row picks out its ring */
         float lx = pr.x + size + CUI__RING_LEGEND_GAP, ly = pr.y + size * 0.5f - count * CUI__RING_ROW * 0.5f;
         if (ui->mx >= lx && ui->my >= ly && ui->my < ly + count * CUI__RING_ROW) hover = CUI_CLAMP((int)((ui->my - ly) / CUI__RING_ROW), 0, count - 1);
     }
     cui__viz_hover(ui, st, hover);
-    p->items = cui__copy_items(ui, rings, count); p->count = count; p->o = *o; p->size = size; p->th = th;
-    p->hover = st->hover_t > 0.01f && st->shown < count ? st->shown : -1;
+    p->count = count; p->o = *o; p->size = size; p->th = th;
+    p->o.center = o->center ? cui__frame_strdup(ui, o->center, -1) : NULL;
+    p->o.caption = o->caption ? cui__frame_strdup(ui, o->caption, -1) : NULL;
+    p->hover = st->hover_t > 0.01f && st->shown >= 0 && st->shown < count ? st->shown : -1;
     if (p->hover >= 0) {
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
-        p->tip.title = rings[p->hover].label ? rings[p->hover].label : "";
-        cui__tip_row(&p->tip, "Progress", cui__pct(ui, rings[p->hover].value, 1), cui__viz_color(ui, rings[p->hover].color, p->hover));
+        p->tip.title = p->items[p->hover].label ? p->items[p->hover].label : "";
+        cui__tip_row(&p->tip, "Progress", cui__pct(ui, p->items[p->hover].value, 1), cui__viz_color(ui, p->items[p->hover].color, p->hover));
     }
     int node = cui__viz_node(ui, id, CUI_FIT, CUI_PX(size), cui__paint_rings, p, hover >= 0);
     cui__soft_width(&ui->nodes[node], CUI_FIT, full + lw);
@@ -1480,12 +1534,15 @@ static cui__sc_geo cui__sc_layout(cui_ctx *ui, cui_rect r, const cui_scatter_ser
     cui__sc_geo g;
     float xl = 1e30f, xh = -1e30f, yl = 1e30f, yh = -1e30f;
     g.smax = 0;
-    for (int k = 0; k < count; k++)
+    for (int k = 0; k < count; k++) {
+        if (!s[k].points) continue;
         for (int i = 0; i < s[k].count; i++) {
+            if (!isfinite(s[k].points[i].x) || !isfinite(s[k].points[i].y)) continue;
             xl = CUI_MIN(xl, s[k].points[i].x); xh = CUI_MAX(xh, s[k].points[i].x);
             yl = CUI_MIN(yl, s[k].points[i].y); yh = CUI_MAX(yh, s[k].points[i].y);
-            if (s[k].sizes) g.smax = CUI_MAX(g.smax, s[k].sizes[i]);
+            if (s[k].sizes && isfinite(s[k].sizes[i])) g.smax = CUI_MAX(g.smax, s[k].sizes[i]);
         }
+    }
     if (xl > xh) { xl = 0; xh = 1; }
     if (yl > yh) { yl = 0; yh = 1; }
     /* the axes end on the first nice value past the data; padding is added only when a point would sit on the frame */
@@ -1569,56 +1626,65 @@ int cui_scatter_chart_ex(cui_ctx *ui, const char *id_str, const cui_scatter_seri
     cui_scatter_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!series) count = 0;
     count = CUI_MAX(0, count);
     cui_id id = cui_make_id(ui, id_str);
     cui__viz_state *st = cui__viz_state_get(ui, id);
     cui_interact r = cui__interact(ui, id, 0);
     cui_rect pr = cui__prev_rect(ui, id);
     float h = o->height > 0 ? o->height : 280;
-    float legend_h = 0;
-    if (count >= 2 && !o->no_legend) {
-        const char **names = cui__frame_alloc(ui, sizeof(char *) * (size_t)count);
-        cui_color *cols = cui__frame_alloc(ui, sizeof(cui_color) * (size_t)count);
-        for (int k = 0; k < count; k++) { names[k] = series[k].name; cols[k] = cui__viz_color(ui, series[k].color, k); }
-        legend_h = cui__viz_legend(ui, 0, 0, pr.w > 0 ? pr.w : 500, names, cols, count, -1, false) + 12;
-    }
-    int hs = -1, hi = -1;
-    if (r.hovered && pr.w > 0) {
-        cui__sc_geo g = cui__sc_layout(ui, pr, series, count, o, legend_h);
-        float best = 24 * 24;
-        for (int k = 0; k < count; k++)
-            for (int i = 0; i < series[k].count; i++) {
-                cui_vec2 q = cui__sc_pt(&g, series[k].points[i]);
-                float rr = cui__sc_radius(&g, &series[k], i);
-                float dx = ui->mx - q.x, dy = ui->my - q.y, d2 = dx * dx + dy * dy - rr * rr * 0.6f;
-                if (d2 < best) { best = d2; hs = k; hi = i; }
-            }
-    }
-    int flat = -1;
-    if (hs >= 0) { flat = hi; for (int k = 0; k < hs; k++) flat += series[k].count; }
-    cui__viz_hover(ui, st, flat);
     cui__sc_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
     p->s = cui__frame_alloc(ui, sizeof(cui_scatter_series) * (size_t)CUI_MAX(1, count));
     for (int k = 0; k < count; k++) {
         p->s[k] = series[k];
-        cui_vec2 *pts = cui__frame_alloc(ui, sizeof(cui_vec2) * (size_t)CUI_MAX(1, series[k].count));
-        if (series[k].count > 0) memcpy(pts, series[k].points, sizeof(cui_vec2) * (size_t)series[k].count);
+        int cnt = series[k].points ? CUI_MAX(0, series[k].count) : 0;
+        p->s[k].count = cnt;
+        p->s[k].name = series[k].name ? cui__frame_strdup(ui, series[k].name, -1) : NULL;
+        cui_vec2 *pts = cui__frame_alloc(ui, sizeof(cui_vec2) * (size_t)CUI_MAX(1, cnt));
+        if (cnt > 0) memcpy(pts, series[k].points, sizeof(cui_vec2) * (size_t)cnt);
         p->s[k].points = pts;
-        if (series[k].sizes) p->s[k].sizes = cui__copy_floats(ui, series[k].sizes, series[k].count);
+        p->s[k].sizes = series[k].sizes && cnt > 0 ? cui__copy_floats(ui, series[k].sizes, cnt) : NULL;
     }
-    p->count = count; p->o = *o; p->legend_h = legend_h; p->intro = st->intro.x;
+    p->count = count; p->o = *o;
+    p->o.x_format = o->x_format ? cui__frame_strdup(ui, o->x_format, -1) : NULL;
+    p->o.y_format = o->y_format ? cui__frame_strdup(ui, o->y_format, -1) : NULL;
+    p->o.x_label = o->x_label ? cui__frame_strdup(ui, o->x_label, -1) : NULL;
+    p->o.y_label = o->y_label ? cui__frame_strdup(ui, o->y_label, -1) : NULL;
+    float legend_h = 0;
+    if (count >= 2 && !p->o.no_legend) {
+        const char **names = cui__frame_alloc(ui, sizeof(char *) * (size_t)count);
+        cui_color *cols = cui__frame_alloc(ui, sizeof(cui_color) * (size_t)count);
+        for (int k = 0; k < count; k++) { names[k] = p->s[k].name; cols[k] = cui__viz_color(ui, p->s[k].color, k); }
+        legend_h = cui__viz_legend(ui, 0, 0, pr.w > 0 ? pr.w : 500, names, cols, count, -1, false) + 12;
+    }
+    int hs = -1, hi = -1;
+    if (r.hovered && pr.w > 0) {
+        cui__sc_geo g = cui__sc_layout(ui, pr, p->s, count, &p->o, legend_h);
+        float best = 24 * 24;
+        for (int k = 0; k < count; k++)
+            for (int i = 0; i < p->s[k].count; i++) {
+                cui_vec2 q = cui__sc_pt(&g, p->s[k].points[i]);
+                float rr = cui__sc_radius(&g, &p->s[k], i);
+                float dx = ui->mx - q.x, dy = ui->my - q.y, d2 = dx * dx + dy * dy - rr * rr * 0.6f;
+                if (d2 < best) { best = d2; hs = k; hi = i; }
+            }
+    }
+    int flat = -1;
+    if (hs >= 0) { flat = hi; for (int k = 0; k < hs; k++) flat += p->s[k].count; }
+    cui__viz_hover(ui, st, flat);
+    p->legend_h = legend_h; p->intro = st->intro.x;
     p->hs = p->hi = -1;
     if (st->hover_t > 0.01f && st->shown >= 0) {
         int f = st->shown;
-        for (int k = 0; k < count; k++) { if (f < series[k].count) { p->hs = k; p->hi = f; break; } f -= series[k].count; }
+        for (int k = 0; k < count; k++) { if (f < p->s[k].count) { p->hs = k; p->hi = f; break; } f -= p->s[k].count; }
     }
     if (p->hs >= 0) {
-        const cui_scatter_series *s = &series[p->hs];
+        const cui_scatter_series *s = &p->s[p->hs];
         p->tip.alpha = st->hover_t; p->tip.x = ui->mx; p->tip.y = ui->my; p->tip.bounds = pr;
         p->tip.title = s->name ? s->name : "";
-        cui__tip_row(&p->tip, o->x_label ? o->x_label : "x", cui__fmt_value(ui, o->x_format, s->points[p->hi].x), cui__viz_color(ui, s->color, p->hs));
-        cui__tip_row(&p->tip, o->y_label ? o->y_label : "y", cui__fmt_value(ui, o->y_format, s->points[p->hi].y), cui__rgba(0, 0, 0, 0));
+        cui__tip_row(&p->tip, p->o.x_label ? p->o.x_label : "x", cui__fmt_value(ui, p->o.x_format, s->points[p->hi].x), cui__viz_color(ui, s->color, p->hs));
+        cui__tip_row(&p->tip, p->o.y_label ? p->o.y_label : "y", cui__fmt_value(ui, p->o.y_format, s->points[p->hi].y), cui__rgba(0, 0, 0, 0));
         if (s->sizes) cui__tip_row(&p->tip, "Size", cui__fmt_value(ui, NULL, s->sizes[p->hi]), cui__rgba(0, 0, 0, 0));
     }
     cui__viz_node(ui, id, o->width.kind ? o->width : CUI_FILL, CUI_PX(h), cui__paint_scatter, p, flat >= 0);
@@ -1795,7 +1861,9 @@ static cui__cs_geo cui__cs_layout(cui_rect r, float axis_w, double span, bool vo
     cui__cs_geo g;
     g.plot = (cui_rect){ r.x, r.y + 6, CUI_MAX(10.0f, r.w - axis_w), CUI_MAX(10.0f, r.h - 6 - CUI__CS_AXIS_H) };
     float vh = volume ? CUI_MAX(24.0f, g.plot.h * 0.18f) : 0;
-    g.price = (cui_rect){ g.plot.x, g.plot.y, g.plot.w, g.plot.h - (volume ? vh + 8 : 0) };
+    if (volume && vh + 8 > g.plot.h - 12.0f) vh = CUI_MAX(0.0f, g.plot.h - 20.0f);
+    float ph = g.plot.h - (volume && vh > 0 ? vh + 8 : 0);
+    g.price = (cui_rect){ g.plot.x, g.plot.y, g.plot.w, CUI_MAX(1.0f, ph) };
     g.vol = (cui_rect){ g.plot.x, g.plot.y + g.plot.h - vh, g.plot.w, vh };
     g.cw = (float)(g.plot.w / (span > 0 ? span : 1));
     return g;
@@ -1899,7 +1967,7 @@ static void cui__paint_candles(cui_ctx *ui, cui_node *n, void *data) {
         cui_color hair = cui_alpha(CUI_C(ui, BORDER_STRONG), p->tip.alpha);
         float x = g.plot.x + (float)((p->hover + 0.5) - p->first) * g.cw;
         if (x >= g.plot.x && x <= g.plot.x + g.plot.w) cui_draw_rect(ui, (cui_rect){ x - 0.5f, g.plot.y, 1, g.plot.h }, CUI_CORNERS(0), hair);
-        if (p->hy && p->hover_y >= g.price.y && p->hover_y <= g.price.y + g.price.h) {
+        if (p->hy && g.price.h > 0 && p->hover_y >= g.price.y && p->hover_y <= g.price.y + g.price.h) {
             cui_draw_rect(ui, (cui_rect){ g.plot.x, p->hover_y - 0.5f, g.plot.w, 1 }, CUI_CORNERS(0), hair);
             float v = p->ylo + (g.price.y + g.price.h - p->hover_y) / g.price.h * (p->yhi - p->ylo);
             const char *s = cui__fmt_value(ui, p->format, v);
@@ -1992,11 +2060,13 @@ int cui_candlestick_ex(cui_ctx *ui, const char *id_str, const cui_candle *candle
     float lo = 1e30f, hi = -1e30f, vmax = 0;
     for (int i = i0; i < i1; i++) {
         const cui_candle *c = &candles[i];
-        if (c->low == c->low) lo = CUI_MIN(lo, c->low);
-        if (c->high == c->high) hi = CUI_MAX(hi, c->high);
-        vmax = CUI_MAX(vmax, c->volume);
+        if (isfinite(c->low)) lo = CUI_MIN(lo, c->low);
+        if (isfinite(c->high)) hi = CUI_MAX(hi, c->high);
+        if (isfinite(c->volume)) vmax = CUI_MAX(vmax, c->volume);
         for (int s = 0; s < nov; s++)
-            if (i < o->overlays[s].count && o->overlays[s].values[i] == o->overlays[s].values[i]) { lo = CUI_MIN(lo, o->overlays[s].values[i]); hi = CUI_MAX(hi, o->overlays[s].values[i]); }
+            if (o->overlays[s].values && i < o->overlays[s].count && isfinite(o->overlays[s].values[i])) {
+                lo = CUI_MIN(lo, o->overlays[s].values[i]); hi = CUI_MAX(hi, o->overlays[s].values[i]);
+            }
     }
     if (lo > hi) { lo = 0; hi = 1; }
     if (hi - lo < 1e-6f) { lo -= 0.5f; hi += 0.5f; }
@@ -2038,7 +2108,7 @@ int cui_candlestick_ex(cui_ctx *ui, const char *id_str, const cui_candle *candle
             bar->o = candles[a].open; bar->c = candles[b - 1].close;
             for (int i = a; i < b; i++) { bar->h = CUI_MAX(bar->h, candles[i].high); bar->l = CUI_MIN(bar->l, candles[i].low); bar->v += candles[i].volume; }
             bvmax = CUI_MAX(bvmax, bar->v);
-            for (int s = 0; s < nov; s++) if (b - 1 < o->overlays[s].count) p->ov[s * cols + k] = o->overlays[s].values[b - 1];
+            for (int s = 0; s < nov; s++) if (o->overlays[s].values && b - 1 < o->overlays[s].count) p->ov[s * cols + k] = o->overlays[s].values[b - 1];
         }
         p->vmax = bvmax;
     } else {
@@ -2049,7 +2119,7 @@ int cui_candlestick_ex(cui_ctx *ui, const char *id_str, const cui_candle *candle
         for (int k = 0; k < nb; k++) {
             const cui_candle *c = &candles[i0 + k];
             p->bars[k] = (cui__cs_bar){ c->open, c->high, c->low, c->close, c->volume };
-            for (int s = 0; s < nov; s++) p->ov[s * nb + k] = i0 + k < o->overlays[s].count ? o->overlays[s].values[i0 + k] : NAN;
+            for (int s = 0; s < nov; s++) p->ov[s * nb + k] = (o->overlays[s].values && i0 + k < o->overlays[s].count) ? o->overlays[s].values[i0 + k] : NAN;
         }
     }
     p->nov = nov;

@@ -97,6 +97,7 @@ bool cui_multi_select_ex(cui_ctx *ui, const char *id_str, const char *const *ite
     open = p && p->open;
     cui__tween(ui, &st->hover, r.hovered ? 1.0f : 0.0f, CUI__T_HOVER);
     bool changed = false;
+    if (!items || !selected || count < 0) count = 0;
     int col = cui__label_wrap_begin(ui, o->label, o->width);
     int field = cui__picker_field(ui, id, r, st->hover, open, o->width, 300, col >= 0);
     cui__open(ui, field);
@@ -120,7 +121,8 @@ bool cui_multi_select_ex(cui_ctx *ui, const char *id_str, const char *const *ite
         cn->bg = CUI_C(ui, ACTIVE);
         cn->self_align = CUI__ALIGN_NOSTRETCH;
         cui__open(ui, chip);
-        int t = cui__text_node(ui, items[k], cui__display_len(items[k]), CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_sm), CUI_C(ui, FOREGROUND), false);
+        const char *lbl = items[k] ? items[k] : "";
+        int t = cui__text_node(ui, lbl, cui__display_len(lbl), CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_sm), CUI_C(ui, FOREGROUND), false);
         ui->nodes[t].line_height = 1.2f;
         cui_button_opts xo;
         memset(&xo, 0, sizeof xo);
@@ -191,9 +193,10 @@ bool cui_multi_select_ex(cui_ctx *ui, const char *id_str, const char *const *ite
         ui->nodes[cui__current(ui)].min_h = 0;
         int index = 0, visible = 0;
         for (int k = 0; k < count; k++) {
-            if (o->searchable && !cui__contains_ci(items[k], st->query)) continue;
+            const char *lbl = items[k] ? items[k] : "";
+            if (o->searchable && !cui__contains_ci(lbl, st->query)) continue;
             cui_push_id_int(ui, k);
-            if (cui__check_item(ui, items[k], o->icons ? o->icons[k] : NULL, selected[k], index, nav)) { selected[k] = !selected[k]; changed = true; }
+            if (cui__check_item(ui, lbl, o->icons ? o->icons[k] : NULL, selected[k], index, nav)) { selected[k] = !selected[k]; changed = true; }
             cui_pop_id(ui);
             index++;
             visible++;
@@ -815,7 +818,9 @@ bool cui_wheel_picker_ex(cui_ctx *ui, const char *id_str, const char *const *ite
     cui__mark_interactive(ui, node, CUI_IF_FOCUSABLE | CUI_IF_DRAG);
     if (r.hovered) cui__set_cursor(ui, st->dragging ? CUI_CURSOR_RESIZE_NS : CUI_CURSOR_HAND);
     cui__wheel_paint *p = cui__frame_alloc(ui, sizeof *p);
-    p->items = items; p->count = count; p->pos = st->pos.x; p->rows = rows; p->row_h = row_h; p->loop = o->loop;
+    const char **items_copy = cui__frame_alloc(ui, sizeof *items_copy * (size_t)CUI_MAX(1, count));
+    for (int k = 0; k < count; k++) items_copy[k] = (items && items[k]) ? cui__frame_strdup(ui, items[k], -1) : "";
+    p->items = items_copy; p->count = count; p->pos = st->pos.x; p->rows = rows; p->row_h = row_h; p->loop = o->loop;
     p->join_l = o->join_left; p->join_r = o->join_right;
     p->band = CUI_C(ui, ACTIVE);
     p->fg = CUI_C(ui, FOREGROUND);
@@ -1003,23 +1008,27 @@ static void cui__paint_ruler(cui_ctx *ui, cui_node *n, void *data) {
     float cx = r.x + r.w * 0.5f;
     cui_push_clip(ui, r);
     float units = (r.w * 0.5f) / p->spacing + 2;
-    float first = floorf((p->value - p->min) / p->step - units);
+    double first_d = floor(((double)p->value - (double)p->min) / (double)p->step - (double)units);
+    int total_steps = (int)ceil((double)units * 2.0 + 2.0);
     float fs = cui__fs(ui, ui->theme.text_xs);
-    for (float k = first; k <= first + units * 2 + 2; k += 1) {
-        float v = p->min + k * p->step;
-        if (v < p->min - p->step * 0.01f || v > p->max + p->step * 0.01f) continue;
-        float x = cx + ((v - p->value) / p->step) * p->spacing;
-        float fade = 1.0f - cui__clampf(fabsf(x - cx) / (r.w * 0.5f), 0, 1);
-        fade = fade * fade * (3 - 2 * fade);
-        int ki = (int)lroundf(k);
-        bool major = p->major > 0 && ki % p->major == 0;
-        float h = major ? 18 : (p->major > 1 && ki % (p->major / 2 ? p->major / 2 : 1) == 0 ? 12 : 8);
-        cui_color c = cui_alpha(major ? p->major_c : p->tick, fade);
-        cui_draw_rect(ui, (cui_rect){ x - 0.5f, r.y + 8, 1, h }, CUI_CORNERS(0.5f), c);
-        if (major) {
-            const char *s = cui__frame_printf(ui, p->format, (double)v);
-            float w = cui__text_width(ui, CUI_FONT_BODY, fs, s, -1, true);
-            cui__draw_text_line(ui, CUI_FONT_BODY, fs, x - w * 0.5f, r.y + 32, cui_alpha(p->label, fade), s, -1, true);
+    if (isfinite(first_d) && total_steps > 0 && total_steps <= 2048) {
+        for (int s = 0; s <= total_steps; s++) {
+            double k = first_d + (double)s;
+            double v = (double)p->min + k * (double)p->step;
+            if (v < (double)p->min - (double)p->step * 0.01 || v > (double)p->max + (double)p->step * 0.01) continue;
+            float x = cx + (float)(((v - (double)p->value) / (double)p->step) * (double)p->spacing);
+            float fade = 1.0f - cui__clampf(fabsf(x - cx) / (r.w * 0.5f), 0, 1);
+            fade = fade * fade * (3 - 2 * fade);
+            int64_t ki = (int64_t)llround(k);
+            bool major = p->major > 0 && ki % p->major == 0;
+            float h = major ? 18 : (p->major > 1 && ki % (p->major / 2 ? p->major / 2 : 1) == 0 ? 12 : 8);
+            cui_color c = cui_alpha(major ? p->major_c : p->tick, fade);
+            cui_draw_rect(ui, (cui_rect){ x - 0.5f, r.y + 8, 1, h }, CUI_CORNERS(0.5f), c);
+            if (major) {
+                const char *txt = cui__frame_printf(ui, p->format, v);
+                float w = cui__text_width(ui, CUI_FONT_BODY, fs, txt, -1, true);
+                cui__draw_text_line(ui, CUI_FONT_BODY, fs, x - w * 0.5f, r.y + 32, cui_alpha(p->label, fade), txt, -1, true);
+            }
         }
     }
     cui_pop_clip(ui);
@@ -1104,7 +1113,7 @@ bool cui_ruler_slider_ex(cui_ctx *ui, const char *label, float *value, float min
     cui__mark_interactive(ui, tape, CUI_IF_FOCUSABLE | CUI_IF_DRAG);
     if (r.hovered || st->dragging) cui__set_cursor(ui, CUI_CURSOR_RESIZE_EW);
     cui__ruler_paint *p = cui__frame_alloc(ui, sizeof *p);
-    p->value = st->shown.x; p->min = min; p->max = max; p->step = step; p->spacing = spacing; p->major = major; p->format = fmt;
+    p->value = st->shown.x; p->min = min; p->max = max; p->step = step; p->spacing = spacing; p->major = major; p->format = cui__frame_strdup(ui, fmt, -1);
     p->tick = cui__control_edge(ui, st->hover);
     p->major_c = CUI_C(ui, TEXT_SECONDARY);
     p->label = CUI_C(ui, TEXT_MUTED);
@@ -1164,6 +1173,7 @@ bool cui_histogram_slider_ex(cui_ctx *ui, const char *label, const float *bins, 
     ui->nodes[vt].flags |= CUI_NF_TABULAR;
     ui->nodes[vt].line_height = 1.35f;
     cui__close(ui);
+    if (!bins || bin_count < 0) bin_count = 0;
     float tmax = 0;
     for (int k = 0; k < bin_count; k++) tmax = CUI_MAX(tmax, bins[k]);
     float *anim = cui_state(ui, id ^ 0x1u, sizeof(float) * 2);
@@ -1175,7 +1185,7 @@ bool cui_histogram_slider_ex(cui_ctx *ui, const char *label, const float *bins, 
     ui->nodes[bars].self_align = CUI_ALIGN_STRETCH;
     cui__hist_paint *p = cui__frame_alloc(ui, sizeof *p);
     p->bins = cui__frame_alloc(ui, sizeof(float) * (size_t)CUI_MAX(1, bin_count));
-    memcpy((float *)p->bins, bins, sizeof(float) * (size_t)bin_count);
+    if (bin_count > 0) memcpy((float *)p->bins, bins, sizeof(float) * (size_t)bin_count);
     p->n = bin_count; p->lo_t = anim[0]; p->hi_t = anim[1]; p->tmax = tmax;
     p->on = cui__emphasis(ui);
     p->off = CUI_C(ui, CONTROL_TRACK);
@@ -1277,7 +1287,7 @@ bool cui_signature_pad_ex(cui_ctx *ui, const char *id_str, const cui_signature_o
         cui__sig_push(ui, st, mp, 2.6f);
         st->last_t = ui->time;
         changed = true;
-    } else if (st->drawing && ui->mdown[0]) {
+    } else if (st->drawing && ui->mdown[0] && st->npts > 0) {
         cui_vec2 p = mp;
         cui_vec2 q = st->pts[st->npts - 1];
         float dx = p.x - q.x, dy = p.y - q.y, dist = sqrtf(dx * dx + dy * dy);
@@ -1314,7 +1324,7 @@ bool cui_signature_pad_ex(cui_ctx *ui, const char *id_str, const cui_signature_o
     p->ink = cui__color_set(o->ink) ? cui_color_of(ui, o->ink) : CUI_C(ui, FOREGROUND);
     p->line = CUI_C(ui, BORDER_STRONG);
     p->hint = CUI_C(ui, TEXT_MUTED);
-    p->placeholder = o->placeholder ? o->placeholder : "Sign here";
+    p->placeholder = o->placeholder ? cui__frame_strdup(ui, o->placeholder, -1) : "Sign here";
     p->empty = empty; p->ref_w = st->ref_w;
     ui->nodes[canvas].paint = cui__paint_signature;
     ui->nodes[canvas].paint_data = p;
@@ -1327,7 +1337,7 @@ bool cui_signature_pad_ex(cui_ctx *ui, const char *id_str, const cui_signature_o
         memset(&bo, 0, sizeof bo);
         bo.size = CUI_SIZE_SM; bo.variant = CUI_BUTTON_GHOST; bo.icon = CUI_ICON_ROTATE_CCW;
         cui_push_id(ui, id_str);
-        if (cui_button_ex(ui, "Clear", &bo)) { st->npts = 0; st->nends = 0; changed = true; }
+        if (cui_button_ex(ui, "Clear", &bo)) { st->npts = 0; st->nends = 0; st->drawing = false; changed = true; }
         cui_pop_id(ui);
         cui__close(ui);
     }
@@ -1351,7 +1361,7 @@ int cui_signature_points(cui_ctx *ui, const char *id, const cui_vec2 **points, c
 
 void cui_signature_clear(cui_ctx *ui, const char *id) {
     cui__sig_state *st = cui_state(ui, cui_make_id(ui, id), sizeof *st);
-    st->npts = 0; st->nends = 0;
+    st->npts = 0; st->nends = 0; st->drawing = false;
 }
 
 /* ------------------------------------------------------------------------ */

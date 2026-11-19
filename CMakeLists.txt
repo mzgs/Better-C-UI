@@ -139,6 +139,22 @@ target_include_directories(cui PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
+include(GNUInstallDirs)
+if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+    set(CUI_PC_PREFIX "${CMAKE_INSTALL_PREFIX}")
+    set(CUI_PC_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+else()
+    file(RELATIVE_PATH CUI_PC_PREFIX_REL "/${CMAKE_INSTALL_LIBDIR}/pkgconfig" "/")
+    string(REGEX REPLACE "/$" "" CUI_PC_PREFIX_REL "${CUI_PC_PREFIX_REL}")
+    set(CUI_PC_PREFIX "\${pcfiledir}/${CUI_PC_PREFIX_REL}")
+    set(CUI_PC_LIBDIR "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
+endif()
+if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+    set(CUI_PC_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
+else()
+    set(CUI_PC_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+endif()
+
 if(CUI_WEBVIEW)
     if(NOT CUI_WITH_APP)
         message(FATAL_ERROR "CUI_WEBVIEW requires CUI_WITH_APP")
@@ -240,7 +256,6 @@ if(CUI_BUILD_TESTS)
 endif()
 
 # Install
-include(GNUInstallDirs)
 install(TARGETS cui EXPORT cuiTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -265,22 +280,41 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cuiConfig.cmake ${CMAKE_CURRENT_BINARY
 
 # pkg-config
 set(CUI_PC_LIBS "-lcui")
+set(CUI_PC_REQUIRES "")
+set(CUI_PC_CFLAGS "-I\${includedir}")
+if(CUI_BUILD_SHARED)
+    set(CUI_PC_CFLAGS "${CUI_PC_CFLAGS} -DCUI_SHARED")
+endif()
 if(CUI_BACKEND STREQUAL "x11")
-    set(CUI_PC_LIBS "${CUI_PC_LIBS} -lX11 -ldl -lpthread -lm")
+    set(CUI_PC_LIBS "${CUI_PC_LIBS} -lX11 -ldl")
 elseif(CUI_BACKEND STREQUAL "cocoa")
     set(CUI_PC_LIBS "${CUI_PC_LIBS} -framework Cocoa -framework QuartzCore -framework OpenGL")
 elseif(CUI_BACKEND STREQUAL "win32")
     set(CUI_PC_LIBS "${CUI_PC_LIBS} -luser32 -lgdi32 -lopengl32 -lshell32 -limm32 -ldwmapi -lcomdlg32 -lole32")
+elseif(CUI_BACKEND STREQUAL "sdl2")
+    set(CUI_PC_REQUIRES "sdl2")
+elseif(CUI_BACKEND STREQUAL "glfw")
+    set(CUI_PC_REQUIRES "glfw3")
+endif()
+if(Threads_FOUND AND NOT WIN32 AND NOT APPLE)
+    set(CUI_PC_LIBS "${CUI_PC_LIBS} -lpthread")
+endif()
+if(NOT WIN32 AND NOT MSVC AND NOT APPLE)
+    set(CUI_PC_LIBS "${CUI_PC_LIBS} -lm")
+endif()
+set(CUI_PC_REQUIRES_LINE "")
+if(CUI_PC_REQUIRES)
+    set(CUI_PC_REQUIRES_LINE "Requires: ${CUI_PC_REQUIRES}\n")
 endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/cui.pc
-"prefix=\${pcfiledir}/../..
-libdir=\${prefix}/${CMAKE_INSTALL_LIBDIR}
-includedir=\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}
+"prefix=${CUI_PC_PREFIX}
+libdir=${CUI_PC_LIBDIR}
+includedir=${CUI_PC_INCLUDEDIR}
 
 Name: cui
 Description: ${PROJECT_DESCRIPTION}
 Version: ${PROJECT_VERSION}
-Cflags: -I\${includedir}
+${CUI_PC_REQUIRES_LINE}Cflags: ${CUI_PC_CFLAGS}
 Libs: -L\${libdir} ${CUI_PC_LIBS}
 ")
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cui.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)

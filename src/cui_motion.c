@@ -210,7 +210,8 @@ void cui_word_rotate_ex(cui_ctx *ui, const char *id_str, const char *const *word
     float lh = size * 1.3f;
     int n = cui__leaf(ui, id, CUI_PX(CUI_MAX(1.0f, st->w.x)), CUI_PX(lh));
     cui__wr_paint *p = cui__frame_alloc(ui, sizeof *p);
-    p->cur = cur; p->prev = st->prev >= 0 && st->prev < count ? words[st->prev] : NULL;
+    p->cur = cui__frame_strdup(ui, cur, -1);
+    p->prev = (st->prev >= 0 && st->prev < count && words[st->prev]) ? cui__frame_strdup(ui, words[st->prev], -1) : NULL;
     p->t = st->t.x; p->font = font; p->size = size; p->lh = lh;
     p->c = cui__color_set(o->color) ? cui_color_of(ui, o->color) : cui__emphasis(ui);
     ui->nodes[n].paint = cui__paint_word_rotate;
@@ -679,7 +680,7 @@ bool cui_dock_item_ex(cui_ctx *ui, const char *icon, const char *label, const cu
     cui__dock_paint *p = cui__frame_alloc(ui, sizeof *p);
     if (cui__color_set(o->color)) { p->bg = cui_color_of(ui, o->color); p->fg = cui__rgba(255, 255, 255, 255); }
     else { p->bg = ui->mode == CUI_THEME_DARK ? cui_mix(CUI_C(ui, SURFACE_RAISED), CUI_C(ui, FOREGROUND), 0.1f) : CUI_C(ui, SURFACE_MUTED); p->fg = CUI_C(ui, FOREGROUND); }
-    p->icon = icon; p->running = o->running; p->badge = o->badge; p->hover = st->hover;
+    p->icon = icon ? cui__frame_strdup(ui, icon, -1) : NULL; p->running = o->running; p->badge = o->badge; p->hover = st->hover;
     nd->paint = cui__paint_dock_item;
     nd->paint_data = p;
     cui__mark_interactive(ui, n, CUI_IF_FOCUSABLE);
@@ -754,8 +755,8 @@ bool cui_tab_bar_ex(cui_ctx *ui, const char *id_str, const cui_tab_bar_item *ite
         cui_interact r = cui__interact(ui, iid, CUI_IF_FOCUSABLE);
         if ((r.clicked || r.keyboard_activate) && sel != k) { sel = k; changed = true; }
         if (r.focused) {
-            if (cui_key_pressed(ui, CUI_KEY_RIGHT) && k + 1 < count) { sel = k + 1; changed = true; ui->focus = cui__hash(&sel, sizeof sel, id ^ 0x7AB); }
-            if (cui_key_pressed(ui, CUI_KEY_LEFT) && k > 0) { sel = k - 1; changed = true; ui->focus = cui__hash(&sel, sizeof sel, id ^ 0x7AB); }
+            if (cui_key_pressed(ui, CUI_KEY_RIGHT) && k + 1 < count) { sel = k + 1; changed = true; ui->focus = cui__hash(&sel, sizeof sel, id ^ 0x7AB); ui->kpressed[CUI_KEY_RIGHT] = 0; }
+            if (cui_key_pressed(ui, CUI_KEY_LEFT) && k > 0) { sel = k - 1; changed = true; ui->focus = cui__hash(&sel, sizeof sel, id ^ 0x7AB); ui->kpressed[CUI_KEY_LEFT] = 0; }
         }
         bool on = k == sel;
         float *hv = cui_state(ui, iid, sizeof(float) * 2);
@@ -899,7 +900,8 @@ static void cui__paint_waveform(cui_ctx *ui, cui_node *n, void *data) {
     if (nb <= 0 || p->count <= 0) return;
     float used = nb * (p->bar + p->gap) - p->gap, x0 = r.x + (r.w - used) * 0.5f;
     for (int k = 0; k < nb; k++) {
-        int a = k * p->count / nb, b = CUI_MAX(a + 1, (k + 1) * p->count / nb);
+        int a = (int)((int64_t)k * p->count / nb);
+        int b = CUI_MAX(a + 1, (int)((int64_t)(k + 1) * p->count / nb));
         float v = 0;
         for (int i = a; i < b && i < p->count; i++) v = CUI_MAX(v, p->peaks[i]);
         float e = cui__clampf(p->intro * 1.8f - (float)k / nb * 0.8f, 0, 1);
@@ -917,7 +919,7 @@ bool cui_waveform_ex(cui_ctx *ui, const char *id_str, const float *peaks, int co
     cui_waveform_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
-    count = CUI_MAX(0, count);
+    count = peaks ? CUI_MAX(0, count) : 0;
     cui_id id = cui_make_id(ui, id_str);
     cui_interact r = cui__interact(ui, id, progress ? (CUI_IF_DRAG | CUI_IF_FOCUSABLE) : 0);
     cui_rect pr = cui__prev_rect(ui, id);

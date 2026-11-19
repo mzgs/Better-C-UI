@@ -109,6 +109,7 @@ static void cui__sdf_quad(cui_ctx *ui, float cx, float cy, float hw, float hh, f
                           cui_texture tex, float u0, float v0, float u1, float v1) {
     cui_xform x = cui__xf(ui);
     float s = x.scale;
+    if (s <= 0.0f) return;
     float ncx = cx * s + x.ox, ncy = cy * s + x.oy;
     float nhw = hw * s, nhh = hh * s, ne = expand * s;
     if (mode == CUI_SHADE_RRECT || mode == CUI_SHADE_IMAGE) ne = CUI_MAX(ne, 1.0f);

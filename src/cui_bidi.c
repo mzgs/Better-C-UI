@@ -116,6 +116,7 @@ int cui__bidi_paragraph(cui_bidi_char *c, int n, int base) {
             }
         }
     }
+    if (overflow) for (i = 0; i < n; i++) c[i].pair = -1;
     /* N0, in opening-bracket order; nested brackets see earlier resolutions. */
     for (i = 0; i < n; i++) {
         j = c[i].pair;

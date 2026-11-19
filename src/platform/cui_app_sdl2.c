@@ -9,6 +9,7 @@ typedef struct {
     SDL_Cursor *cursors[CUI_CURSOR_COUNT];
     cui_cursor cursor;
     SDL_Surface *surface;
+    float input_scale;
 } cui__sdl;
 
 static cui__sdl *cui__s(cui_app *app) { return app->plat; }
@@ -36,7 +37,8 @@ static const char *cui__sdl_get_clip(void *user) {
 bool cui__plat_init(cui_app *app) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) return false;
     cui__sdl *s = calloc(1, sizeof *s);
-    if (!s) return false;
+    if (!s) { SDL_Quit(); return false; }
+    s->input_scale = 1.0f;
     app->plat = s;
     Uint32 flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_HIDDEN;
     if (!app->desc.fixed_size) flags |= SDL_WINDOW_RESIZABLE;
@@ -54,7 +56,7 @@ bool cui__plat_init(cui_app *app) {
         flags &= ~(Uint32)SDL_WINDOW_OPENGL;
         s->win = SDL_CreateWindow(app->title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, app->desc.width, app->desc.height, flags);
     }
-    if (!s->win) { free(s); app->plat = NULL; return false; }
+    if (!s->win) { free(s); app->plat = NULL; SDL_Quit(); return false; }
     SDL_SetWindowMinimumSize(s->win, app->desc.min_width, app->desc.min_height);
     SDL_SystemCursor ids[CUI_CURSOR_COUNT] = { SDL_SYSTEM_CURSOR_ARROW, SDL_SYSTEM_CURSOR_HAND, SDL_SYSTEM_CURSOR_IBEAM,
                                               SDL_SYSTEM_CURSOR_SIZEWE, SDL_SYSTEM_CURSOR_SIZENS, SDL_SYSTEM_CURSOR_SIZEALL, SDL_SYSTEM_CURSOR_NO };
@@ -88,7 +90,7 @@ bool cui__plat_gl_create(cui_app *app, bool vsync) {
     cui__sdl *s = cui__s(app);
     if (!(SDL_GetWindowFlags(s->win) & SDL_WINDOW_OPENGL)) return false;
     s->gl = SDL_GL_CreateContext(s->win);
-    if (!s->gl) return false;
+    if (!s->gl) { cui__plat_gl_release(app); return false; }
     SDL_GL_MakeCurrent(s->win, s->gl);
     SDL_GL_SetSwapInterval(vsync ? 1 : 0);
     return true;
@@ -115,15 +117,16 @@ void cui__plat_metrics(cui_app *app, float *w, float *h, float *scale, int *fb_w
     SDL_GetWindowSize(s->win, &ww, &wh);
     if (s->gl) SDL_GL_GetDrawableSize(s->win, &dw, &dh);
     else { dw = ww; dh = wh; }
-    float sc = ww > 0 ? (float)dw / (float)ww : 1.0f;
+    float native = ww > 0 ? (float)dw / (float)ww : 1.0f;
+    float sc = native;
     const char *env = getenv("CUI_SCALE");
-    if (env && sc == 1.0f) { float e = (float)atof(env); if (e > 0.25f && e < 8) { sc = e; } }
+    if (env && sc == 1.0f) { float e = (float)atof(env); if (e > 0.25f && e < 8) sc = e; }
+    s->input_scale = native > 0 ? sc / native : 1.0f;
     *scale = sc;
-    *fb_w = (int)(ww * sc + 0.5f);
-    *fb_h = (int)(wh * sc + 0.5f);
-    *w = (float)ww;
-    *h = (float)wh;
-    if (!s->gl) { *w = (float)ww / sc; *h = (float)wh / sc; *fb_w = ww; *fb_h = wh; }
+    *fb_w = dw;
+    *fb_h = dh;
+    *w = sc > 0 ? (float)dw / sc : (float)ww;
+    *h = sc > 0 ? (float)dh / sc : (float)wh;
 }
 
 void cui__plat_set_title(cui_app *app, const char *title) { SDL_SetWindowTitle(cui__s(app)->win, title); }
@@ -175,19 +178,29 @@ static int cui__sdl_mods(Uint16 m) {
 
 static void cui__sdl_event(cui_app *app, SDL_Event *e) {
     cui_ctx *ui = app->ui;
+    float is = cui__s(app)->input_scale;
+    if (is <= 0) is = 1.0f;
     switch (e->type) {
     case SDL_QUIT: app->running = false; break;
     case SDL_WINDOWEVENT:
         if (e->window.event == SDL_WINDOWEVENT_CLOSE) app->running = false;
-        else if (e->window.event == SDL_WINDOWEVENT_LEAVE) cui_input_mouse_leave(ui);
+        else if (e->window.event == SDL_WINDOWEVENT_LEAVE) {
+            if (!cui_mouse_down(ui, CUI_MOUSE_LEFT)) cui_input_mouse_leave(ui);
+        }
         else if (e->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) cui_input_focus(ui, true);
         else if (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) cui_input_focus(ui, false);
+        else if (e->window.event == SDL_WINDOWEVENT_EXPOSED || e->window.event == SDL_WINDOWEVENT_SHOWN ||
+                 e->window.event == SDL_WINDOWEVENT_RESTORED) app->force_present = true;
         cui_request_redraw(ui);
         break;
-    case SDL_MOUSEMOTION: cui_input_mouse_move(ui, (float)e->motion.x, (float)e->motion.y); break;
+    case SDL_MOUSEMOTION: cui_input_mouse_move(ui, (float)e->motion.x / is, (float)e->motion.y / is); break;
     case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP: {
-        cui_mouse_button b = e->button.button == SDL_BUTTON_LEFT ? CUI_MOUSE_LEFT : e->button.button == SDL_BUTTON_RIGHT ? CUI_MOUSE_RIGHT : CUI_MOUSE_MIDDLE;
-        cui_input_mouse_move(ui, (float)e->button.x, (float)e->button.y);
+        cui_mouse_button b;
+        if (e->button.button == SDL_BUTTON_LEFT) b = CUI_MOUSE_LEFT;
+        else if (e->button.button == SDL_BUTTON_RIGHT) b = CUI_MOUSE_RIGHT;
+        else if (e->button.button == SDL_BUTTON_MIDDLE) b = CUI_MOUSE_MIDDLE;
+        else break;
+        cui_input_mouse_move(ui, (float)e->button.x / is, (float)e->button.y / is);
         cui_input_mouse_button(ui, b, e->type == SDL_MOUSEBUTTONDOWN);
         break;
     }
@@ -210,7 +223,7 @@ static void cui__sdl_event(cui_app *app, SDL_Event *e) {
         int mx = 0, my = 0;
         SDL_GetMouseState(&mx, &my);
         const char *paths[1] = { e->drop.file };
-        if (e->drop.file) cui_input_file_drop(ui, paths, 1, (float)mx, (float)my);
+        if (e->drop.file) cui_input_file_drop(ui, paths, 1, (float)mx / is, (float)my / is);
         SDL_free(e->drop.file);
         break;
     }
@@ -245,4 +258,24 @@ double cui__plat_refresh_hz(cui_app *app) {
     return SDL_GetWindowDisplayMode(cui__s(app)->win, &m) == 0 ? m.refresh_rate : 0;
 }
 
-void cui__plat_gl_release(cui_app *app) { (void)app; }   /* not used: these keep OpenGL */
+void cui__plat_gl_release(cui_app *app) {
+    cui__sdl *s = cui__s(app);
+    if (!s) return;
+    if (s->gl) {
+        SDL_GL_DeleteContext(s->gl);
+        s->gl = NULL;
+    }
+    if (s->win && (SDL_GetWindowFlags(s->win) & SDL_WINDOW_OPENGL)) {
+        /* SDL_GetWindowSurface fails on SDL_WINDOW_OPENGL windows; recreate without OpenGL for software fallback. */
+        int ww = app->desc.width, wh = app->desc.height;
+        SDL_GetWindowSize(s->win, &ww, &wh);
+        Uint32 flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_HIDDEN;
+        if (!app->desc.fixed_size) flags |= SDL_WINDOW_RESIZABLE;
+        SDL_Window *nw = SDL_CreateWindow(app->title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, ww, wh, flags);
+        if (nw) {
+            SDL_DestroyWindow(s->win);
+            s->win = nw;
+            SDL_SetWindowMinimumSize(s->win, app->desc.min_width, app->desc.min_height);
+        }
+    }
+}

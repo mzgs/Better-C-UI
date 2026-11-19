@@ -314,7 +314,8 @@ bool cui_webview_set_user_agent(cui_webview_handle *view, const char *user_agent
     cui__webview *v = (cui__webview *)view;
     char *old = v->user_agent;
     v->user_agent = copy;
-    bool ok = view->status == CUI_WEBVIEW_STARTING || cui__webview_native_user_agent(v);
+    bool ok = view->status == CUI_WEBVIEW_STARTING ||
+              (view->status == CUI_WEBVIEW_READY && cui__webview_native_user_agent(v));
     if (!ok) { v->user_agent = old; free(copy); }
     else free(old);
     return ok;

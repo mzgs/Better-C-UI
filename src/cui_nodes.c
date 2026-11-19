@@ -895,9 +895,9 @@ bool cui_node_begin_ex(cui_ctx *ui, int node_id, float *x, float *y, const char 
     cui__ne_card *cp = cui__frame_alloc(ui, sizeof *cp);
     memset(cp, 0, sizeof *cp);
     cp->b = b;
-    cp->title = title ? title : "";
+    cp->title = title ? cui__frame_strdup(ui, title, -1) : "";
     cp->title_len = title ? cui__display_len(title) : 0;
-    cp->icon = o->icon;
+    cp->icon = o->icon ? cui__frame_strdup(ui, o->icon, -1) : NULL;
     cp->selected = selected;
     cp->hover = *hover;
     cp->focus = *focus;
@@ -995,7 +995,7 @@ static bool cui__ne_pin_row(cui_ctx *ui, int pin, const char *label, const cui_p
     cui__ne_row *row = &st->rows[st->row_n++];
     memset(row, 0, sizeof *row);
     row->kind = kind; row->pin = pin; row->type = o->type; row->connected = connected;
-    row->label = label ? label : ""; row->label_len = label ? cui__display_len(label) : 0;
+    row->label = label ? cui__frame_strdup(ui, label, -1) : ""; row->label_len = label ? cui__display_len(label) : 0;
     row->y = b->row_y; row->h = CUI__NE_ROW; row->hover = *hover;
     b->row_y += CUI__NE_ROW;
     ui->last_id = pid;

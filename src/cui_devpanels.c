@@ -105,16 +105,21 @@ static cui_color cui__rt_color(cui_ctx *ui, int k) {
 /* a piece of the text as a chip in its mark color; line breaks and long runs shortened */
 static void cui__rt_chip(cui_ctx *ui, const char *text, int a, int b, int color) {
     char buf[64];
-    int n = 0;
-    for (int i = a; i < b && n < 40; i++) {
+    int n = 0, i = a;
+    for (; i < b && n < 40; i++) {
         unsigned char c = (unsigned char)text[i];
         if (c == '\n') { buf[n++] = '\\'; buf[n++] = 'n'; continue; }
         if (c == '\t') { buf[n++] = ' '; continue; }
         buf[n++] = (char)c;
     }
-    while (n > 0 && ((unsigned char)buf[n - 1] & 0xC0) == 0x80) n--;   /* not half a character */
-    if (n > 0 && ((unsigned char)buf[n - 1] & 0xC0) == 0xC0) n--;
-    if (b - a > 40) { memcpy(buf + n, "\xe2\x80\xa6", 3); n += 3; }
+    if (i < b) {
+        /* only trim a trailing partial UTF-8 sequence when truncated mid-character */
+        if (((unsigned char)text[i] & 0xC0) == 0x80) {
+            while (n > 0 && ((unsigned char)buf[n - 1] & 0xC0) == 0x80) n--;
+            if (n > 0 && ((unsigned char)buf[n - 1] & 0xC0) == 0xC0) n--;
+        }
+        memcpy(buf + n, "\xe2\x80\xa6", 3); n += 3;
+    }
     int box = cui__node_new(ui, 0);
     cui_node *bn = &ui->nodes[box];
     bn->bg = cui__rt_color(ui, color);
@@ -269,7 +274,15 @@ static void cui__paint_stk_source(cui_ctx *ui, cui_node *n, void *data) {
 static void cui__stk_source(cui_ctx *ui, const cui_stack_frame *fr, const char *lang, bool narrow) {
     cui__stk_src_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
-    p->fr = fr; p->lang = lang;
+    cui_stack_frame *fc = cui__frame_alloc(ui, sizeof *fc);
+    *fc = *fr;
+    if (fr->source && fr->source_count > 0) {
+        const char **lines = cui__frame_alloc(ui, sizeof *lines * (size_t)fr->source_count);
+        for (int k = 0; k < fr->source_count; k++)
+            lines[k] = fr->source[k] ? cui__frame_strdup(ui, fr->source[k], -1) : NULL;
+        fc->source = lines;
+    }
+    p->fr = fc; p->lang = lang ? cui__frame_strdup(ui, lang, -1) : NULL;
     p->size = cui__fs(ui, narrow ? 11.5f : 12.5f);
     p->lh = roundf(p->size * 1.6f);
     cui__syntax_colors(ui, p->colors);
@@ -286,7 +299,7 @@ static void cui__stk_source(cui_ctx *ui, const cui_stack_frame *fr, const char *
 
 /* the whole trace as text, for the copy button */
 static const char *cui__stk_text(cui_ctx *ui, const cui_stack_frame *f, int n, const cui_stack_trace_opts *o) {
-    size_t cap = 256;
+    size_t cap = 256 + (o->title ? strlen(o->title) : 0) + (o->message ? strlen(o->message) : 0);
     for (int i = 0; i < n; i++) cap += (f[i].function ? strlen(f[i].function) : 0) + (f[i].file ? strlen(f[i].file) : 0) + 40;
     char *buf = cui__frame_alloc(ui, cap);
     size_t len = (size_t)snprintf(buf, cap, "%s%s%s\n", o->title ? o->title : "", o->title && o->message ? ": " : "", o->message ? o->message : "");
@@ -547,11 +560,11 @@ static bool cui__url_encode(const char *s, char *out, size_t cap, size_t *len) {
 
 int cui_url_params(const char *url, cui_kv_pair *pairs, int cap) {
     if (!url || !pairs || cap <= 0) return 0;
+    const char *hash = strchr(url, '#');
     const char *q = strchr(url, '?');
-    if (!q) return 0;
+    if (!q || (hash && q > hash)) return 0;
     q++;
-    const char *end = strchr(q, '#');
-    if (!end) end = q + strlen(q);
+    const char *end = hash ? hash : q + strlen(q);
     int n = 0;
     while (q < end && n < cap) {
         const char *amp = q;
@@ -574,6 +587,7 @@ bool cui_url_set_params(char *url, size_t cap, const cui_kv_pair *pairs, int cou
     if (!url || cap == 0) return false;
     size_t ul = strlen(url);
     const char *q = strchr(url, '?'), *hash = strchr(url, '#');
+    if (q && hash && q > hash) q = NULL;
     size_t base = q ? (size_t)(q - url) : hash ? (size_t)(hash - url) : ul;
     char frag[256] = "";
     if (hash) snprintf(frag, sizeof frag, "%s", hash);

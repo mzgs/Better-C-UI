@@ -1137,7 +1137,8 @@ static void cui__qb_rule_row(cui__qbf *f, int i) {
     so.width = f->narrow ? CUI_GROW(1) : CUI_PX(150);
     int field = CUI_CLAMP(nd->field, 0, CUI_MAX(0, f->field_count - 1));
     if (f->field_count > 0 && cui_select_ex(ui, "field", names, f->field_count, &field, &so)) {
-        if (f->fields[field].type != f->fields[nd->field < f->field_count ? nd->field : 0].type || field != nd->field) { nd->op = 0; nd->value[0] = 0; }
+        int prev_field = (nd->field >= 0 && nd->field < f->field_count) ? nd->field : 0;
+        if (f->fields[field].type != f->fields[prev_field].type || field != nd->field) { nd->op = 0; nd->value[0] = 0; }
         nd->field = field; f->changed = true;
     }
     const cui_query_field *fd = cui__qb_field(f->fields, f->field_count, nd->field);
@@ -1897,7 +1898,7 @@ cui_keymap_result cui_keymap_ex(cui_ctx *ui, const char *id_str, const cui_keyma
         if (first >= 0) {
             cui_color tone = cui__km_tone(ui, b[first].category);
             c->flags |= CUI__KM_BOUND;
-            c->action = b[first].action;
+            c->action = b[first].action ? cui__frame_strdup(ui, b[first].action, -1) : NULL;
             c->tint = tone;
             c->fill = cui_mix(CUI_C(ui, SURFACE), tone, ui->mode == CUI_THEME_DARK ? 0.16f : 0.10f);
             if (n > 1) { c->flags |= CUI__KM_CONFLICT; c->edge = CUI_C(ui, DANGER); c->action = cui__frame_printf(ui, "%d actions", n); }

@@ -102,13 +102,20 @@ cui_uptime_result cui_uptime_ex(cui_ctx *ui, const char *id_str, const cui_uptim
         cui__up_paint *p = cui__frame_alloc(ui, sizeof *p);
         int n;
         cui__up_fit(w, nd, &n, &p->bw, &p->gap);
-        p->days = sv->days; p->n = nd > 0 ? n : 0; p->first = nd - p->n; p->hover = -1;
+        p->n = (nd > 0 && sv->days) ? n : 0;
+        int first_day = nd - p->n;
+        if (p->n > 0) {
+            float *days_copy = cui__frame_alloc(ui, sizeof *days_copy * (size_t)p->n);
+            memcpy(days_copy, sv->days + first_day, sizeof *days_copy * (size_t)p->n);
+            p->days = days_copy;
+        }
+        p->first = 0; p->hover = -1;
         cui_interact bi = cui__interact(ui, bid, 0);
         if (bi.hovered && p->n > 0 && cui__has_prev_rect(ui, bid)) {
             int k = (int)((ui->mx - br.x) / (p->bw + p->gap));
             if (k >= 0 && k < p->n) {
                 p->hover = k;
-                res.service = s; res.day = p->first + k;
+                res.service = s; res.day = first_day + k;
             }
         }
         int bars = cui__node_new(ui, bid);
@@ -118,7 +125,7 @@ cui_uptime_result cui_uptime_ex(cui_ctx *ui, const char *id_str, const cui_uptim
         bn->paint = cui__paint_uptime; bn->paint_data = p;
         cui__mark_interactive(ui, bars, 0);
         if (p->hover >= 0) {
-            float v = sv->days[p->first + p->hover];
+            float v = p->days[p->hover];
             int back = p->n - 1 - p->hover;
             const char *day;
             if (o->last_day.year > 0) {
@@ -214,20 +221,27 @@ static void cui__paint_thist(cui_ctx *ui, cui_node *nd, void *data) {
     }
     /* time labels */
     double t0 = p->start, t1 = p->start + p->bucket * p->n;
-    double first = ceil((t0 + p->offset * 60.0) / p->tstep) * p->tstep - p->offset * 60.0;
-    float last_x = -1e9f;
-    for (double t = first; t <= t1 + 1e-6 && p->tstep > 0; t += p->tstep) {
-        float x = plot.x + (float)((t - t0) / (t1 - t0)) * plot.w;
-        cui_draw_rect(ui, (cui_rect){ floorf(x), plot.y + plot.h, 1, 4 }, CUI_CORNERS(0), CUI_C(ui, BORDER_STRONG));
-        const char *lbl = cui__th_label(ui, p, t);
-        float lw = cui__text_width(ui, CUI_FONT_BODY, fx, lbl, -1, true);
-        float lx = CUI_CLAMP(x - lw * 0.5f, r.x, r.x + r.w - lw);
-        if (lx < last_x + 8) continue;
-        cui__draw_text_line(ui, CUI_FONT_BODY, fx, lx, plot.y + plot.h + 5, CUI_C(ui, TEXT_MUTED), lbl, -1, true);
-        last_x = lx + lw;
+    if (t1 > t0 && p->tstep > 0) {
+        double first = ceil((t0 + p->offset * 60.0) / p->tstep) * p->tstep - p->offset * 60.0;
+        float last_x = -1e9f;
+        int ticks = 0;
+        for (double t = first; t <= t1 + 1e-6 && ticks < 256; ticks++) {
+            float x = plot.x + (float)((t - t0) / (t1 - t0)) * plot.w;
+            cui_draw_rect(ui, (cui_rect){ floorf(x), plot.y + plot.h, 1, 4 }, CUI_CORNERS(0), CUI_C(ui, BORDER_STRONG));
+            const char *lbl = cui__th_label(ui, p, t);
+            float lw = cui__text_width(ui, CUI_FONT_BODY, fx, lbl, -1, true);
+            float lx = CUI_CLAMP(x - lw * 0.5f, r.x, r.x + r.w - lw);
+            if (lx >= last_x + 8) {
+                cui__draw_text_line(ui, CUI_FONT_BODY, fx, lx, plot.y + plot.h + 5, CUI_C(ui, TEXT_MUTED), lbl, -1, true);
+                last_x = lx + lw;
+            }
+            double next_t = t + p->tstep;
+            if (!(next_t > t)) break;
+            t = next_t;
+        }
     }
     /* the selected range */
-    if (p->sel1 > p->sel0) {
+    if (p->sel1 > p->sel0 && t1 > t0) {
         float xa = plot.x + (float)((p->sel0 - t0) / (t1 - t0)) * plot.w, xb = plot.x + (float)((p->sel1 - t0) / (t1 - t0)) * plot.w;
         xa = CUI_CLAMP(xa, plot.x, plot.x + plot.w); xb = CUI_CLAMP(xb, plot.x, plot.x + plot.w);
         cui_color em = cui__emphasis(ui);
@@ -833,11 +847,28 @@ cui_blame_result cui_blame_ex(cui_ctx *ui, const char *id_str, const char *const
             const cui_blame_commit *cm = &commits[c];
             p->heat = tmax > tmin ? (float)(cm->time - tmin) / (float)(tmax - tmin) : 1.0f;
             if (narrow) {   /* initials only */
-                char ini[8];
-                int n = 0;
+                char ini[16];
+                int n = 0, count = 0;
                 const char *a = cm->author ? cm->author : "";
+                int alen = (int)strlen(a);
                 bool start = true;
-                for (; *a && n < 2; a++) { if (*a == ' ') { start = true; continue; } if (start) { ini[n++] = (char)(*a >= 'a' && *a <= 'z' ? *a - 32 : *a); start = false; } }
+                for (int k = 0; k < alen && count < 2;) {
+                    uint32_t cp = 0;
+                    int step = cui__utf8_decode(a + k, alen - k, &cp);
+                    if (step <= 0) break;
+                    if (cp == ' ') { start = true; k += step; continue; }
+                    if (start) {
+                        if (cp >= 'a' && cp <= 'z') {
+                            ini[n++] = (char)(cp - 32);
+                        } else if (n + step < (int)sizeof ini) {
+                            memcpy(ini + n, a + k, (size_t)step);
+                            n += step;
+                        }
+                        count++;
+                        start = false;
+                    }
+                    k += step;
+                }
                 ini[n] = 0;
                 p->author = cui__frame_strdup(ui, ini, n);
             } else {

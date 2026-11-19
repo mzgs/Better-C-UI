@@ -479,6 +479,370 @@ static void test_picker_capacity(void) {
     cui_destroy(ui);
 }
 
+static void test_deep_audit_fixes(void) {
+    /* 1. Regex UTF-8 and lone continuation byte greedy backtracking (no buffer underflow) */
+    {
+        cui_regex_match m;
+        const char *err = NULL;
+        char *heap_utf8 = malloc(4);
+        memcpy(heap_utf8, "\xc3\xa9\xc3\xa9", 4);
+        CHECK(!cui_regex_search("\\S+z", 0, heap_utf8, 4, 0, &m, &err));
+        CHECK(cui_regex_search("\\S+", 0, heap_utf8, 4, 0, &m, &err) && m.start == 0 && m.end == 4);
+        free(heap_utf8);
+        char *heap_bad = malloc(2);
+        heap_bad[0] = (char)0x80; heap_bad[1] = (char)0x80;
+        CHECK(!cui_regex_search(".*z", 0, heap_bad, 2, 0, &m, &err));
+        CHECK(cui_regex_search(".*", 0, heap_bad, 2, 0, &m, &err) && m.start == 0 && m.end == 2);
+        free(heap_bad);
+    }
+
+    /* 2. Terminal scrollback double-wrap integrity */
+    {
+        cui_terminal_buffer tb;
+        char text_buf[100];
+        cui_terminal_line line_buf[16];
+        cui_terminal_init(&tb, text_buf, sizeof text_buf, line_buf, 16);
+        char chunk[90];
+        memset(chunk, 'a', 80); chunk[80] = '\n';
+        cui_terminal_write(&tb, chunk, 81);
+        memset(chunk, 'b', 10); chunk[10] = '\n';
+        cui_terminal_write(&tb, chunk, 11);
+        memset(chunk, 'c', 15); chunk[15] = '\n';
+        cui_terminal_write(&tb, chunk, 16);
+        memset(chunk, 'd', 15); chunk[15] = '\n';
+        cui_terminal_write(&tb, chunk, 16);
+        memset(chunk, 'e', 75);
+        cui_terminal_write(&tb, chunk, 75);
+        CHECK(tb.count == 1);
+        const cui_terminal_line *cur = &tb.lines[tb.first];
+        CHECK(cur->len == 75 && cur->offset == 0);
+        for (uint32_t i = 0; i < cur->len; i++) CHECK(tb.text[cur->offset + i] == 'e');
+    }
+
+    /* 3. Textarea trailing newline does not duplicate empty line and Up arrow escapes it */
+    {
+        cui_ctx *ui = context(false);
+        char buf[64] = "a\n";
+        cui_id tid = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_textarea(ui, "ta", buf, sizeof buf, .width = CUI_PX(200));
+            tid = cui_last_id(ui);
+            cui_end_frame(ui);
+        }
+        cui_edit_state *es = cui_state(ui, tid, sizeof *es);
+        es->cursor = es->anchor = 2;
+        ui->focus = tid;
+        cui_input_key(ui, CUI_KEY_UP, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_textarea(ui, "ta", buf, sizeof buf, .width = CUI_PX(200));
+        cui_end_frame(ui);
+        CHECK(es->cursor < 2);
+        cui_destroy(ui);
+    }
+
+    /* 4. Covered base-layer button must not activate on Enter/Space while popup is open */
+    {
+        cui_ctx *ui = context(false);
+        bool clicked = false;
+        cui_id btn_id = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            if (cui_button(ui, "Behind")) clicked = true;
+            btn_id = cui_last_id(ui);
+            cui_end_frame(ui);
+        }
+        ui->focus = btn_id;
+        ui->focus_visible = true;
+        cui_begin_frame(ui, 1.0f / 60);
+        if (cui_button(ui, "Behind")) clicked = true;
+        cui_popover_open(ui, "pop");
+        if (cui_popover_begin(ui, "pop", NULL)) {
+            cui_text(ui, "Open");
+            cui_popover_end(ui);
+        }
+        cui_end_frame(ui);
+        clicked = false;
+        cui_input_key(ui, CUI_KEY_ENTER, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        if (cui_button(ui, "Behind")) clicked = true;
+        if (cui_popover_begin(ui, "pop", NULL)) {
+            cui_text(ui, "Open");
+            cui_popover_end(ui);
+        }
+        cui_end_frame(ui);
+        CHECK(!clicked);
+        cui_destroy(ui);
+    }
+
+    /* 5. Zero-duration spring, narrow 18px slider, invalid calendar month, frame_alloc(0), zero-bucket histogram, 0-height viewer, negative-track trace */
+    {
+        cui_ctx *ui = cui_create(NULL);
+        cui_set_viewport(ui, 800, 600, 1);
+        cui_begin_frame(ui, 1.0f / 60);
+        CHECK(cui__frame_alloc(ui, 0) != NULL);
+        float sp = cui_animate_spring(ui, 42, 1.0f, 0.0f, 0.0f);
+        CHECK(isfinite(sp) && sp == 1.0f);
+        cui_end_frame(ui);
+        cui_begin_frame(ui, 1.0f / 60);
+        sp = cui_animate_spring(ui, 42, 5.0f, 0.0f, 0.0f);
+        CHECK(isfinite(sp) && sp == 5.0f && !ui->animating);
+        float sval = 0.5f;
+        cui_slider(ui, "narrow", &sval, 0.0f, 1.0f, .width = CUI_PX(18));
+        cui_rect sr = cui_last_rect(ui);
+        cui_date bad_lo = { 2026, 0, 1 }, bad_hi = { 2026, 13, 1 };
+        cui_calendar(ui, "cal0", &bad_lo);
+        cui_calendar(ui, "cal13", &bad_hi);
+        double sel0 = 0, sel1 = 10;
+        cui_histogram_series ts = { .name = "s", .counts = NULL };
+        cui_time_histogram_ex(ui, "th0", 0.0, 60.0, 0, &ts, 1, &sel0, &sel1, NULL);
+        cui_image_view iv = { 0 };
+        cui_image_viewer_ex(ui, "iv0", 0, 100, 100, &iv, &(cui_image_viewer_opts){ .height = CUI_PX(0) });
+        CHECK(isfinite(iv.zoom) && isfinite(iv.cx) && isfinite(iv.cy));
+        cui_trace_track trk = { .name = "T0" };
+        cui_trace_span spans[2] = {
+            { .name = "bad", .start = 0, .end = 1, .track = -1, .depth = 0 },
+            { .name = "ok", .start = 1, .end = 2, .track = 0, .depth = 0 },
+        };
+        int tsel = 0;
+        cui_trace_view_ex(ui, "tv", &trk, 1, spans, 2, NULL, &tsel, NULL);
+        CHECK(tsel == -1);
+        cui_end_frame(ui);
+        /* drag the 18px slider right at its midpoint (x0 == x1) */
+        cui_input_mouse_move(ui, sr.x + 9.0f, sr.y + sr.h * 0.5f);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_slider(ui, "narrow", &sval, 0.0f, 1.0f, .width = CUI_PX(18));
+        cui_end_frame(ui);
+        CHECK(isfinite(sval));
+        cui_destroy(ui);
+    }
+
+    /* 6. Software renderer NULL/invalid-argument safety */
+    {
+        cui_sw_set_threads(NULL, 4);
+        cui_sw_renderer *sw = cui_sw_create();
+        cui_draw_data dd = { 0 };
+        unsigned char px[16] = { 0 };
+        cui_sw_render(sw, &dd, px, 0, 4, 16, CUI_SW_RGBA);
+        cui_sw_render(sw, &dd, px, 4, 4, -4, CUI_SW_RGBA);
+        cui_sw_destroy(sw);
+    }
+}
+
+static void test_pass2_component_fixes(void) {
+    /* 1. cui__utc_offset across non-leap-year New Year boundary and out-of-range timestamps */
+    {
+        int off_dec = cui__utc_offset(1767223800LL); /* 2025-12-31 23:30:00 UTC */
+        int off_jan = cui__utc_offset(1767227400LL); /* 2026-01-01 00:30:00 UTC */
+        CHECK(off_dec >= -720 && off_dec <= 840);
+        CHECK(off_jan >= -720 && off_jan <= 840);
+        CHECK(cui__utc_offset(INT64_MAX) == 0);
+    }
+
+    /* 2. cui_url_params / cui_url_set_params ignore '?' inside '#fragment' */
+    {
+        cui_kv_pair kv[4];
+        memset(kv, 0, sizeof kv);
+        CHECK(cui_url_params("https://example.com/p#tab?x=1", kv, 4) == 0);
+        char url[128] = "https://example.com/p#tab?x=1";
+        cui_kv_pair out = { "a", "1", true };
+        CHECK(cui_url_set_params(url, sizeof url, &out, 1));
+        CHECK(strcmp(url, "https://example.com/p?a=1#tab?x=1") == 0);
+    }
+
+    /* 3. Speed dial preserves disabled stack depth when action clicked */
+    {
+        cui_ctx *ui = context(false);
+        cui_speed_action acts[2] = { { "+", "One" }, { "-", "Two" } };
+        cui_id fab_id = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_push_disabled(ui, false);
+            cui_speed_dial_ex(ui, "sd", acts, 2, NULL);
+            fab_id = cui_make_id(ui, "sd");
+            cui_pop_disabled(ui);
+            cui_end_frame(ui);
+        }
+        /* Click FAB to open */
+        cui_rect fr = cui_get_rect(ui, fab_id);
+        cui_input_mouse_move(ui, fr.x + fr.w * 0.5f, fr.y + fr.h * 0.5f);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_push_disabled(ui, false);
+        cui_speed_dial_ex(ui, "sd", acts, 2, NULL);
+        CHECK(ui->disabled_n == 1);
+        cui_pop_disabled(ui);
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_push_disabled(ui, false);
+        cui_speed_dial_ex(ui, "sd", acts, 2, NULL);
+        CHECK(ui->disabled_n == 1);
+        cui_pop_disabled(ui);
+        cui_end_frame(ui);
+        cui_destroy(ui);
+    }
+
+    /* 4. Scrub rejects non-finite user text ("nan") */
+    {
+        cui_ctx *ui = context(false);
+        float val = 5.0f;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_scrub_ex(ui, "sc", &val, 0.0f, 10.0f, NULL);
+            cui_end_frame(ui);
+        }
+        cui_rect sr = cui_get_rect(ui, cui_make_id(ui, "sc"));
+        /* Click to enter edit mode, type "nan", press Enter */
+        cui_input_mouse_move(ui, sr.x + sr.w * 0.5f, sr.y + sr.h * 0.5f);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_scrub_ex(ui, "sc", &val, 0.0f, 10.0f, NULL);
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_scrub_ex(ui, "sc", &val, 0.0f, 10.0f, NULL);
+        cui_end_frame(ui);
+        cui_input_text(ui, "nan");
+        cui_input_key(ui, CUI_KEY_ENTER, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_scrub_ex(ui, "sc", &val, 0.0f, 10.0f, NULL);
+        cui_end_frame(ui);
+        CHECK(isfinite(val) && val == 5.0f);
+        cui_destroy(ui);
+    }
+
+    /* 5. Tab bar single Right Arrow advances by exactly 1 tab */
+    {
+        cui_ctx *ui = context(false);
+        cui_tab_bar_item tabs[4] = {
+            { "A", "One", 0 }, { "B", "Two", 0 }, { "C", "Three", 0 }, { "D", "Four", 0 }
+        };
+        int sel = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_tab_bar_ex(ui, "tb", tabs, 4, &sel, NULL);
+            cui_end_frame(ui);
+        }
+        int k0 = 0;
+        cui_id tab0_id = cui__hash(&k0, sizeof k0, cui_make_id(ui, "tb") ^ 0x7AB);
+        ui->focus = tab0_id;
+        ui->focus_visible = true;
+        cui_input_key(ui, CUI_KEY_RIGHT, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        bool changed = cui_tab_bar_ex(ui, "tb", tabs, 4, &sel, NULL);
+        cui_end_frame(ui);
+        CHECK(changed && sel == 1);
+        cui_destroy(ui);
+    }
+
+    /* 6. Month calendar pre-1970 dates (1969-12-31 has days == -1) */
+    {
+        cui_ctx *ui = context(false);
+        cui_date month = { 1969, 12, 1 };
+        cui_date sel = { 1969, 12, 31 };
+        cui_month_opts mo = { .selected = &sel, .today = { 1969, 12, 31 } };
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_month_calendar_ex(ui, "mc69", &month, NULL, 0, &mo);
+            cui_end_frame(ui);
+        }
+        /* Focus the month calendar grid and press Left Arrow: 1969-12-31 -> 1969-12-30 */
+        ui->focus = cui_make_id(ui, "mc69") ^ 0x6A1Du;
+        cui_input_key(ui, CUI_KEY_LEFT, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_month_result mr = cui_month_calendar_ex(ui, "mc69", &month, NULL, 0, &mo);
+        cui_end_frame(ui);
+        CHECK(mr.day_clicked && sel.year == 1969 && sel.month == 12 && sel.day == 30);
+        cui_destroy(ui);
+    }
+
+    /* 7. Ruler slider high-magnitude range terminates, histogram/multi_select/signature/table/donut/viz/planning edge cases */
+    {
+        cui_ctx *ui = context(false);
+        float rv = 17000000.0f;
+        float hlo = 0.2f, hhi = 0.8f;
+        bool msel[2] = { false, false };
+        float dvals[3] = { 10, 20, 30 };
+        const char *dlabels[3] = { "A", "B", "C" };
+        cui_viz_item bad_waffle[2] = { { "Inf", INFINITY, { 0 } }, { "Ok", 10, { 0 } } };
+        float bad_hm[4] = { NAN, NAN, 1.0f, 2.0f };
+        cui_candle candles[2] = {
+            { 10, 12, 9, 11, 100 }, { 11, 13, 10, 12, 200 }
+        };
+        cui_series ov = { .values = NULL, .count = 2 };
+        cui_dot_series ds = { .values = bad_hm, .name = "s" };
+        cui_presence_user pu[2] = { { NULL, { 0 }, 0, true }, { "Ada", { 0 }, 0, false } };
+        cui_table_column tcols[2] = { { "A", CUI_PX(80), 0, false }, { "B", CUI_PX(80), 0, false } };
+        cui_cal_event wev = { "Meet", NULL, 0, 9.0f, 10.0f, CUI_TONE_ACCENT };
+
+        /* Frame 1: exercise extreme/NULL/shrinking inputs cleanly under ASan/UBSan */
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_ruler_slider_ex(ui, "rl", &rv, 0.0f, 20000000.0f, &(cui_ruler_opts){ .step = 1.0f });
+        cui_histogram_slider_ex(ui, "hs1", NULL, 4, &hlo, &hhi, 0.0f, 1.0f, NULL);
+        cui_histogram_slider_ex(ui, "hs2", bad_hm, -1, &hlo, &hhi, 0.0f, 1.0f, NULL);
+        cui_multi_select_ex(ui, "ms", NULL, 2, msel, NULL);
+        cui_donut_chart_ex(ui, "dn", dvals, dlabels, 3, &(cui_chart_opts){ .height = 8 });
+        if (cui_table_begin_ex(ui, "tb_early", tcols, 2, NULL)) {
+            cui_table_cell_text(ui, "before_row");
+            cui_table_end(ui);
+        }
+        cui_waffle_ex(ui, "wf", bad_waffle, 2, NULL);
+        cui_heatmap_ex(ui, "hm1", bad_hm, 2, 2, NULL);
+        cui_heatmap_ex(ui, "hm2", NULL, 2, 2, NULL);
+        cui_calendar_heatmap_ex(ui, "chm", (cui_date){ 2026, 1, 1 }, NULL, 10, NULL);
+        cui_candlestick_ex(ui, "cs", candles, 2, &(cui_candlestick_opts){ .height = 50, .overlays = &ov, .overlay_count = 1 });
+        cui_dot_chart_ex(ui, "dc", &ds, 1, 2, &(cui_dot_chart_opts){ .annotations = NULL, .annotation_count = 2 });
+        cui_presence(ui, "pr", pu, 2, 4, 28);
+        cui_presence(ui, "pr_null", NULL, 2, 4, 28);
+        cui_gantt_ex(ui, "gt1", NULL, 2, (cui_date){ 2026, 1, 1 }, 7, NULL);
+        cui_gantt_ex(ui, "gt2", NULL, -1, (cui_date){ 2026, 1, 1 }, 7, NULL);
+        cui_week_calendar_ex(ui, "wk_null", (cui_date){ 2026, 1, 5 }, NULL, 2, NULL);
+        cui_week_calendar_ex(ui, "wk_ro", (cui_date){ 2026, 1, 5 }, &wev, 1, &(cui_week_opts){ .read_only = true, .height = CUI_PX(240) });
+        cui_signature_pad_ex(ui, "sig", NULL);
+        cui_end_frame(ui);
+
+        /* Shrink donut slice count while potentially hovered, and test signature clear while drawing */
+        cui_rect sig_r = cui_get_rect(ui, cui_make_id(ui, "sig"));
+        cui_input_mouse_move(ui, sig_r.x + 20, sig_r.y + 20);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_donut_chart_ex(ui, "dn", dvals, dlabels, 1, &(cui_chart_opts){ .height = 8 });
+        cui_signature_pad_ex(ui, "sig", NULL);
+        cui_signature_clear(ui, "sig");
+        cui_end_frame(ui);
+        /* Keep mouse held and drag after clear: must not read pts[-1] */
+        cui_input_mouse_move(ui, sig_r.x + 30, sig_r.y + 25);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_signature_pad_ex(ui, "sig", NULL);
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+
+        /* Reorder pending drag with shrinking count */
+        int order[3] = { 0, 1, 2 };
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_reorder_begin(ui, "ro", order, 3);
+        for (int k = 0; k < 3; k++) {
+            cui_reorder_item_begin(ui, k);
+            cui_text(ui, "row");
+            cui_reorder_item_end(ui);
+        }
+        cui_reorder_end(ui);
+        cui_end_frame(ui);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_reorder_begin(ui, "ro", order, 1);
+        cui_reorder_item_begin(ui, 0);
+        cui_text(ui, "row");
+        cui_reorder_item_end(ui);
+        cui_reorder_end(ui);
+        cui_end_frame(ui);
+
+        CHECK(cui_get_draw_data(ui)->vertex_count > 0);
+        cui_destroy(ui);
+    }
+}
+
 int main(void) {
     test_ascii_helpers(); test_scopes();
     test_shrinking_list(); test_table_controls(); test_horizontal_drag(); test_code_scroll_routing();
@@ -486,6 +850,8 @@ int main(void) {
     test_large_row_ranges(); test_json_validation(); test_blame_without_commits();
     test_coverage_scale(); test_texture_bounds();
     test_file_globs(); test_chart_ranges();
+    test_deep_audit_fixes();
+    test_pass2_component_fixes();
     printf("audit regressions: %d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
 }

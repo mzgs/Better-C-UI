@@ -272,7 +272,7 @@ void cui_presence(cui_ctx *ui, const char *id_str, const cui_presence_user *user
     rn->self_align = CUI__ALIGN_NOSTRETCH;
     cui__mark_interactive(ui, row, 0);
     cui__open(ui, row);
-    int shown = CUI_MIN(count, max_visible);
+    int shown = users ? CUI_MIN(CUI_MAX(0, count), max_visible) : 0;
     for (int k = 0; k < shown; k++) {
         const cui_presence_user *u = &users[k];
         cui_id uid = cui__hash(&k, sizeof k, id);
@@ -302,7 +302,8 @@ void cui_presence(cui_ctx *ui, const char *id_str, const cui_presence_user *user
         cui__close(ui);
         if (ur.hovered || r.hovered) {
             ui->last_id = uid;
-            cui_tooltip(ui, u->idle ? cui__frame_printf(ui, "%s (away)", u->name) : u->name);
+            const char *tip = u->name ? (u->idle ? cui__frame_printf(ui, "%s (away)", u->name) : u->name) : (u->idle ? "Away" : NULL);
+            if (tip) cui_tooltip(ui, tip);
         }
     }
     if (count > shown) {

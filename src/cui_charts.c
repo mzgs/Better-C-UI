@@ -407,7 +407,7 @@ static void cui__xy_chart(cui_ctx *ui, const char *id_str, const cui_series *ser
     p->o.annotations = cui__copy_annotations(ui, o->annotations, o->annotation_count);
     p->o.annotation_count = p->o.annotations ? o->annotation_count : 0;
     p->intro = st->intro.x;
-    p->hover = st->hover_t > 0.01f ? st->hover : -1;
+    p->hover = (st->hover_t > 0.01f && st->hover >= 0 && st->hover < npts) ? st->hover : -1;
     p->hover_t = st->hover_t;
     p->bars = bars;
     p->st = st;
@@ -444,6 +444,7 @@ static void cui__paint_donut(cui_ctx *ui, cui_node *n, void *data) {
     cui_vec2 c = { r.x + r.w * 0.5f, r.y + r.h * 0.5f };
     float thick = size * 0.13f;
     float radius = size * 0.5f - thick * 0.5f - 4;
+    if (radius <= 0.5f) return;
     float total = p->total > 0 ? p->total : 1;
     float a = -CUI_PI * 0.5f;
     float sweep_total = 2 * CUI_PI * cui__clampf(p->intro, 0, 1);
@@ -464,8 +465,8 @@ static void cui__paint_donut(cui_ctx *ui, cui_node *n, void *data) {
     }
     /* percentage data shows the leading (or hovered) segment instead of a total */
     bool pct = p->format && strstr(p->format, "%%");
-    int show = p->hover >= 0 && p->hover_t > 0.5f ? p->hover : -1;
-    if (show < 0 && pct) {
+    int show = p->hover >= 0 && p->hover < p->count && p->hover_t > 0.5f ? p->hover : -1;
+    if (show < 0 && pct && p->count > 0) {
         show = 0;
         for (int k = 1; k < p->count; k++) if (p->values[k] > p->values[show]) show = k;
     }
@@ -553,7 +554,7 @@ void cui_donut_chart_ex(cui_ctx *ui, const char *id_str, const float *values, co
     for (int k = 0; k < count; k++) p->values[k] = values[k] > 0 ? values[k] : 0;
     p->count = count; p->intro = st->intro.x; p->total = total;
     p->format = o->format ? cui__frame_strdup(ui, o->format, -1) : NULL;
-    p->hover = st->hover_t > 0.01f ? st->hover : -1;
+    p->hover = (st->hover_t > 0.01f && st->hover >= 0 && st->hover < count) ? st->hover : -1;
     p->hover_t = st->hover_t;
     p->labels = NULL;
     if (labels) {

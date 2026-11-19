@@ -23,14 +23,14 @@ typedef struct { int16_t row, c0, c1, line; uint8_t kind; bool cont_l, cont_r; i
 
 typedef struct {
     cui_date sel;
-    int hover_ev, hover_day, more_day;   /* day indices are days since 1970 */
+    int hover_ev, hover_day, more_day;   /* day indices are days since 1970 (negative before 1970) */
     int focus_day;
-    bool has_sel, init;
+    bool has_sel, has_more, init;
 } cui__mc_state;
 
 typedef struct {
     int start_day, rows, first_wd, today, sel, hover_ev, hover_day, month, focus_day;
-    bool compact, has_sel, focused;
+    bool compact, has_sel, has_hover_day, focused;
     float cell_h;
     cui__mc_item *items; int nitems;
     const cui_month_event *ev;   /* a copy of the events the items name */
@@ -171,7 +171,7 @@ static void cui__paint_month(cui_ctx *ui, cui_node *n, void *data) {
             cui_date dt = cui_date_from_days(day);
             bool in_month = dt.month == p->month, sel = p->has_sel && day == p->sel;
             if (!p->compact && sel) cui_draw_rect(ui, cell, CUI_CORNERS(0), p->sel_bg);
-            else if (!p->compact && day == p->hover_day && p->hover_ev < 0) cui_draw_rect(ui, cell, CUI_CORNERS(0), p->hover_bg);
+            else if (!p->compact && p->has_hover_day && day == p->hover_day && p->hover_ev < 0) cui_draw_rect(ui, cell, CUI_CORNERS(0), p->hover_bg);
             char num[4];
             snprintf(num, sizeof num, "%d", dt.day);
             float nw = cui__text_width(ui, day == p->today || sel ? CUI_FONT_MEDIUM : CUI_FONT_BODY, fs, num, -1, true);
@@ -343,11 +343,12 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
     if (!mon->year) { mon->year = today.year; mon->month = today.month; }
     mon->month = CUI_CLAMP(mon->month, 1, 12);
     if (!st->init) {
-        st->hover_ev = -1; st->hover_day = st->more_day = -1;
+        st->hover_ev = -1; st->hover_day = st->more_day = 0; st->has_more = false;
         st->focus_day = o->selected && o->selected->year ? cui_date_to_days(*o->selected) : today_n;
         st->init = true;
     }
-    int sel_n = o->selected && o->selected->year ? cui_date_to_days(*o->selected) : -1;
+    bool has_sel = o->selected && o->selected->year != 0;
+    int sel_n = has_sel ? cui_date_to_days(*o->selected) : 0;
     cui_push_id(ui, id_str ? id_str : "month");
     /* moving the shown month by n */
 #define CUI__MC_SHIFT(n) do { int m_ = mon->year * 12 + (mon->month - 1) + (n); mon->year = m_ / 12; mon->month = m_ % 12 + 1; res.month_changed = true; } while (0)
@@ -413,12 +414,12 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
     /* the pointer, from last frame's grid */
     cui_interact r = cui__interact(ui, gid, CUI_IF_FOCUSABLE);
     cui_rect gr = cui__prev_rect(ui, gid);
-    int hover_ev = -1, hover_day = -1;
-    bool on_more = false;
+    int hover_ev = -1, hover_day = 0;
+    bool has_hover_day = false, on_more = false;
     if (r.hovered && gr.w > 0) {
         cui__mc_geo g = cui__mc_geom(gr, rows);
         int c = (int)floorf((ui->mx - gr.x) / g.cw), row = (int)floorf((ui->my - gr.y) / g.ch);
-        if (c >= 0 && c < 7 && row >= 0 && row < rows) hover_day = start_day + row * 7 + c;
+        if (c >= 0 && c < 7 && row >= 0 && row < rows) { hover_day = start_day + row * 7 + c; has_hover_day = true; }
         if (!compact)
             for (int k = 0; k < nitems; k++) {
                 cui_rect q = cui__mc_item_rect(&g, &items[k]);
@@ -426,11 +427,11 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
             }
         if (hover_ev >= 0 || on_more) cui__set_cursor(ui, CUI_CURSOR_HAND);
     }
-    if (r.clicked && hover_day >= 0) {
+    if (r.clicked && has_hover_day) {
         if (hover_ev >= 0) res.event = hover_ev;
-        else if (on_more) { st->more_day = hover_day; cui__popup_set(ui, pid, true); }
+        else if (on_more) { st->more_day = hover_day; st->has_more = true; cui__popup_set(ui, pid, true); }
         else {
-            sel_n = hover_day; res.day_clicked = true;
+            sel_n = hover_day; has_sel = true; res.day_clicked = true;
             if (r.double_clicked || ui->click_count >= 2) res.day_activated = true;
         }
         st->focus_day = hover_day;
@@ -442,17 +443,17 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
         if (cui_key_pressed(ui, CUI_KEY_RIGHT)) moved = 1;
         if (cui_key_pressed(ui, CUI_KEY_UP)) moved = -7;
         if (cui_key_pressed(ui, CUI_KEY_DOWN)) moved = 7;
-        if (moved) { fd += moved; sel_n = fd; res.day_clicked = true; }
+        if (moved) { fd += moved; sel_n = fd; has_sel = true; res.day_clicked = true; }
         if (cui_key_pressed(ui, CUI_KEY_PAGE_UP) || cui_key_pressed(ui, CUI_KEY_PAGE_DOWN)) {
             int k = cui_key_pressed(ui, CUI_KEY_PAGE_UP) ? -1 : 1;
             cui_date fdd = cui_date_from_days(fd);
             int mm = fdd.year * 12 + fdd.month - 1 + k;
             int y = mm / 12, m = mm % 12 + 1;
             fd = cui_date_to_days((cui_date){ y, m, CUI_MIN(fdd.day, cui__mc_days_in(y, m)) });
-            sel_n = fd; res.day_clicked = true;
+            sel_n = fd; has_sel = true; res.day_clicked = true;
         }
-        if (cui_key_pressed(ui, CUI_KEY_HOME)) { fd = today_n; sel_n = fd; res.day_clicked = true; }
-        if (cui_key_pressed(ui, CUI_KEY_ENTER) || cui_key_pressed(ui, CUI_KEY_SPACE)) { sel_n = fd; res.day_clicked = true; res.day_activated = cui_key_pressed(ui, CUI_KEY_ENTER); }
+        if (cui_key_pressed(ui, CUI_KEY_HOME)) { fd = today_n; sel_n = fd; has_sel = true; res.day_clicked = true; }
+        if (cui_key_pressed(ui, CUI_KEY_ENTER) || cui_key_pressed(ui, CUI_KEY_SPACE)) { sel_n = fd; has_sel = true; res.day_clicked = true; res.day_activated = cui_key_pressed(ui, CUI_KEY_ENTER); }
         st->focus_day = fd;
         cui_date fdd = cui_date_from_days(fd);
         if (fdd.year != mon->year || fdd.month != mon->month) { mon->year = fdd.year; mon->month = fdd.month; res.month_changed = true; }
@@ -466,7 +467,7 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
         rows = (lead + cui__mc_days_in(mon->year, mon->month) + 6) / 7;
         ntimed = cui__mc_collect(ui, events, count, start_day, start_day + rows * 7 - 1, &timed);
         nitems = cui__mc_layout(events, count, start_day, rows, lines, timed, ntimed, items, CUI__MC_MAXIT);
-        hover_ev = -1; hover_day = -1;
+        hover_ev = -1; has_hover_day = false;
     }
     int grid = cui__leaf(ui, gid, CUI_FILL, CUI_PX(rows * cell_h));
     ui->nodes[grid].self_align = CUI_ALIGN_STRETCH;
@@ -478,8 +479,8 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
     cui__mark_interactive(ui, grid, CUI_IF_FOCUSABLE);
     cui__mc_paint *p = cui__frame_alloc(ui, sizeof *p);
     memset(p, 0, sizeof *p);
-    p->start_day = start_day; p->rows = rows; p->today = today_n; p->sel = sel_n; p->has_sel = sel_n >= 0;
-    p->hover_ev = on_more ? -2 : hover_ev; p->hover_day = hover_day; p->month = mon->month;
+    p->start_day = start_day; p->rows = rows; p->today = today_n; p->sel = sel_n; p->has_sel = has_sel;
+    p->hover_ev = on_more ? -2 : hover_ev; p->hover_day = hover_day; p->has_hover_day = has_hover_day; p->month = mon->month;
     p->compact = compact; p->cell_h = cell_h; p->focused = r.focus_visible; p->focus_day = st->focus_day;
     p->items = items; p->nitems = nitems;
     /* only the events the items name are read in the paint: copy their titles and times */
@@ -504,9 +505,9 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
     ui->nodes[grid].bg = CUI_C(ui, SURFACE);
     /* "+N more": a list of that day's events, anchored on its link */
     cui_popup *pp = cui__popup_get(ui, pid, true);
-    if (pp && pp->open && st->more_day >= 0 && !compact) {
+    if (pp && pp->open && st->has_more && !compact) {
         int mrow = (st->more_day - start_day) / 7, mc = (st->more_day - start_day) % 7;
-        if (st->more_day < start_day || mrow >= rows) cui__popup_set(ui, pid, false);
+        if (st->more_day < start_day || mrow >= rows) { cui__popup_set(ui, pid, false); st->has_more = false; }
         else {
             cui__open(ui, grid);
             cui_rect gr2 = gr.w > 0 ? gr : (cui_rect){ 0, 0, 700, rows * cell_h };
@@ -551,7 +552,7 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
         }
     }
     if (compact) {
-        int ag = cui__mc_agenda(ui, id, events, count, sel_n >= 0 ? sel_n : st->focus_day, o);
+        int ag = cui__mc_agenda(ui, id, events, count, has_sel ? sel_n : st->focus_day, o);
         if (ag >= 0) res.event = ag;
     }
     cui__close(ui);

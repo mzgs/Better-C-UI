@@ -1,6 +1,6 @@
-prefix=${pcfiledir}/../..
-libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
-includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+prefix=@CUI_PC_PREFIX@
+libdir=@CUI_PC_LIBDIR@
+includedir=@CUI_PC_INCLUDEDIR@
 
 Name: cui-webview
 Description: Optional native WebView integration for Better-C-UI

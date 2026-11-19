@@ -334,7 +334,7 @@ static int cui__rx_cont(cui__rx_m *M, int i, const cui__rx_k *k);
 
 /* one character at i for a single-character node: the byte count it takes, or 0 */
 static int cui__rx_one(const cui__rx_m *M, const cui__rx_node *n, int i) {
-    if (i >= M->len) return 0;
+    if (i < 0 || i >= M->len) return 0;
     int c = (unsigned char)M->s[i];
     switch (n->type) {
     case RX_CHAR: return c == n->ch ? 1 : 0;
@@ -423,9 +423,15 @@ static int cui__rx_rep_single(cui__rx_m *M, const cui__rx_node *n, const cui__rx
     }
     for (; count >= n->min && !M->abort; count--) {   /* then give back one character at a time */
         if ((r = cui__rx_cont(M, j, k)) != 0) break;
-        if (!cui__rx_budget(M) || count == 0) break;
-        j--;
-        while (j > i && ((unsigned char)M->s[j] & 0xC0) == 0x80) j--;   /* . takes whole characters */
+        if (!cui__rx_budget(M) || count == 0 || j <= i) break;
+        int prev = j - 1;
+        if (c->type == RX_ANY && ((unsigned char)M->s[prev] & 0xC0) == 0x80) {
+            /* undo a multi-byte character only if it started with a UTF-8 lead byte >= 0xC0 */
+            int t = prev;
+            while (t > i && ((unsigned char)M->s[t] & 0xC0) == 0x80) t--;
+            if ((unsigned char)M->s[t] >= 0xC0) prev = t;
+        }
+        j = prev;
     }
     M->depth -= 4;
     return r;

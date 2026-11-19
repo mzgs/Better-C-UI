@@ -97,7 +97,12 @@ bool cui__plat_file_dialog(cui_app *app, const cui_file_dialog_opts *o, char *ou
         BOOL ok = o->kind == CUI_FILE_SAVE ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn);
         if (!ok) return false;
     }
-    return WideCharToMultiByte(CP_UTF8, 0, path, -1, out, (int)cap, NULL, NULL) > 0;
+    int limit = cap > (size_t)INT_MAX ? INT_MAX : (int)cap;
+    if (WideCharToMultiByte(CP_UTF8, 0, path, -1, out, limit, NULL, NULL) <= 0) {
+        out[0] = 0;
+        return false;
+    }
+    return true;
 }
 
 bool cui__plat_open_url(const char *url) {
@@ -225,7 +230,7 @@ static bool cui__posix_file_dialog(const cui_file_dialog_opts *o, char *out, siz
     filter[0] = 0;
     if (cui__have("zenity")) {
         size_t n = (size_t)snprintf(cmd, sizeof cmd, "zenity --file-selection --title=%s", title);
-        if (o->kind == CUI_FILE_SAVE) n += (size_t)snprintf(cmd + n, sizeof cmd - n, " --save --confirm-overwrite");
+        if (o->kind == CUI_FILE_SAVE) n += (size_t)snprintf(cmd + n, sizeof cmd - n, " --save");
         if (o->kind == CUI_FILE_FOLDER) n += (size_t)snprintf(cmd + n, sizeof cmd - n, " --directory");
         if (o->kind == CUI_FILE_SAVE && o->default_name) n += (size_t)snprintf(cmd + n, sizeof cmd - n, " --filename=%s", name);
         if (o->filter && *o->filter && o->kind != CUI_FILE_FOLDER) {
@@ -256,7 +261,7 @@ static bool cui__posix_file_dialog(const cui_file_dialog_opts *o, char *out, siz
             if (!cui__dialog_append(spec, sizeof spec, &k, "|%s", o->filter_name ? o->filter_name : "Files")) return false;
             if (!cui__shell_quote(filter, sizeof filter, spec)) return false;
         }
-        snprintf(cmd, sizeof cmd, "kdialog %s %s %s --title %s 2>/dev/null", mode, o->default_name ? name : "'.'", filter, title);
+        snprintf(cmd, sizeof cmd, "kdialog %s --title %s -- %s %s 2>/dev/null", mode, title, o->default_name ? name : "'.'", filter);
     } else {
         fprintf(stderr, "cui: install zenity or kdialog for file dialogs\n");
         return false;

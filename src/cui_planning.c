@@ -389,6 +389,7 @@ static int cui__week_calendar_ex_body(cui_ctx *ui, const char *id_str, cui_date 
     cui_week_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!ev || count < 0) count = 0;
     float h0 = o->end_hour > o->start_hour ? o->start_hour : 7, h1 = o->end_hour > o->start_hour ? o->end_hour : 21;
     float hh = o->hour_height > 0 ? o->hour_height : 52;
     float gutter = 60;
@@ -411,11 +412,11 @@ static int cui__week_calendar_ex_body(cui_ctx *ui, const char *id_str, cui_date 
 #endif
     float now = lt.tm_hour + lt.tm_min / 60.0f;
     /* drag in progress */
-    if (st->drag > 0 && st->drag <= count && !o->read_only) {
+    if (st->drag > 0 && st->drag <= count) {
         cui_cal_event *e = &ev[st->drag - 1];
         if (ui->mdown[0]) {
             if (fabsf(ui->mx - st->press_x) + fabsf(ui->my - st->press_y) > 4) st->moved = true;
-            if (st->moved && gr.w > 0) {
+            if (st->moved && gr.w > 0 && !o->read_only) {
                 float gy = ui->my - gr.y;
                 if (st->mode == 1) {
                     float dur = e->end - e->start;
@@ -430,11 +431,13 @@ static int cui__week_calendar_ex_body(cui_ctx *ui, const char *id_str, cui_date 
                 }
             }
             ui->active = id;
-            cui__set_cursor(ui, st->mode == 2 ? CUI_CURSOR_RESIZE_NS : CUI_CURSOR_MOVE);
+            if (!o->read_only) cui__set_cursor(ui, st->mode == 2 ? CUI_CURSOR_RESIZE_NS : CUI_CURSOR_MOVE);
         } else {
             if (!st->moved) clicked = st->drag - 1;
             st->drag = 0;
         }
+    } else if (st->drag > count) {
+        st->drag = 0;
     }
     int outer = cui__node_new(ui, id);
     cui_node *on = &ui->nodes[outer];
@@ -708,6 +711,7 @@ static int cui__gantt_ex_body(cui_ctx *ui, const char *id_str, cui_gantt_task *t
     cui_gantt_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
+    if (!tasks || count < 0) count = 0;
     float dw = o->day_width > 0 ? o->day_width : 30;
     float rh = o->row_height > 0 ? o->row_height : 40;
     float head_h = 52;
@@ -849,7 +853,7 @@ static int cui__gantt_ex_body(cui_ctx *ui, const char *id_str, cui_gantt_task *t
     bn->w = CUI_PX(days * dw); bn->h = CUI_PX(count * rh);
     cui__gantt_paint *gp = cui__frame_alloc(ui, sizeof *gp);
     gp->tasks = cui__frame_alloc(ui, sizeof(cui_gantt_task) * (size_t)CUI_MAX(1, count));
-    memcpy(gp->tasks, tasks, sizeof(cui_gantt_task) * (size_t)count);
+    if (count > 0) memcpy(gp->tasks, tasks, sizeof(cui_gantt_task) * (size_t)count);
     gp->count = count; gp->days = days; gp->today = o->today > 0 ? o->today : -1;
     gp->dw = dw; gp->rh = rh; gp->head_h = head_h; gp->first_weekday = first_wd;
     gp->weekend = cui_alpha(CUI_C(ui, FOREGROUND), ui->mode == CUI_THEME_DARK ? 0.025f : 0.022f);

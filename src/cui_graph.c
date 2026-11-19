@@ -622,7 +622,7 @@ cui_graph_result cui_graph_view_ex(cui_ctx *ui, const char *id_str, const cui_gr
     int *sel = o->selected ? o->selected : &s->own_sel;
     if (*sel >= node_count) *sel = -1;
     uint32_t key = cui__gv_key(nodes, node_count, edges, edge_count, o->top_down);
-    if (key != s->key || s->n != node_count) { cui__gv_layout(ui, s, nodes, node_count, edges, edge_count, o->top_down); s->key = key; s->fit = true; }
+    if (key != s->key || s->n != node_count) { cui__gv_layout(ui, s, nodes, node_count, edges, edge_count, o->top_down); s->key = key; s->fit = true; s->press_node = -1; }
     bool has_rect = cui__has_prev_rect(ui, id);
     cui_rect R = cui__prev_rect(ui, id);
     if (s->fit && has_rect && R.w > 0) { cui__gv_fit(s, R); s->fit = false; }
@@ -650,8 +650,9 @@ cui_graph_result cui_graph_view_ex(cui_ctx *ui, const char *id_str, const cui_gr
         }
         if (s->mode && !ui->mdown[0]) {
             if (s->mode == 1) {
-                *sel = s->press_node;
-                if (s->press_node >= 0) { res.clicked = s->press_node; if (bi.double_clicked || ui->click_count >= 2) res.activated = s->press_node; }
+                int hit = (s->press_node >= 0 && s->press_node < s->n) ? s->press_node : -1;
+                *sel = hit;
+                if (hit >= 0) { res.clicked = hit; if (bi.double_clicked || ui->click_count >= 2) res.activated = hit; }
             }
             s->mode = 0;
         }

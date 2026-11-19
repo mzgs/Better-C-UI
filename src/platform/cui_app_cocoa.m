@@ -106,6 +106,7 @@ static cui_key cui__mac_key(NSEvent *e) {
 }
 
 - (void)mouseAt:(NSEvent *)e {
+    if (!self.app) return;
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     cui_input_mouse_move(self.app->ui, (float)p.x, (float)p.y);
 }
@@ -113,13 +114,15 @@ static cui_key cui__mac_key(NSEvent *e) {
 
 /* files dragged from Finder */
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)info {
+    if (!self.app) return NSDragOperationNone;
     NSPoint p = [self convertPoint:[info draggingLocation] fromView:nil];
     cui_input_file_hover(self.app->ui, true, (float)p.x, (float)p.y);
     return NSDragOperationCopy;
 }
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)info { return [self draggingUpdated:info]; }
-- (void)draggingExited:(id<NSDraggingInfo>)info { (void)info; cui_input_file_hover(self.app->ui, false, 0, 0); }
+- (void)draggingExited:(id<NSDraggingInfo>)info { (void)info; if (self.app) cui_input_file_hover(self.app->ui, false, 0, 0); }
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)info {
+    if (!self.app) return NO;
     NSPoint p = [self convertPoint:[info draggingLocation] fromView:nil];
     NSArray<NSURL *> *urls = [[info draggingPasteboard] readObjectsForClasses:@[ [NSURL class] ]
                                                                       options:@{ NSPasteboardURLReadingFileURLsOnlyKey : @YES }];
@@ -136,21 +139,26 @@ static cui_key cui__mac_key(NSEvent *e) {
 - (void)rightMouseDragged:(NSEvent *)e { [self mouseAt:e]; }
 - (void)otherMouseDragged:(NSEvent *)e { [self mouseAt:e]; }
 - (void)mouseEntered:(NSEvent *)e { [self mouseAt:e]; }
-- (void)mouseExited:(NSEvent *)e { (void)e; if (!cui_mouse_down(self.app->ui, CUI_MOUSE_LEFT)) cui_input_mouse_leave(self.app->ui); }
-- (void)mouseDown:(NSEvent *)e { [self mouseAt:e]; cui_input_mouse_button(self.app->ui, CUI_MOUSE_LEFT, true); }
-- (void)mouseUp:(NSEvent *)e { [self mouseAt:e]; cui_input_mouse_button(self.app->ui, CUI_MOUSE_LEFT, false); }
-- (void)rightMouseDown:(NSEvent *)e { [self mouseAt:e]; cui_input_mouse_button(self.app->ui, CUI_MOUSE_RIGHT, true); }
-- (void)rightMouseUp:(NSEvent *)e { [self mouseAt:e]; cui_input_mouse_button(self.app->ui, CUI_MOUSE_RIGHT, false); }
-- (void)otherMouseDown:(NSEvent *)e { [self mouseAt:e]; cui_input_mouse_button(self.app->ui, CUI_MOUSE_MIDDLE, true); }
-- (void)otherMouseUp:(NSEvent *)e { [self mouseAt:e]; cui_input_mouse_button(self.app->ui, CUI_MOUSE_MIDDLE, false); }
+- (void)mouseExited:(NSEvent *)e { (void)e; if (self.app && !cui_mouse_down(self.app->ui, CUI_MOUSE_LEFT)) cui_input_mouse_leave(self.app->ui); }
+- (void)mouseDown:(NSEvent *)e { [self mouseAt:e]; if (self.app) cui_input_mouse_button(self.app->ui, CUI_MOUSE_LEFT, true); }
+- (void)mouseUp:(NSEvent *)e { [self mouseAt:e]; if (self.app) cui_input_mouse_button(self.app->ui, CUI_MOUSE_LEFT, false); }
+- (void)rightMouseDown:(NSEvent *)e { [self mouseAt:e]; if (self.app) cui_input_mouse_button(self.app->ui, CUI_MOUSE_RIGHT, true); }
+- (void)rightMouseUp:(NSEvent *)e { [self mouseAt:e]; if (self.app) cui_input_mouse_button(self.app->ui, CUI_MOUSE_RIGHT, false); }
+- (void)otherMouseDown:(NSEvent *)e { [self mouseAt:e]; if (self.app && e.buttonNumber == 2) cui_input_mouse_button(self.app->ui, CUI_MOUSE_MIDDLE, true); }
+- (void)otherMouseUp:(NSEvent *)e { [self mouseAt:e]; if (self.app && e.buttonNumber == 2) cui_input_mouse_button(self.app->ui, CUI_MOUSE_MIDDLE, false); }
 
 - (void)scrollWheel:(NSEvent *)e {
+    if (!self.app) return;
     float dx = (float)e.scrollingDeltaX, dy = (float)e.scrollingDeltaY;
     if (e.hasPreciseScrollingDeltas) { dx /= 44.0f; dy /= 44.0f; }
     cui_input_scroll(self.app->ui, dx, dy);
 }
 
-- (void)cursorUpdate:(NSEvent *)e { (void)e; }
+static void cui__mac_apply_cursor(cui_cursor c);
+- (void)cursorUpdate:(NSEvent *)e {
+    (void)e;
+    if (self.app && self.app->plat) cui__mac_apply_cursor(((__bridge CUIPlat *)self.app->plat).cursor);
+}
 
 - (void)keyDown:(NSEvent *)e {
     cui_key k = cui__mac_key(e);
@@ -241,11 +249,23 @@ static cui_key cui__mac_key(NSEvent *e) {
 
 static CUIPlat *cui__p(cui_app *app) { return (__bridge CUIPlat *)app->plat; }
 
-static void cui__mac_set_cursor(void *user, cui_cursor c) {
-    cui_app *app = user;
-    CUIPlat *p = cui__p(app);
-    if (p.cursor == c) return;
-    p.cursor = c;
+static NSString *cui__mac_utf8(const char *s) {
+    if (!s || !*s) return @"";
+    NSString *ns = [NSString stringWithUTF8String:s];
+    if (ns) return ns;
+    /* snprintf truncation can split a multi-byte UTF-8 sequence at the end; strip it and retry */
+    size_t n = strlen(s);
+    while (n > 0 && ((unsigned char)s[n - 1] & 0xC0) == 0x80) n--;
+    if (n > 0 && (unsigned char)s[n - 1] >= 0xC0) n--;
+    if (n > 0) {
+        ns = [[NSString alloc] initWithBytes:s length:n encoding:NSUTF8StringEncoding];
+        if (ns) return ns;
+    }
+    ns = [NSString stringWithCString:s encoding:NSISOLatin1StringEncoding];
+    return ns ? ns : @"";
+}
+
+static void cui__mac_apply_cursor(cui_cursor c) {
     NSCursor *cur = [NSCursor arrowCursor];
     switch (c) {
     case CUI_CURSOR_HAND: cur = [NSCursor pointingHandCursor]; break;
@@ -259,11 +279,19 @@ static void cui__mac_set_cursor(void *user, cui_cursor c) {
     [cur set];
 }
 
+static void cui__mac_set_cursor(void *user, cui_cursor c) {
+    cui_app *app = user;
+    CUIPlat *p = cui__p(app);
+    if (p.cursor == c) return;
+    p.cursor = c;
+    cui__mac_apply_cursor(c);
+}
+
 static void cui__mac_set_clip(void *user, const char *utf8) {
     (void)user;
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     [pb clearContents];
-    [pb setString:[NSString stringWithUTF8String:utf8] forType:NSPasteboardTypeString];
+    [pb setString:cui__mac_utf8(utf8) forType:NSPasteboardTypeString];
 }
 
 static const char *cui__mac_get_clip(void *user) {
@@ -308,7 +336,7 @@ bool cui__plat_init(cui_app *app) {
         NSRect frame = NSMakeRect(0, 0, app->desc.width, app->desc.height);
         NSWindow *w = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
         w.releasedWhenClosed = NO;
-        w.title = [NSString stringWithUTF8String:app->title];
+        w.title = cui__mac_utf8(app->title);
         w.contentMinSize = NSMakeSize(app->desc.min_width, app->desc.min_height);
         w.acceptsMouseMovedEvents = YES;
         w.delegate = p;
@@ -347,13 +375,17 @@ void cui__plat_show(cui_app *app) {
 
 void cui__plat_shutdown(cui_app *app) {
     if (!app->plat) return;
-    CUIPlat *p = (__bridge_transfer CUIPlat *)app->plat;
-    app->plat = NULL;
-    if (p.gl) { [NSOpenGLContext clearCurrentContext]; p.gl = nil; }
-    p.window.delegate = nil;
-    [p.window close];
-    p.window = nil;
-    p.view = nil;
+    @autoreleasepool {
+        CUIPlat *p = (__bridge_transfer CUIPlat *)app->plat;
+        app->plat = NULL;
+        if (p.gl) { [NSOpenGLContext clearCurrentContext]; [p.gl clearDrawable]; p.gl = nil; }
+        p.view.app = NULL;
+        p.window.delegate = nil;
+        p.window.contentView = nil;
+        [p.window close];
+        p.window = nil;
+        p.view = nil;
+    }
 }
 
 bool cui__plat_gl_create(cui_app *app, bool vsync) {
@@ -422,7 +454,7 @@ void cui__plat_metrics(cui_app *app, float *w, float *h, float *scale, int *fb_w
 }
 
 void cui__plat_set_title(cui_app *app, const char *title) {
-    cui__p(app).window.title = [NSString stringWithUTF8String:title];
+    cui__p(app).window.title = cui__mac_utf8(title);
 }
 
 void cui__plat_set_size(cui_app *app, int w, int h) {
@@ -437,6 +469,7 @@ void cui__plat_set_fullscreen(cui_app *app, bool fullscreen) {
     CUIPlat *p = cui__p(app);
     p.fullscreenTarget = fullscreen;
     if (p.fullscreenTransition || cui__plat_is_fullscreen(app) == fullscreen) return;
+    if (!p.window.isVisible || p.window.isMiniaturized || !(p.window.styleMask & NSWindowStyleMaskResizable)) return;
     p.fullscreenTransition = YES;
     [p.window toggleFullScreen:nil];
 }
@@ -469,8 +502,6 @@ void cui__plat_wait(cui_app *app, double timeout) {
     }
 }
 
-#pragma clang diagnostic pop
-
 bool cui__plat_present_part(cui_app *app, const void *bgra, int w, int h, int stride, int x, int y, int pw, int ph) {
     (void)app; (void)bgra; (void)w; (void)h; (void)stride; (void)x; (void)y; (void)pw; (void)ph;
     return false;   /* the whole buffer is shown each time */
@@ -483,4 +514,13 @@ double cui__plat_refresh_hz(cui_app *app) {
     return 0;
 }
 
-void cui__plat_gl_release(cui_app *app) { (void)app; }   /* not used: these keep OpenGL */
+void cui__plat_gl_release(cui_app *app) {
+    CUIPlat *p = cui__p(app);
+    if (p && p.gl) {
+        [NSOpenGLContext clearCurrentContext];
+        [p.gl clearDrawable];
+        p.gl = nil;
+    }
+}
+
+#pragma clang diagnostic pop

@@ -58,6 +58,13 @@ static PFN_AdjustWindowRectExForDpi cui__AdjustWindowRectExForDpi;
 
 static cui__win32 *cui__w(cui_app *app) { return app->plat; }
 
+static void cui__win32_adjust_rect(RECT *r, DWORD style, float scale) {
+    UINT dpi = (UINT)(scale * 96.0f + 0.5f);
+    if (dpi < 96) dpi = 96;
+    if (cui__AdjustWindowRectExForDpi) cui__AdjustWindowRectExForDpi(r, style, FALSE, 0, dpi);
+    else AdjustWindowRectEx(r, style, FALSE, 0);
+}
+
 double cui__plat_now(void) {
     static LARGE_INTEGER freq;
     LARGE_INTEGER c;
@@ -235,6 +242,7 @@ static LRESULT CALLBACK cui__win32_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         if (w) {
             w->width = LOWORD(lp);
             w->height = HIWORD(lp);
+            if (w->width > 0 && w->height > 0) app->force_present = true;
             cui_request_redraw(ui);
             if (w->in_size_move && w->width > 0 && w->height > 0) cui__app_live_frame(app);
         }
@@ -245,6 +253,7 @@ static LRESULT CALLBACK cui__win32_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         PAINTSTRUCT ps;
         BeginPaint(hwnd, &ps);
         EndPaint(hwnd, &ps);
+        app->force_present = true;
         if (w && w->in_size_move) cui__app_live_frame(app);
         cui_request_redraw(ui);
         return 0;
@@ -262,7 +271,7 @@ static LRESULT CALLBACK cui__win32_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         MINMAXINFO *mm = (MINMAXINFO *)lp;
         float sc = w ? w->scale : cui__win32_window_scale(hwnd);
         RECT r = { 0, 0, (LONG)(app->desc.min_width * sc), (LONG)(app->desc.min_height * sc) };
-        AdjustWindowRectEx(&r, (DWORD)GetWindowLongW(hwnd, GWL_STYLE), FALSE, 0);
+        cui__win32_adjust_rect(&r, (DWORD)GetWindowLongW(hwnd, GWL_STYLE), sc);
         mm->ptMinTrackSize.x = r.right - r.left;
         mm->ptMinTrackSize.y = r.bottom - r.top;
         return 0;
@@ -386,7 +395,7 @@ bool cui__plat_init(cui_app *app) {
     if (app->desc.fixed_size) style &= ~(DWORD)(WS_THICKFRAME | WS_MAXIMIZEBOX);
     float scale = cui__win32_window_scale(NULL);
     RECT r = { 0, 0, (LONG)(app->desc.width * scale), (LONG)(app->desc.height * scale) };
-    AdjustWindowRectEx(&r, style, FALSE, 0);
+    cui__win32_adjust_rect(&r, style, scale);
     WCHAR title[256];
     MultiByteToWideChar(CP_UTF8, 0, app->title, -1, title, 256);
     app->plat = w;
@@ -397,7 +406,7 @@ bool cui__plat_init(cui_app *app) {
     w->scale = cui__win32_window_scale(w->hwnd);
     if (w->scale != scale) {
         RECT r2 = { 0, 0, (LONG)(app->desc.width * w->scale), (LONG)(app->desc.height * w->scale) };
-        AdjustWindowRectEx(&r2, style, FALSE, 0);
+        cui__win32_adjust_rect(&r2, style, w->scale);
         SetWindowPos(w->hwnd, NULL, 0, 0, r2.right - r2.left, r2.bottom - r2.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
     RECT cr;
@@ -508,7 +517,7 @@ void cui__plat_set_title(cui_app *app, const char *title) {
 void cui__plat_set_size(cui_app *app, int width, int height) {
     cui__win32 *w = cui__w(app);
     RECT r = { 0, 0, (LONG)(width * w->scale), (LONG)(height * w->scale) };
-    AdjustWindowRectEx(&r, (DWORD)GetWindowLongW(w->hwnd, GWL_STYLE), FALSE, 0);
+    cui__win32_adjust_rect(&r, (DWORD)GetWindowLongW(w->hwnd, GWL_STYLE), w->scale);
     SetWindowPos(w->hwnd, NULL, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER);
 }
 

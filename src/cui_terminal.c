@@ -46,8 +46,18 @@ static bool cui__tm_room(cui_terminal_buffer *t, uint32_t n) {
     cui_terminal_line *c = cui__tm_cur(t);
     if (c->len + n > t->text_cap) return false;   /* longer than the whole buffer */
     if (c->offset + c->len + n > t->text_cap) {
-        /* wrap: the oldest lines live at the start; make way, then move the current line there */
+        /* wrap: first evict any lines left over from a previous cycle that c wraps past,
+         * then evict lines at the start of the buffer that [0, need) will overwrite */
         uint32_t need = c->len + n;
+        bool has_wrapped = false;
+        for (int k = 0; k + 1 < t->count; k++)
+            if (cui__tm_line(t, k)->offset < c->offset) { has_wrapped = true; break; }
+        while (t->count > 1) {
+            cui_terminal_line *o = cui__tm_line(t, 0);
+            if (o->offset > c->offset || (has_wrapped && o->offset == c->offset)) {
+                t->first = (t->first + 1) % t->line_cap; t->count--;
+            } else break;
+        }
         while (t->count > 1) {
             cui_terminal_line *o = cui__tm_line(t, 0);
             if (o->offset < need) { t->first = (t->first + 1) % t->line_cap; t->count--; }

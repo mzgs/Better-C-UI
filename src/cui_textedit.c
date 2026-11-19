@@ -39,10 +39,13 @@ static int cui__cp_count(const char *s, int len) {
 
 static float cui__x_at(cui_ctx *ui, const cui__edit_paint *p, const char *line, int line_len, int off) {
     if (p->password) {
-        char tmp[1024];
         int cps = cui__cp_count(line, off);
-        int n = cui__edit_mask(tmp, sizeof tmp, cps);
-        return cui__text_width(ui, p->font, p->size, tmp, n, false);
+        if (cps <= 0) return 0.0f;
+        char stack[1024];
+        size_t need = (size_t)cps * 3 + 1;
+        char *buf = need <= sizeof stack ? stack : cui__frame_alloc(ui, need);
+        int n = cui__edit_mask(buf, (int)need, cps);
+        return cui__text_width(ui, p->font, p->size, buf, n, false);
     }
     (void)line_len;
     return cui__text_width(ui, p->font, p->size, line, off, false);
@@ -465,7 +468,7 @@ int cui__edit_lines(cui_ctx *ui, cui_font f, float size, const char *buf, int le
     cui__text_wrap(ui, f, size, buf, len, width, lines, n);
     /* text wrap trims trailing spaces; keep lines contiguous for caret math */
     for (int k = 0; k < n - 1; k++) if (lines[k].end < lines[k + 1].start && buf[lines[k].end] != '\n') lines[k].end = lines[k + 1].start;
-    if (len > 0 && buf[len - 1] == '\n') {
+    if (len > 0 && buf[len - 1] == '\n' && (n == 0 || lines[n - 1].start != len || lines[n - 1].end != len)) {
         lines[n].start = lines[n].end = len; lines[n].width = 0;
         n++;
     }
@@ -527,17 +530,15 @@ static void cui__edit_pointer(cui__edit_frame *c, cui_interact r) {
     if (!c->multiline) {
         float x = ui->mx - c->area.x + e->scroll_x;
         if (c->password) {
-            /* walk code points */
-            int p = 0, best = 0;
-            float bestd = 1e9f;
-            for (;;) {
-                float px = cui__x_at(ui, &c->measure, buf, len, p);
-                float dd = fabsf(px - x);
-                if (dd < bestd) { bestd = dd; best = p; }
-                if (p >= len) break;
-                p = cui__utf8_next(buf, len, p);
-            }
-            pos = best;
+            int cps = cui__cp_count(buf, len);
+            size_t need = (size_t)cps * 3 + 1;
+            char stack[1024];
+            char *mask = need <= sizeof stack ? stack : cui__frame_alloc(ui, need);
+            int mn = cui__edit_mask(mask, (int)need, cps);
+            int target_cp = cui__text_hit(ui, c->font, c->size, mask, mn, x) / 3;
+            int p = 0;
+            for (int k = 0; k < target_cp && p < len; k++) p = cui__utf8_next(buf, len, p);
+            pos = p;
         } else pos = cui__text_hit(ui, c->font, c->size, buf, len, x);
     } else {
         float y = ui->my - c->area.y + e->scroll_y;
@@ -573,12 +574,13 @@ static void cui__edit_move_keys(cui__edit_frame *c) {
     const char *buf = c->buf;
     int len = c->len;
     bool shift = c->shift, word_mod = c->word_mod, line_mod = c->line_mod;
-    int s0 = CUI_MIN(e->cursor, e->anchor), s1 = CUI_MAX(e->cursor, e->anchor);
     for (int rep = cui_key_pressed(ui, CUI_KEY_LEFT) ? ui->kpressed[CUI_KEY_LEFT] : 0; rep > 0; rep--) {
+        int s0 = CUI_MIN(e->cursor, e->anchor), s1 = CUI_MAX(e->cursor, e->anchor);
         if (!shift && s1 > s0 && !word_mod) { e->cursor = e->anchor = s0; c->moved = true; continue; }
         cui__edit_move(c, line_mod ? 0 : word_mod ? cui__edit_word_left(buf, e->cursor) : cui__utf8_prev(buf, e->cursor));
     }
     for (int rep = cui_key_pressed(ui, CUI_KEY_RIGHT) ? ui->kpressed[CUI_KEY_RIGHT] : 0; rep > 0; rep--) {
+        int s0 = CUI_MIN(e->cursor, e->anchor), s1 = CUI_MAX(e->cursor, e->anchor);
         if (!shift && s1 > s0 && !word_mod) { e->cursor = e->anchor = s1; c->moved = true; continue; }
         cui__edit_move(c, line_mod ? len : word_mod ? cui__edit_word_right(buf, len, e->cursor) : cui__utf8_next(buf, len, e->cursor));
     }
@@ -658,9 +660,10 @@ static void cui__edit_typing(cui__edit_frame *c, cui__edit_result *res) {
     }
     for (int rep = ui->kpressed[CUI_KEY_BACKSPACE]; rep > 0; rep--) {
         s0 = CUI_MIN(e->cursor, e->anchor); s1 = CUI_MAX(e->cursor, e->anchor);
+        if (s1 == s0 && e->cursor == 0) break;
         cui__edit_undo_push(ui, e, buf, s1 > s0 ? 3 : 2);
         if (s1 > s0) { cui__edit_delete(buf, &c->len, s0, s1); e->cursor = e->anchor = s0; }
-        else if (e->cursor > 0) {
+        else {
             int to = c->word_mod ? cui__edit_word_left(buf, e->cursor) : c->line_mod ? 0 : cui__utf8_prev(buf, e->cursor);
             cui__edit_delete(buf, &c->len, to, e->cursor);
             e->cursor = e->anchor = to;
@@ -669,9 +672,10 @@ static void cui__edit_typing(cui__edit_frame *c, cui__edit_result *res) {
     }
     for (int rep = ui->kpressed[CUI_KEY_DELETE]; rep > 0; rep--) {
         s0 = CUI_MIN(e->cursor, e->anchor); s1 = CUI_MAX(e->cursor, e->anchor);
+        if (s1 == s0 && e->cursor >= c->len) break;
         cui__edit_undo_push(ui, e, buf, s1 > s0 ? 3 : 2);
         if (s1 > s0) { cui__edit_delete(buf, &c->len, s0, s1); e->cursor = e->anchor = s0; }
-        else if (e->cursor < c->len) {
+        else {
             int to = c->word_mod ? cui__edit_word_right(buf, c->len, e->cursor) : cui__utf8_next(buf, c->len, e->cursor);
             cui__edit_delete(buf, &c->len, e->cursor, to);
         }

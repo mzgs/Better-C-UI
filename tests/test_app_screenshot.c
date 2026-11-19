@@ -37,10 +37,17 @@ int main(void) {
     unsigned char pixels[64 * 64 * 4], untouched[sizeof pixels];
     memset(pixels, 0x5a, sizeof pixels);
     memcpy(untouched, pixels, sizeof pixels);
+    CHECK(!cui_app_screenshot(NULL, pixels, 64, 64));
     CHECK(!cui_app_screenshot(&app, pixels, 32, 32));
     CHECK(memcmp(pixels, untouched, sizeof pixels) == 0);
     CHECK(cui_app_screenshot(&app, pixels, 64, 64));
     CHECK(!cui_app_screenshot(&app, pixels, INT_MAX, 64));
+    /* zero-sized framebuffer must report failure rather than leaving output uninitialized */
+    cui_set_viewport(app.ui, 0, 0, 1);
+    cui_begin_frame(app.ui, 1.0f / 60); cui_end_frame(app.ui);
+    CHECK(!cui_app_screenshot(&app, pixels, 64, 64));
+    cui_set_viewport(app.ui, 64, 64, 1);
+    cui_begin_frame(app.ui, 1.0f / 60); cui_end_frame(app.ui);
     unsigned char padded[80 * 64 * 4];
     memset(padded, 0x5a, sizeof padded);
     app.gl = (cui_gl_renderer *)(uintptr_t)1;

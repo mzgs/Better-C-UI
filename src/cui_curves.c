@@ -597,7 +597,8 @@ static void cui__cvf_build_plot(cui__cvf *f) {
         pp->key_hover[i] = cui__tween(ui, hv, i == f->hot_key ? 1.0f : 0.0f, CUI__T_HOVER);
     }
     pp->g = f->g;
-    pp->xfmt = o->x_format; pp->yfmt = o->y_format;
+    pp->xfmt = o->x_format ? cui__frame_strdup(ui, o->x_format, -1) : NULL;
+    pp->yfmt = o->y_format ? cui__frame_strdup(ui, o->y_format, -1) : NULL;
     pp->sel = f->sel;
     pp->focus_key = f->focus_key; pp->hot_key = f->hot_key; pp->active_key = f->active_key;
     pp->hot_handle = f->hot_handle; pp->active_handle = f->active_handle;

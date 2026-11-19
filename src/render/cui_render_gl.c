@@ -194,7 +194,7 @@ static GLuint_ cui__gl_shader(cui_gl_renderer *r, GLenum_ type, const char *src)
     GLint_ ok = 0;
     r->gl.GetShaderiv(s, GL_COMPILE_STATUS_, &ok);
     if (!ok) {
-        char log[1024];
+        char log[1024] = "";
         r->gl.GetShaderInfoLog(s, sizeof log, NULL, log);
         fprintf(stderr, "cui: shader compile failed: %s\n", log);
         r->gl.DeleteShader(s);
@@ -261,7 +261,7 @@ cui_gl_renderer *cui_gl_create(cui_gl_loader loader) {
     GLint_ ok = 0;
     r->gl.GetProgramiv(r->program, GL_LINK_STATUS_, &ok);
     if (!ok) {
-        char log[1024];
+        char log[1024] = "";
         r->gl.GetProgramInfoLog(r->program, sizeof log, NULL, log);
         fprintf(stderr, "cui: program link failed: %s\n", log);
         r->gl.DeleteProgram(r->program);
@@ -307,6 +307,7 @@ static cui_texture cui__gl_tex_create(void *user, int w, int h, cui_texture_form
     cui_gl_renderer *r = user;
     if (w <= 0 || h <= 0 || (fmt != CUI_TEXTURE_R8 && fmt != CUI_TEXTURE_RGBA8)) return 0;
     int slot = -1;
+    bool append = false;
     for (int i = 0; i < r->tex_count; i++) if (!r->tex[i].id) { slot = i; break; }
     if (slot < 0) {
         if (r->tex_count == r->tex_cap) {
@@ -316,10 +317,13 @@ static cui_texture cui__gl_tex_create(void *user, int w, int h, cui_texture_form
             r->tex = n;
             r->tex_cap = cap;
         }
-        slot = r->tex_count++;
+        slot = r->tex_count;
+        append = true;
     }
     GLuint_ id = 0;
     r->gl.GenTextures(1, &id);
+    if (!id) return 0;
+    if (append) r->tex_count++;
     r->gl.BindTexture(GL_TEXTURE_2D_, id);
     r->gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MIN_FILTER_, GL_LINEAR_);
     r->gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MAG_FILTER_, GL_LINEAR_);
@@ -384,6 +388,7 @@ void cui_gl_render(cui_gl_renderer *r, const cui_draw_data *dd, bool clear) {
     int W = dd->width_px, H = dd->height_px;
     r->gl.Viewport(0, 0, W, H);
     if (clear) {
+        r->gl.Disable(GL_SCISSOR_TEST_);
         r->gl.ClearColor(dd->clear_color.r / 255.0f, dd->clear_color.g / 255.0f, dd->clear_color.b / 255.0f, 1.0f);
         r->gl.Clear(GL_COLOR_BUFFER_BIT_);
     }

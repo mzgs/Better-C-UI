@@ -67,8 +67,8 @@ cui_app *cui_app_create(const cui_app_desc *desc) {
         if (app->gl && cui_gl_is_software(app->gl) && d->renderer == CUI_RENDERER_AUTO && can_switch && !cui__env_is("CUI_RENDERER", "opengl")) {
             cui_gl_destroy(app->gl);
             app->gl = NULL;
-            cui__plat_gl_release(app);
         }
+        if (!app->gl) cui__plat_gl_release(app);
     }
     if (app->gl) {
         cui_renderer_iface iface = cui_gl_iface(app->gl);
@@ -311,11 +311,12 @@ int cui_app_run(const cui_app_desc *desc, void (*frame)(cui_ctx *ui, void *user)
 }
 
 bool cui_app_screenshot(cui_app *app, void *rgba, int width, int height) {
-    if (!rgba || width <= 0 || width > INT_MAX / 4 || height <= 0) return false;
+    app = cui__app_or_current(app);
+    if (!app || !rgba || width <= 0 || width > INT_MAX / 4 || height <= 0) return false;
     if (app->in_frame) cui__app_render(app);
     const cui_draw_data *dd = cui_get_draw_data(app->ui);
     int w = dd->width_px, h = dd->height_px;
-    if (width < w || height < h) return false;
+    if (w <= 0 || h <= 0 || width < w || height < h) return false;
     if (app->gl) {
         /* re-render without swapping so the back buffer holds the frame */
         cui_gl_render(app->gl, dd, true);

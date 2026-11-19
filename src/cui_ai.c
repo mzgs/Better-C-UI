@@ -431,8 +431,15 @@ static void cui__favicon(cui_ctx *ui, const char *domain, float size) {
     nd->bg = cui_alpha(c, ui->mode == CUI_THEME_DARK ? 0.3f : 0.16f);
     nd->dir = CUI_STACK; nd->align = CUI_ALIGN_CENTER; nd->justify = CUI_JUSTIFY_CENTER;
     cui__open(ui, n);
-    char letter[2] = { domain && domain[0] ? (char)(domain[0] >= 'a' && domain[0] <= 'z' ? domain[0] - 32 : domain[0]) : '?', 0 };
-    int t = cui__text_node(ui, cui__frame_strdup(ui, letter, 1), 1, CUI_FONT_MEDIUM, cui__fs(ui, size * 0.56f), ui->mode == CUI_THEME_DARK ? cui_mix(c, cui__rgba(255, 255, 255, 255), 0.4f) : cui_mix(c, cui__rgba(0, 0, 0, 255), 0.25f), false);
+    char letter[8] = "?";
+    int llen = 1;
+    if (domain && domain[0]) {
+        uint32_t cp = 0;
+        int step = cui__utf8_decode(domain, (int)strlen(domain), &cp);
+        if (cp >= 'a' && cp <= 'z') { letter[0] = (char)(cp - 32); letter[1] = 0; llen = 1; }
+        else if (step > 0 && step < (int)sizeof letter) { memcpy(letter, domain, (size_t)step); letter[step] = 0; llen = step; }
+    }
+    int t = cui__text_node(ui, cui__frame_strdup(ui, letter, llen), llen, CUI_FONT_MEDIUM, cui__fs(ui, size * 0.56f), ui->mode == CUI_THEME_DARK ? cui_mix(c, cui__rgba(255, 255, 255, 255), 0.4f) : cui_mix(c, cui__rgba(0, 0, 0, 255), 0.25f), false);
     ui->nodes[t].line_height = 1.0f;
     cui__close(ui);
 }
@@ -869,7 +876,7 @@ int cui_chat_composer_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap,
     /* attachments */
     if (o->attachment_count > 0 && o->attachments) {
         int row = cui__node_new(ui, 0);
-        ui->nodes[row].dir = CUI_ROW; ui->nodes[row].gap = 6; ui->nodes[row].flags |= CUI_NF_WRAP; ui->nodes[row].w = CUI_FILL;
+        ui->nodes[row].dir = CUI_ROW; ui->nodes[row].gap = 6; ui->nodes[row].flags |= CUI_NF_ROW_WRAP; ui->nodes[row].w = CUI_FILL;
         ui->nodes[row].pad[1] = ui->nodes[row].pad[3] = 2; ui->nodes[row].pad[2] = 4;
         cui__open(ui, row);
         for (int k = 0; k < o->attachment_count; k++) {

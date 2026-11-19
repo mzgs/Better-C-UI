@@ -485,7 +485,8 @@ int cui_speed_dial_ex(cui_ctx *ui, const char *id_str, const cui_speed_action *a
         cui_node *rn = &ui->nodes[root];
         rn->gap = 10; rn->align = CUI_ALIGN_END;
         rn->pad[1] = (size - 42) * 0.5f;
-        if (!st->open) cui_push_disabled(ui, true);
+        bool pushed_disabled = !st->open;
+        if (pushed_disabled) cui_push_disabled(ui, true);
         for (int j = 0; j < count; j++) {
             int k = below ? j : count - 1 - j;          /* k counts outward from the button */
             int dist = below ? j : count - 1 - j;
@@ -530,7 +531,7 @@ int cui_speed_dial_ex(cui_ctx *ui, const char *id_str, const cui_speed_action *a
             cui__close(ui);
             cui__focus_ring(ui, rb, ar.focus_visible ? 1.0f : 0.0f);
         }
-        if (!st->open) cui_pop_disabled(ui);
+        if (pushed_disabled) cui_pop_disabled(ui);
         cui__float_end(ui);
     }
     ui->last_id = id;
@@ -815,7 +816,11 @@ int cui_swipe_item_end(cui_ctx *ui) {
 /* Inline edit                                                              */
 /* ------------------------------------------------------------------------ */
 
-typedef struct { bool editing; char backup[512]; float hover; } cui__inline_state;
+typedef struct { bool editing; char *backup; size_t backup_cap; float hover; } cui__inline_state;
+static void cui__inline_dtor(cui_ctx *ui, void *p) {
+    cui__inline_state *st = p;
+    cui__free(ui, st->backup);
+}
 
 int cui_inline_edit_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, const cui_inline_edit_opts *o) {
     cui_inline_edit_opts d;
@@ -824,6 +829,7 @@ int cui_inline_edit_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, c
     cui_id id = cui_make_id(ui, id_str);
     cui_id fid = id ^ 0x1D17u;
     cui__inline_state *st = cui_state(ui, id, sizeof *st);
+    cui__state_set_dtor(ui, id, cui__inline_dtor);
     cui_font font = o->font ? o->font : CUI_FONT_MEDIUM;
     float size = o->size > 0 ? cui__fs(ui, o->size) : cui__fs(ui, ui->theme.text_body);
     float lh = size * (size > 18 ? 1.3f : 1.5f);
@@ -857,7 +863,12 @@ int cui_inline_edit_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, c
         cui__focus_ring(ui, outer, r.focus_visible ? 1.0f : 0.0f);
         if (start) {
             st->editing = true;
-            snprintf(st->backup, sizeof st->backup, "%s", buf);
+            size_t need = strlen(buf) + 1;
+            if (need > st->backup_cap) {
+                st->backup = cui__realloc(ui, st->backup, need);
+                st->backup_cap = need;
+            }
+            memcpy(st->backup, buf, need);
             ui->focus = fid;
             ui->focus_visible = false;
             ui->tf_select_all = fid;
@@ -868,7 +879,7 @@ int cui_inline_edit_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, c
     /* editing: the same type, now a field */
     bool cancel = ui->focus == fid && cui_key_pressed(ui, CUI_KEY_ESCAPE);
     if (cancel) {
-        snprintf(buf, cap, "%s", st->backup);
+        if (st->backup && cap > 0) snprintf(buf, cap, "%s", st->backup);
         st->editing = false;
         ui->kpressed[CUI_KEY_ESCAPE] = 0;
         ui->focus = id;
@@ -893,7 +904,7 @@ int cui_inline_edit_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, c
     cui__close(ui);
     if (!cancel && ((f & CUI_SUBMITTED) || (ui->focus != fid && st->editing))) {
         st->editing = false;
-        if (strcmp(buf, st->backup) != 0) result = CUI_CHANGED;
+        if (strcmp(buf, st->backup ? st->backup : "") != 0) result = CUI_CHANGED;
         if (f & CUI_SUBMITTED) ui->focus = id;
     }
     ui->last_id = id;
@@ -1020,7 +1031,7 @@ bool cui_scrub_ex(cui_ctx *ui, const char *label, float *value, float min, float
     if (!cancel && ((f & CUI_SUBMITTED) || ui->focus != fid)) {
         char *end = NULL;
         double v = strtod(st->text, &end);
-        if (end != st->text) *value = cui__clampf((float)v, min, max);
+        if (end != st->text && isfinite(v)) *value = cui__clampf((float)v, min, max);
         st->editing = false;
         if (f & CUI_SUBMITTED) ui->focus = id;
     }

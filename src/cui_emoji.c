@@ -81,6 +81,8 @@ static void cui__em_close_font(cui_ctx *ui, cui__emoji *e) {
     if (e->owned) cui__free(ui, e->mem);
     if (e->file) fclose(e->file);
     e->cmap = e->gsub = e->cblc = e->colr = e->cpal = NULL; e->tt = NULL; e->mem = NULL; e->file = NULL;
+    e->cmap_len = e->gsub_len = e->cblc_len = e->colr_len = e->cpal_len = 0;
+    e->cmap_fmt = 0; e->cmap_sub = 0; e->num_glyphs = 0;
     e->owned = e->loaded = e->mono_font = false; e->sbix_n = 0; e->sbix = e->cbdt = 0; e->size = 0;
     for (int i = 0; i < e->nslots; i++) e->slots[i].state = 0;   /* drawn with the old font */
     e->avail_font = false;
@@ -281,7 +283,10 @@ static int cui__em_cmap(const cui__emoji *e, uint32_t cp) {
             uint32_t a = CUI__T32(t, L, g), b = CUI__T32(t, L, g + 4);
             if (cp < a) hi = mid;
             else if (cp > b) lo = mid + 1;
-            else return (int)(CUI__T32(t, L, g + 8) + (cp - a));
+            else {
+                uint64_t gid = (uint64_t)CUI__T32(t, L, g + 8) + (uint64_t)(cp - a);
+                return gid <= 0xFFFF ? (int)gid : 0;
+            }
         }
         return 0;
     }
@@ -465,17 +470,19 @@ static bool cui__em_png(cui_ctx *ui, cui__emoji *e, int gid, int px, uint8_t **d
             }
         }
     }
-    if (e->sbix_n && gid < e->num_glyphs) {
+    if (e->sbix_n && gid >= 0 && gid < e->num_glyphs) {
         int best = 0;
         for (int i = 1; i < e->sbix_n; i++) {
             int a = e->sbix_ppem[best], b = e->sbix_ppem[i];
             if (a < px ? b > a : (b >= px && b < a)) best = i;
         }
         for (int hop = 0; hop < 2; hop++) {
+            if (gid < 0 || gid >= e->num_glyphs) return false;
             uint8_t o[8];
             if (!cui__em_read(e, e->sbix_strike[best] + 4 + (uint32_t)gid * 4, o, 8)) return false;
             uint32_t a = cui__be32(o), b = cui__be32(o + 4);
-            if (b <= a + 8 || b - a > (8u << 20)) return false;
+            if (b <= a || b - a <= 8 || b - a > (8u << 20)) return false;
+            if ((uint64_t)e->sbix_strike[best] + a > e->size) return false;
             uint8_t gh[10];
             uint32_t at = e->sbix_strike[best] + a;
             if (!cui__em_read(e, at, gh, 10)) return false;
@@ -519,15 +526,15 @@ static void cui__em_resample(cui_ctx *ui, const uint8_t *src, int sw, int sh, ui
     }
     /* shrinking: an area average in two passes (across, then down), with each output
      * column's and row's source pixels and weights worked out once; colors weighted by alpha */
-    enum { TAPS = 8 };
-    if ((sw + dw - 1) / dw + 1 > TAPS || (sh + dh - 1) / dh + 1 > TAPS) return;   /* more than 7 to 1: not worth a path */
+    int taps = CUI_MAX((sw + dw - 1) / dw, (sh + dh - 1) / dh) + 1;
+    if (taps < 2 || taps > 128) return;
     size_t tbytes = sizeof(float) * 4 * (size_t)dw * (size_t)sh;
-    size_t wbytes = (sizeof(int) + sizeof(float) * TAPS) * (size_t)(dw + dh);
+    size_t wbytes = (sizeof(int) + sizeof(float) * (size_t)taps) * (size_t)(dw + dh);
     uint8_t *mem = cui__alloc(ui, tbytes + wbytes);
     if (!mem) return;
     float *tmp = (float *)mem;
     int *cs = (int *)(mem + tbytes), *rs = cs + dw;
-    float *cw = (float *)(rs + dh), *rw = cw + (size_t)dw * TAPS;
+    float *cw = (float *)(rs + dh), *rw = cw + (size_t)dw * (size_t)taps;
     /* weights: the overlap of each source pixel with the output pixel, summing to 1 */
     for (int pass = 0; pass < 2; pass++) {
         int n = pass ? dh : dw, sn = pass ? sh : sw;
@@ -536,10 +543,10 @@ static void cui__em_resample(cui_ctx *ui, const uint8_t *src, int sw, int sh, ui
         for (int o = 0; o < n; o++) {
             float a = (float)o * sn / n, b = (float)(o + 1) * sn / n, inv = (float)n / sn;
             st[o] = (int)a;
-            for (int k = 0; k < TAPS; k++) {
+            for (int k = 0; k < taps; k++) {
                 float p0 = (float)(st[o] + k), p1 = p0 + 1;
                 float w = CUI_MIN(p1, b) - CUI_MAX(p0, a);
-                wt[(size_t)o * TAPS + k] = (w > 0 && st[o] + k < sn) ? w * inv : 0;
+                wt[(size_t)o * (size_t)taps + k] = (w > 0 && st[o] + k < sn) ? w * inv : 0;
             }
         }
     }
@@ -548,9 +555,9 @@ static void cui__em_resample(cui_ctx *ui, const uint8_t *src, int sw, int sh, ui
         float *t = tmp + (size_t)y * dw * 4;
         for (int x = 0; x < dw; x++) {
             const uint8_t *p = row + (size_t)cs[x] * 4;
-            const float *w = cw + (size_t)x * TAPS;
+            const float *w = cw + (size_t)x * (size_t)taps;
             float r = 0, g = 0, b = 0, al = 0;
-            for (int k = 0; k < TAPS; k++, p += 4) {
+            for (int k = 0; k < taps; k++, p += 4) {
                 if (w[k] == 0) break;
                 float a = p[3] * w[k];
                 r += p[0] * a; g += p[1] * a; b += p[2] * a; al += a;
@@ -559,12 +566,12 @@ static void cui__em_resample(cui_ctx *ui, const uint8_t *src, int sw, int sh, ui
         }
     }
     for (int y = 0; y < dh; y++) {
-        const float *w = rw + (size_t)y * TAPS;
+        const float *w = rw + (size_t)y * (size_t)taps;
         uint8_t *q = dst + (size_t)(dy + y) * dstride + (size_t)dx * 4;
         for (int x = 0; x < dw; x++, q += 4) {
             const float *t = tmp + ((size_t)rs[y] * dw + x) * 4;
             float r = 0, g = 0, b = 0, al = 0;
-            for (int k = 0; k < TAPS; k++, t += (size_t)dw * 4) {
+            for (int k = 0; k < taps; k++, t += (size_t)dw * 4) {
                 if (w[k] == 0) break;
                 r += t[0] * w[k]; g += t[1] * w[k]; b += t[2] * w[k]; al += t[3] * w[k];
             }
@@ -620,7 +627,7 @@ static bool cui__em_outline(cui_ctx *ui, cui__emoji *e, int gid, int px, uint8_t
         int pi = nl ? CUI__T16(c, CL, lo_ + (uint32_t)(first + k) * 4 + 2) : 0xFFFF;
         uint8_t col[4] = { 255, 255, 255, 255 };   /* the foreground: white, tinted when drawn */
         if (pi != 0xFFFF) {
-            uint32_t at = recs + (pal0 + (uint32_t)pi) * 4;
+            uint64_t at = (uint64_t)recs + ((uint64_t)pal0 + (uint64_t)pi) * 4;
             if (p && at + 4 <= PL) { col[0] = p[at + 2]; col[1] = p[at + 1]; col[2] = p[at]; col[3] = p[at + 3]; }
         }
         int x0, y0, x1, y1;
@@ -781,7 +788,7 @@ bool cui_emoji_supported(cui_ctx *ui, const char *utf8, int len) {
     return e->loaded ? cui__em_glyph(e, utf8, len) != 0 : true;
 }
 
-typedef struct { char s[32]; int len; } cui__em_one;
+typedef struct { char s[64]; int len; } cui__em_one;
 static void cui__paint_emoji(cui_ctx *ui, cui_node *n, void *data) {
     cui__em_one *p = data;
     cui__em_draw(ui, p->s, p->len, n->rect, 1, NULL);
@@ -917,7 +924,7 @@ typedef struct {
     int built_tone, built_recent_n; uint32_t built_recent_hash; bool built, built_avail;
     int *items; int nitems, cap;           /* >= 0 a list entry, < 0 a recent one: -(k + 1) */
     cui__em_section sec[CUI__EM_SECTIONS]; int nsec;
-    char own_recent[CUI__EM_RECENT_MAX * 32];
+    char own_recent[CUI__EM_RECENT_MAX * 64];
     int own_tone;
     float top, target; bool animating;
     int cur; bool cur_visible;              /* keyboard cursor, an index into items */
@@ -981,7 +988,7 @@ static float cui__em_sec_top(const cui__em_geo *g, int si) {
 typedef struct { char s[64]; int len; } cui__em_str;
 
 /* the text of an item, toned when it takes a tone */
-static cui__em_str cui__em_item_text(const cui__emoji *e, const cui__em_state *st, char recent[][32], int item_v, int tone) {
+static cui__em_str cui__em_item_text(const cui__emoji *e, const cui__em_state *st, char recent[][64], int item_v, int tone) {
     cui__em_str r;
     if (item_v < 0) {
         snprintf(r.s, sizeof r.s, "%s", recent[-item_v - 1]);
@@ -997,7 +1004,7 @@ static cui__em_str cui__em_item_text(const cui__emoji *e, const cui__em_state *s
 
 typedef struct {
     cui__emoji *e; cui__em_state *st; cui__em_geo g;
-    int *items; char (*recent)[32];
+    int *items; char (*recent)[64];
     int hover, cur; bool focus, soft; float top; int tone;
     const char *const *names; const char *empty; bool none; cui_id wheel;
     cui_color hover_bg, header, ring;
@@ -1077,7 +1084,7 @@ static void cui__paint_emoji_name(cui_ctx *ui, cui_node *n, void *data) {
 
 static void cui__em_push_recent(char *buf, size_t cap, const char *em) {
     if (!buf || cap < 8) return;
-    char old[CUI__EM_RECENT_MAX * 32 + 64];
+    char old[CUI__EM_RECENT_MAX * 64 + 64];
     snprintf(old, sizeof old, "%s", buf);
     size_t n = (size_t)snprintf(buf, cap, "%s", em), el = strlen(em);
     int count = 1;
@@ -1149,7 +1156,7 @@ typedef struct {
     const char *const *names;          /* group names */
     int *tone;
     char *rbuf; size_t rcap;           /* the recent list, space separated */
-    char recent[CUI__EM_RECENT_MAX][32];
+    char recent[CUI__EM_RECENT_MAX][64];
     int nrecent;
     cui__em_geo g;
     cui_rect pr;                       /* the grid, last frame */
@@ -1172,7 +1179,7 @@ static uint32_t cui__em_read_recent(cui__em_frame *f) {
         const char *w = t;
         while (*t && *t != ' ') t++;
         size_t wl = (size_t)(t - w);
-        if (!wl || wl >= 32) continue;
+        if (!wl || wl >= sizeof f->recent[0]) continue;
         memcpy(f->recent[f->nrecent], w, wl); f->recent[f->nrecent][wl] = 0;
         for (size_t k = 0; k < wl; k++) rhash = (rhash ^ (unsigned char)w[k]) * 16777619u;
         f->nrecent++;

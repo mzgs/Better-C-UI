@@ -150,7 +150,18 @@ bool cui__webview_native_eval(cui__webview *v, const char *script, cui_webview_r
     [web evaluateJavaScript:[NSString stringWithUTF8String:script] completionHandler:^(id result, NSError *error) {
         if (!web.owner || web.owner->surface.dead || !callback) return;
         if (error) { cui__webview_result(web.owner, callback, NULL, error.localizedDescription.UTF8String, user); return; }
-        NSData *data = [NSJSONSerialization dataWithJSONObject:result ?: NSNull.null options:NSJSONWritingFragmentsAllowed error:NULL];
+        NSData *data = nil;
+        NSError *json_error = nil;
+        @try {
+            data = [NSJSONSerialization dataWithJSONObject:result ?: NSNull.null options:NSJSONWritingFragmentsAllowed error:&json_error];
+        } @catch (NSException *ex) {
+            cui__webview_result(web.owner, callback, NULL, ex.reason ? ex.reason.UTF8String : "JSON serialization failed", user);
+            return;
+        }
+        if (!data && json_error) {
+            cui__webview_result(web.owner, callback, NULL, json_error.localizedDescription.UTF8String, user);
+            return;
+        }
         NSString *json = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"null";
         cui__webview_result(web.owner, callback, json.UTF8String, NULL, user);
     }];

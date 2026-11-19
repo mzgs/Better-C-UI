@@ -466,7 +466,7 @@ static void cui__flf_pointer(cui__flf *f) {
         if (!ui->mdown[0]) st->mode = FL_IDLE;
     } else if (st->mode == FL_PRESS && !ui->mdown[0]) {
         st->mode = FL_IDLE;
-        int h = st->press_hit;
+        int h = (st->press_hit >= 0 && st->press_hit < f->count) ? st->press_hit : -1;
         bool in_rows = st->press_y >= f->c.body_y - CUI__FL_PADY;   /* a click on the ruler keeps the selection */
         if (in_rows && h != *f->sel) *f->sel = h;
         if (st->press_double) {
@@ -1148,7 +1148,7 @@ static int cui__tr_start_le(const cui_trace_span *s, int lo, int hi, double t) {
 }
 static int cui__tr_parent(const cui__tr_ctx *c, int i) {
     const cui_trace_span *sp = &c->s[i];
-    if (sp->depth <= 0) return -1;
+    if (sp->depth <= 0 || sp->track < 0 || sp->track >= c->nt) return -1;
     int lo, hi;
     cui__tr_row(c, sp->track, sp->depth - 1, &lo, &hi);
     int k = cui__tr_start_le(c->s, lo, hi, sp->start);
@@ -1156,7 +1156,7 @@ static int cui__tr_parent(const cui__tr_ctx *c, int i) {
 }
 static int cui__tr_child(const cui__tr_ctx *c, int i) {
     const cui_trace_span *sp = &c->s[i];
-    if (c->tracks[sp->track].collapsed) return -1;
+    if (sp->track < 0 || sp->track >= c->nt || c->tracks[sp->track].collapsed) return -1;
     int lo, hi;
     cui__tr_row(c, sp->track, sp->depth + 1, &lo, &hi);
     int k = cui__tr_end_gt(c->s, lo, hi, sp->start);
@@ -1474,7 +1474,7 @@ static void cui__trf_pointer(cui__trf *f) {
         if (!ui->mdown[0]) st->mode = TR_IDLE;
     } else if (st->mode == TR_PRESS && !ui->mdown[0]) {
         st->mode = TR_IDLE;
-        int h = st->press_hit;
+        int h = (st->press_hit >= 0 && st->press_hit < f->c.n) ? st->press_hit : -1;
         *f->sel = h;
         if (st->press_double) {
             if (h >= 0) {
@@ -1644,7 +1644,7 @@ static void cui__trf_build(cui__trf *f, int *node, cui__tr_paint **out) {
             if (t >= 0) cui__trf_row_items(f, fp, t, d, row, k, run_fill);
         }
         int s = *f->sel;
-        if (s >= 0) {
+        if (s >= 0 && s < c->n && c->s[s].track >= 0 && c->s[s].track < c->nt) {
             const cui_trace_span *sp = &c->s[s];
             int row = c->tk[sp->track].row0 + sp->depth;
             if ((!c->tracks[sp->track].collapsed || sp->depth == 0) && row >= r0 && row <= r1 && sp->end >= v->start && sp->start <= v->end) {
@@ -1702,7 +1702,7 @@ cui_trace_result cui_trace_view_ex(cui_ctx *ui, const char *id_str, cui_trace_tr
     /* spans past the last track are ignored */
     while (span_count > 0 && (spans[span_count - 1].track >= track_count || spans[span_count - 1].track < 0)) span_count--;
     int sel_before = *sel;
-    if (*sel < -1 || *sel >= span_count) *sel = -1;
+    if (*sel < -1 || *sel >= span_count || (*sel >= 0 && (spans[*sel].track < 0 || spans[*sel].track >= track_count))) *sel = -1;
     cui__tr_ctx *c = &f.c;
     c->s = spans; c->n = span_count; c->tracks = tracks; c->nt = track_count;
     c->row_h = o->row_height > 0 ? o->row_height : CUI__FL_ROW;

@@ -268,7 +268,7 @@ bool cui_slider_ex(cui_ctx *ui, const char *label, float *value, float min, floa
     cui_rect pr = cui__prev_rect(ui, track_id);
     float pad = 9;
     float x0 = pr.x + pad, x1 = pr.x + pr.w - pad;
-    if (r.active && ui->mdown[0] && pr.w > 0) {
+    if (r.active && ui->mdown[0] && x1 > x0) {
         /* right to left, the minimum is at the right end */
         float mx = st->rtl ? x0 + x1 - ui->mx : ui->mx;
         float mt = (mx - x0) / (x1 - x0);
@@ -341,7 +341,7 @@ bool cui_range_slider(cui_ctx *ui, const char *label, float *lo, float *hi, floa
     if (!st->init) { st->a.x = ta; st->b.x = tb; st->init = true; }
     cui_rect pr = cui__prev_rect(ui, track_id);
     float x0 = pr.x + 9, x1 = pr.x + pr.w - 9;
-    if (r.active && ui->mdown[0] && pr.w > 0) {
+    if (r.active && ui->mdown[0] && x1 > x0) {
         float mx = st->rtl ? x0 + x1 - ui->mx : ui->mx;
         float mt = cui__clampf((mx - x0) / (x1 - x0), 0, 1);
         if (ui->mpressed[0]) st->grabbed = fabsf(mt - ta) < fabsf(mt - tb) ? 0 : 1;

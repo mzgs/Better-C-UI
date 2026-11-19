@@ -61,7 +61,8 @@ bool cui_image_viewer_ex(cui_ctx *ui, const char *id_str, cui_texture tex, int i
     cui__iv_state *st = cui_state(ui, id, sizeof *st);
     cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE | CUI_IF_DRAG);
     cui_rect pr = cui__prev_rect(ui, id);
-    float vw = pr.w > 0 ? pr.w : 480, vh = pr.h > 0 ? pr.h : (o->height.kind == CUI_SIZE_FIXED ? o->height.value : 360);
+    float vw = pr.w > 0 ? pr.w : 480;
+    float vh = pr.h > 0 ? pr.h : (o->height.kind == CUI_SIZE_FIXED && o->height.value > 0 ? o->height.value : 360);
     float fit = CUI_MIN(vw / iw, vh / ih);
     float zmin = CUI_MIN(fit, 1.0f), zmax = CUI_MAX(o->max_zoom > 0 ? o->max_zoom : 16, fit);
     bool fitted = view->zoom <= 0;

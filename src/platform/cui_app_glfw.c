@@ -30,7 +30,18 @@ static const char *cui__glfw_get_clip(void *user) { return glfwGetClipboardStrin
 static void cui__glfw_scale(GLFWwindow *w, float *sx) {
     float x = 1, y = 1;
     glfwGetWindowContentScale(w, &x, &y);
-    *sx = x;
+    *sx = x > 0 ? x : 1.0f;
+}
+
+/* Converts GLFW screen coordinates (window units) to CUI logical coordinates (fb / scale). */
+static void cui__glfw_cursor_factor(GLFWwindow *w, float *fx, float *fy) {
+    int ww = 0, wh = 0, fw = 0, fh = 0;
+    float s = 1.0f;
+    glfwGetWindowSize(w, &ww, &wh);
+    glfwGetFramebufferSize(w, &fw, &fh);
+    cui__glfw_scale(w, &s);
+    *fx = (ww > 0 && fw > 0) ? ((float)fw / s) / (float)ww : 1.0f;
+    *fy = (wh > 0 && fh > 0) ? ((float)fh / s) / (float)wh : 1.0f;
 }
 
 static cui_key cui__glfw_key(int k) {
@@ -72,17 +83,21 @@ static int cui__glfw_mods(int m) {
 
 static void cb_cursor(GLFWwindow *w, double x, double y) {
     cui_app *app = cui__glfw_app(w);
-#if defined(__APPLE__)
-    cui_input_mouse_move(app->ui, (float)x, (float)y);
-#else
-    float s; cui__glfw_scale(w, &s);
-    cui_input_mouse_move(app->ui, (float)x / s, (float)y / s);
-#endif
+    float fx, fy;
+    cui__glfw_cursor_factor(w, &fx, &fy);
+    cui_input_mouse_move(app->ui, (float)x * fx, (float)y * fy);
 }
-static void cb_enter(GLFWwindow *w, int entered) { if (!entered) cui_input_mouse_leave(cui__glfw_app(w)->ui); }
+static void cb_enter(GLFWwindow *w, int entered) {
+    cui_ctx *ui = cui__glfw_app(w)->ui;
+    if (!entered && !cui_mouse_down(ui, CUI_MOUSE_LEFT)) cui_input_mouse_leave(ui);
+}
 static void cb_button(GLFWwindow *w, int b, int action, int mods) {
     (void)mods;
-    cui_mouse_button mb = b == GLFW_MOUSE_BUTTON_LEFT ? CUI_MOUSE_LEFT : b == GLFW_MOUSE_BUTTON_RIGHT ? CUI_MOUSE_RIGHT : CUI_MOUSE_MIDDLE;
+    cui_mouse_button mb;
+    if (b == GLFW_MOUSE_BUTTON_LEFT) mb = CUI_MOUSE_LEFT;
+    else if (b == GLFW_MOUSE_BUTTON_RIGHT) mb = CUI_MOUSE_RIGHT;
+    else if (b == GLFW_MOUSE_BUTTON_MIDDLE) mb = CUI_MOUSE_MIDDLE;
+    else return;
     cui_input_mouse_button(cui__glfw_app(w)->ui, mb, action == GLFW_PRESS);
 }
 static void cb_scroll(GLFWwindow *w, double dx, double dy) { cui_input_scroll(cui__glfw_app(w)->ui, (float)-dx, (float)dy); }
@@ -101,20 +116,20 @@ static void cb_char(GLFWwindow *w, unsigned int cp) {
 static void cb_focus(GLFWwindow *w, int f) { cui_input_focus(cui__glfw_app(w)->ui, f != 0); }
 static void cb_close(GLFWwindow *w) { cui__glfw_app(w)->running = false; }
 static void cb_refresh(GLFWwindow *w) { cui_request_redraw(cui__glfw_app(w)->ui); }
+static void cb_fb_size(GLFWwindow *w, int fw, int fh) { (void)fw; (void)fh; cui_request_redraw(cui__glfw_app(w)->ui); }
+static void cb_content_scale(GLFWwindow *w, float sx, float sy) { (void)sx; (void)sy; cui_request_redraw(cui__glfw_app(w)->ui); }
 static void cb_drop(GLFWwindow *w, int count, const char **paths) {
     double x = 0, y = 0;
     glfwGetCursorPos(w, &x, &y);
-#if !defined(__APPLE__)
-    float s; cui__glfw_scale(w, &s);
-    x /= s; y /= s;
-#endif
-    cui_input_file_drop(cui__glfw_app(w)->ui, paths, count, (float)x, (float)y);
+    float fx, fy;
+    cui__glfw_cursor_factor(w, &fx, &fy);
+    cui_input_file_drop(cui__glfw_app(w)->ui, paths, count, (float)x * fx, (float)y * fy);
 }
 
 bool cui__plat_init(cui_app *app) {
     if (!glfwInit()) return false;
     cui__glfw *g = calloc(1, sizeof *g);
-    if (!g) return false;
+    if (!g) { glfwTerminate(); return false; }
     app->plat = g;
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -126,7 +141,11 @@ bool cui__plat_init(cui_app *app) {
     g->win = glfwCreateWindow(app->desc.width, app->desc.height, app->title, NULL, NULL);
     if (!g->win) { free(g); app->plat = NULL; glfwTerminate(); return false; }
     glfwSetWindowUserPointer(g->win, app);
-    glfwSetWindowSizeLimits(g->win, app->desc.min_width, app->desc.min_height, GLFW_DONT_CARE, GLFW_DONT_CARE);
+    float fx, fy;
+    cui__glfw_cursor_factor(g->win, &fx, &fy);
+    int min_w = fx > 0 ? (int)(app->desc.min_width / fx + 0.5f) : app->desc.min_width;
+    int min_h = fy > 0 ? (int)(app->desc.min_height / fy + 0.5f) : app->desc.min_height;
+    glfwSetWindowSizeLimits(g->win, min_w, min_h, GLFW_DONT_CARE, GLFW_DONT_CARE);
     glfwSetCursorPosCallback(g->win, cb_cursor);
     glfwSetCursorEnterCallback(g->win, cb_enter);
     glfwSetMouseButtonCallback(g->win, cb_button);
@@ -136,6 +155,8 @@ bool cui__plat_init(cui_app *app) {
     glfwSetWindowFocusCallback(g->win, cb_focus);
     glfwSetWindowCloseCallback(g->win, cb_close);
     glfwSetWindowRefreshCallback(g->win, cb_refresh);
+    glfwSetFramebufferSizeCallback(g->win, cb_fb_size);
+    glfwSetWindowContentScaleCallback(g->win, cb_content_scale);
     glfwSetDropCallback(g->win, cb_drop);
     int shapes[CUI_CURSOR_COUNT] = { GLFW_ARROW_CURSOR, GLFW_HAND_CURSOR, GLFW_IBEAM_CURSOR, GLFW_HRESIZE_CURSOR,
                                      GLFW_VRESIZE_CURSOR, GLFW_ARROW_CURSOR, GLFW_ARROW_CURSOR };
@@ -190,7 +211,14 @@ void cui__plat_metrics(cui_app *app, float *w, float *h, float *scale, int *fb_w
 }
 
 void cui__plat_set_title(cui_app *app, const char *title) { glfwSetWindowTitle(cui__g(app)->win, title); }
-void cui__plat_set_size(cui_app *app, int w, int h) { glfwSetWindowSize(cui__g(app)->win, w, h); }
+void cui__plat_set_size(cui_app *app, int w, int h) {
+    GLFWwindow *win = cui__g(app)->win;
+    float fx, fy;
+    cui__glfw_cursor_factor(win, &fx, &fy);
+    int sw = fx > 0 ? (int)(w / fx + 0.5f) : w;
+    int sh = fy > 0 ? (int)(h / fy + 0.5f) : h;
+    glfwSetWindowSize(win, sw, sh);
+}
 bool cui__plat_is_fullscreen(cui_app *app) { return glfwGetWindowMonitor(cui__g(app)->win) != NULL; }
 void cui__plat_set_fullscreen(cui_app *app, bool fullscreen) {
     cui__glfw *g = cui__g(app);
@@ -240,4 +268,4 @@ double cui__plat_refresh_hz(cui_app *app) {
     return v ? v->refreshRate : 0;
 }
 
-void cui__plat_gl_release(cui_app *app) { (void)app; }   /* not used: these keep OpenGL */
+void cui__plat_gl_release(cui_app *app) { (void)app; glfwMakeContextCurrent(NULL); }

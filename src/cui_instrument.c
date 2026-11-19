@@ -176,6 +176,7 @@ cui_chart_annotation *cui__copy_annotations(cui_ctx *ui, const cui_chart_annotat
 
 /* label rows above the plot for vertical lines that carry text */
 static float cui__ann_headroom(cui_ctx *ui, const cui_chart_annotation *a, int n) {
+    if (!a || n <= 0) return 0;
     int lines = 0;
     for (int i = 0; i < n; i++)
         if (a[i].kind == CUI_ANNOTATION_X) lines = CUI_MAX(lines, (a[i].label ? 1 : 0) + (a[i].detail ? 1 : 0));

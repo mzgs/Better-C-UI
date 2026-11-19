@@ -148,7 +148,6 @@ def build_header():
 def build_source(header_seen):
     e = Emitter()
     e.seen = set(header_seen)   # the public headers are already in cui.h
-    e("#ifndef CUI_BUILDING\n#define CUI_BUILDING\n#endif\n")
     for rel, cond in library_sources():
         if cond:
             e("#ifndef " + cond[1:] + "\n" if cond.startswith("!") else "#ifdef " + cond + "\n")
@@ -204,11 +203,12 @@ def main():
     source = build_source(he.seen)
     with open(os.path.join(out, "cui.h"), "w", encoding="utf-8") as f:
         f.write(banner("public header") + header)
+    building = "#ifndef CUI_BUILDING\n#define CUI_BUILDING\n#endif\n"
     with open(os.path.join(out, "cui.c"), "w", encoding="utf-8") as f:
-        f.write(banner("every source file in one") + POSIX + '#include "cui.h"\n' + source + licenses())
+        f.write(banner("every source file in one") + POSIX + building + '#include "cui.h"\n' + source + licenses())
     with open(os.path.join(out, "cui_single.h"), "w", encoding="utf-8") as f:
         f.write(banner("single header: #define CUI_IMPLEMENTATION in one file before including it"))
-        f.write("#ifdef CUI_IMPLEMENTATION   /* include this first in that file, so the POSIX calls are declared */\n" + POSIX + "#endif\n")
+        f.write("#ifdef CUI_IMPLEMENTATION   /* include this first in that file, so the POSIX calls are declared */\n" + POSIX + building + "#endif\n")
         f.write(header)
         f.write("\n#ifdef CUI_IMPLEMENTATION\n#ifndef CUI_IMPLEMENTATION_DONE\n#define CUI_IMPLEMENTATION_DONE\n")
         f.write(source)
