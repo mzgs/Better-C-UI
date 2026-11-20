@@ -592,7 +592,7 @@ bool cui_shortcut(cui_ctx *ui, int mods, cui_key key) {
 cui_vec2 cui_mouse_pos(cui_ctx *ui) { cui_vec2 v = { ui->mx, ui->my }; return v; }
 bool cui_mouse_down(cui_ctx *ui, cui_mouse_button b) { return (int)b >= 0 && (int)b < 3 && ui->mdown[b]; }
 bool cui_mouse_clicked(cui_ctx *ui, cui_mouse_button b) { return (int)b >= 0 && (int)b < 3 && ui->mpressed[b]; }
-bool cui_wants_keyboard(cui_ctx *ui) { return ui->edit != NULL; }
+bool cui_wants_keyboard(cui_ctx *ui) { return ui->edit != NULL || ui->edit_prev; }
 bool cui_wants_mouse(cui_ctx *ui) { return ui->hot != 0 || ui->active != 0; }
 
 void cui__set_cursor(cui_ctx *ui, cui_cursor c) { ui->cursor = c; }

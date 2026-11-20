@@ -843,6 +843,63 @@ static void test_pass2_component_fixes(void) {
     }
 }
 
+static void test_wants_keyboard_start_of_frame(void) {
+    cui_ctx *ui = context(false);
+    char buf[64] = "";
+    cui_id input_id = 0;
+
+    /* Initial frame: no focused input -> false at start and end of frame. */
+    cui_begin_frame(ui, 1.0f / 60);
+    CHECK(!cui_wants_keyboard(ui));
+    cui_input(ui, "kb-input", buf, sizeof buf);
+    input_id = ui->last_id;
+    CHECK(!cui_wants_keyboard(ui));
+    cui_end_frame(ui);
+    CHECK(!cui_wants_keyboard(ui));
+
+    /* Click to focus the input. */
+    cui_rect r = cui_get_rect(ui, input_id);
+    cui_input_mouse_move(ui, r.x + r.w * 0.5f, r.y + r.h * 0.5f);
+    cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+    cui_begin_frame(ui, 1.0f / 60);
+    cui_input(ui, "kb-input", buf, sizeof buf);
+    CHECK(cui_wants_keyboard(ui));
+    cui_end_frame(ui);
+    cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+    CHECK(cui_wants_keyboard(ui));
+
+    /* Next frame: cui_wants_keyboard must already be true at the top of frame()
+     * before cui_input() is called, so top-of-frame app shortcuts are suppressed. */
+    cui_input_key(ui, CUI_KEY_K, true, CUI_MOD_PRIMARY);
+    cui_begin_frame(ui, 1.0f / 60);
+    CHECK(cui_wants_keyboard(ui));
+    cui_input(ui, "kb-input", buf, sizeof buf);
+    CHECK(cui_wants_keyboard(ui));
+    cui_end_frame(ui);
+    cui_input_key(ui, CUI_KEY_K, false, 0);
+
+    /* Press Escape to blur: suppressed on the Escape frame, then clears on the next. */
+    cui_input_key(ui, CUI_KEY_ESCAPE, true, 0);
+    cui_begin_frame(ui, 1.0f / 60);
+    CHECK(cui_wants_keyboard(ui));
+    cui_input(ui, "kb-input", buf, sizeof buf);
+    cui_end_frame(ui);
+    cui_input_key(ui, CUI_KEY_ESCAPE, false, 0);
+
+    /* Unfocused frame: cui_input sees focus == 0 and clears ui->edit/edit_prev. */
+    cui_begin_frame(ui, 1.0f / 60);
+    cui_input(ui, "kb-input", buf, sizeof buf);
+    cui_end_frame(ui);
+    CHECK(!cui_wants_keyboard(ui));
+
+    /* Subsequent frame: top of frame() sees !cui_wants_keyboard(ui). */
+    cui_begin_frame(ui, 1.0f / 60);
+    CHECK(!cui_wants_keyboard(ui));
+    cui_input(ui, "kb-input", buf, sizeof buf);
+    cui_end_frame(ui);
+    cui_destroy(ui);
+}
+
 int main(void) {
     test_ascii_helpers(); test_scopes();
     test_shrinking_list(); test_table_controls(); test_horizontal_drag(); test_code_scroll_routing();
@@ -852,6 +909,7 @@ int main(void) {
     test_file_globs(); test_chart_ranges();
     test_deep_audit_fixes();
     test_pass2_component_fixes();
+    test_wants_keyboard_start_of_frame();
     printf("audit regressions: %d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
 }

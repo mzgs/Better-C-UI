@@ -191,33 +191,59 @@ static bool cui__applescript_quote(char *dst, size_t cap, const char *src) {
 }
 
 static bool cui__posix_file_dialog(const cui_file_dialog_opts *o, char *out, size_t cap) {
-    char title[300], name[300], script[1400], quoted[1600], cmd[1800];
+    char title[300], name[300], script[2048], quoted[2400], cmd[2600];
     if (!cui__applescript_quote(title, sizeof title, o->title ? o->title : (o->kind == CUI_FILE_SAVE ? "Save" : "Open")) ||
         !cui__applescript_quote(name, sizeof name, o->default_name ? o->default_name : "Untitled")) return false;
-    if (o->kind == CUI_FILE_FOLDER) snprintf(script, sizeof script, "POSIX path of (choose folder with prompt \"%s\")", title);
-    else if (o->kind == CUI_FILE_SAVE) snprintf(script, sizeof script, "POSIX path of (choose file name with prompt \"%s\" default name \"%s\")", title, name);
-    else {
-        char types[300] = "";
-        if (o->filter && *o->filter) {
-            size_t k = 0;
-            if (!cui__dialog_append(types, sizeof types, &k, " of type {")) return false;
-            for (const char *p = o->filter; *p;) {
-                const char *e = strchr(p, ';');
-                size_t l = e ? (size_t)(e - p) : strlen(p);
-                if (!cui__dialog_append(types, sizeof types, &k, "%s\"", p == o->filter ? "" : ", ")) return false;
-                for (size_t i = 0; i < l; i++) {
-                    if ((p[i] == '"' || p[i] == '\\') && !cui__dialog_append(types, sizeof types, &k, "\\")) return false;
-                    if (!cui__dialog_append(types, sizeof types, &k, "%c", p[i])) return false;
-                }
-                if (!cui__dialog_append(types, sizeof types, &k, "\"")) return false;
-                p = e ? e + 1 : p + l;
+    int sn = 0;
+    if (o->kind == CUI_FILE_FOLDER) {
+        sn = snprintf(script, sizeof script, "POSIX path of (choose folder with prompt \"%s\")", title);
+    } else if (o->kind == CUI_FILE_SAVE) {
+        sn = snprintf(script, sizeof script, "POSIX path of (choose file name with prompt \"%s\" default name \"%s\")", title, name);
+    } else if (o->filter && *o->filter) {
+        char types[384] = "";
+        size_t k = 0;
+        if (!cui__dialog_append(types, sizeof types, &k, "{")) return false;
+        for (const char *p = o->filter; *p;) {
+            const char *e = strchr(p, ';');
+            size_t l = e ? (size_t)(e - p) : strlen(p);
+            if (!cui__dialog_append(types, sizeof types, &k, "%s\"", p == o->filter ? "" : ", ")) return false;
+            for (size_t i = 0; i < l; i++) {
+                if ((p[i] == '"' || p[i] == '\\') && !cui__dialog_append(types, sizeof types, &k, "\\")) return false;
+                if (!cui__dialog_append(types, sizeof types, &k, "%c", p[i])) return false;
             }
-            if (!cui__dialog_append(types, sizeof types, &k, "}")) return false;
+            if (!cui__dialog_append(types, sizeof types, &k, "\"")) return false;
+            p = e ? e + 1 : p + l;
         }
-        snprintf(script, sizeof script, "POSIX path of (choose file with prompt \"%s\"%s)", title, types);
+        if (!cui__dialog_append(types, sizeof types, &k, "}")) return false;
+        /* Resolve plain extensions to UTIs so 4-character extensions like "json"
+         * are not misinterpreted by AppleScript as Classic HFS OSType codes. */
+        sn = snprintf(script, sizeof script,
+                      "use framework \"UniformTypeIdentifiers\"\n"
+                      "use scripting additions\n"
+                      "set rawTypes to %s\n"
+                      "set resolved to {}\n"
+                      "repeat with ext in rawTypes\n"
+                      "set s to ext as text\n"
+                      "if s contains \".\" then\n"
+                      "set end of resolved to s\n"
+                      "else\n"
+                      "set t to current application's UTType's typeWithFilenameExtension:s\n"
+                      "if t is missing value then\n"
+                      "set end of resolved to s\n"
+                      "else\n"
+                      "set end of resolved to (t's identifier() as text)\n"
+                      "end if\n"
+                      "end if\n"
+                      "end repeat\n"
+                      "POSIX path of (choose file with prompt \"%s\" of type resolved)",
+                      types, title);
+    } else {
+        sn = snprintf(script, sizeof script, "POSIX path of (choose file with prompt \"%s\")", title);
     }
+    if (sn < 0 || (size_t)sn >= sizeof script) return false;
     if (!cui__shell_quote(quoted, sizeof quoted, script)) return false;
-    snprintf(cmd, sizeof cmd, "osascript -e %s 2>/dev/null", quoted);
+    int cn = snprintf(cmd, sizeof cmd, "osascript -e %s 2>/dev/null", quoted);
+    if (cn < 0 || (size_t)cn >= sizeof cmd) return false;
     return cui__run_line(cmd, out, cap);
 }
 
