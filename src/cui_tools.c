@@ -1074,7 +1074,7 @@ static void cui__log_view_ex_body(cui_ctx *ui, const char *id_str, cui_log_buffe
         s->init = true;
     }
     f.size = cui__fs(ui, o->size > 0 ? o->size : 12);
-    f.row_h = roundf(f.size * 1.8f);
+    f.row_h = CUI_MAX(1.0f, roundf(f.size * 1.8f));
     f.pad_y = 6;
     cui_scroll_state *ss = f.ss = cui_state(ui, f.sid, sizeof *ss);
     f.view_h = ss->view_h > 0 ? ss->view_h : 300;

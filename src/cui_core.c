@@ -339,8 +339,8 @@ cui_state_entry *cui__state_entry(cui_ctx *ui, cui_id id) {
         ui->state_free = ui->states[idx].next;
     } else {
         CUI__GROW(ui, ui->states, ui->state_count, ui->state_cap, 1);
+        if (ui->state_count + 1 > ui->bucket_count) cui__state_rehash(ui, ui->bucket_count * 2);
         idx = ui->state_count++;
-        if (ui->state_count > ui->bucket_count) cui__state_rehash(ui, ui->bucket_count * 2);
     }
     e = &ui->states[idx];
     memset(e, 0, sizeof *e);
@@ -504,9 +504,11 @@ void cui_input_mouse_button(cui_ctx *ui, cui_mouse_button b, bool down) {
 void cui_input_scroll(cui_ctx *ui, float dx, float dy) { ui->scroll_dx += dx; ui->scroll_dy += dy; cui__poke(ui); }
 
 void cui_input_key(cui_ctx *ui, cui_key key, bool down, int mods) {
-    /* modifiers are sampled at key presses (and modifier-only changes), so a
-     * quick shortcut tap released before the next frame still registers */
-    if (down || key == CUI_KEY_NONE) ui->mods = mods;
+    /* modifiers are sampled at key presses and held until frame end so a quick
+     * shortcut tap + modifier release before the next frame still registers */
+    ui->live_mods = mods;
+    if (down && key != CUI_KEY_NONE) { ui->mods = mods; ui->mods_latched = true; }
+    else if (down || (key == CUI_KEY_NONE && !ui->mods_latched)) ui->mods = mods;
     cui__poke(ui);
     if ((int)key <= 0 || key >= CUI_KEY_COUNT) return;
     if (down && ui->kpressed[key] < 255) ui->kpressed[key]++;
@@ -578,6 +580,8 @@ void cui_input_focus(cui_ctx *ui, bool focused) {
         memset(ui->kdown, 0, sizeof ui->kdown);
         for (int i = 0; i < 3; i++) { if (ui->mdown[i]) ui->mreleased[i] = true; ui->mdown[i] = false; }
         ui->mods = 0;
+        ui->live_mods = 0;
+        ui->mods_latched = false;
     }
     cui__poke(ui);
 }
@@ -626,10 +630,23 @@ static void cui__compute_hot(cui_ctx *ui) {
             ui->hot_layer = h->layer;
             found_hot = true;
         }
-        if (h->flags & CUI_NF_BLOCKER) break;
+        if (h->flags & (CUI_NF_BLOCKER | CUI_NF_HIT_OPAQUE)) break;
         if (found_hot && fits) break;
     }
 }
+
+static bool cui__layer_state(cui_ctx *ui, bool *modal_covered_out) {
+    int my_z = 0;
+    for (int i = 0; i < ui->popup_count; i++) if (ui->popups[i].id == ui->current_layer) my_z = ui->popups[i].z;
+    if (ui->current_layer && ui->current_layer == ui->prev_modal_layer) my_z = CUI_MAX(my_z, ui->prev_modal_z);
+    bool modal_covered = ui->prev_modal_layer != 0 && ui->current_layer != ui->prev_modal_layer && my_z <= ui->prev_modal_z;
+    if (modal_covered_out) *modal_covered_out = modal_covered;
+    if (modal_covered) return true;
+    for (int i = 0; i < ui->popup_count; i++) if (ui->popups[i].open && ui->popups[i].z > my_z) return true;
+    return false;
+}
+
+bool cui__layer_covered(cui_ctx *ui) { return cui__layer_state(ui, NULL); }
 
 cui_interact cui__interact(cui_ctx *ui, cui_id id, int flags) {
     cui_interact r;
@@ -661,20 +678,18 @@ cui_interact cui__interact(cui_ctx *ui, cui_id id, int flags) {
         r.released = true;
         if (hovered) r.clicked = true;
     }
-    r.focused = ui->focus == id;
+    bool modal_covered = false;
+    bool covered = cui__layer_state(ui, &modal_covered);   /* an open popup or modal above this control owns the keyboard */
+    r.focused = ui->focus == id && !modal_covered;
     /* a click gives focus without a ring; using the keyboard next shows the
      * ring and the keys act on that control, as in a browser. A trigger whose
      * popup is open leaves the keys to the popup. */
-    int my_z = 0;
-    for (int i = 0; i < ui->popup_count; i++) if (ui->popups[i].id == ui->current_layer) my_z = ui->popups[i].z;
-    bool covered = false;   /* an open popup above this control owns the keyboard */
-    for (int i = 0; i < ui->popup_count; i++) if (ui->popups[i].open && ui->popups[i].z > my_z) { covered = true; break; }
     if (r.focused && !ui->focus_visible && !covered && !(flags & CUI_IF_TEXT) &&
         (cui_key_pressed(ui, CUI_KEY_ENTER) || cui_key_pressed(ui, CUI_KEY_SPACE) || cui_key_pressed(ui, CUI_KEY_LEFT) ||
          cui_key_pressed(ui, CUI_KEY_RIGHT) || cui_key_pressed(ui, CUI_KEY_UP) || cui_key_pressed(ui, CUI_KEY_DOWN) ||
          cui_key_pressed(ui, CUI_KEY_HOME) || cui_key_pressed(ui, CUI_KEY_END)))
         ui->focus_visible = true;
-    r.focus_visible = r.focused && ui->focus_visible;
+    r.focus_visible = r.focused && ui->focus_visible && !covered;
     if (r.focused && ui->focus_visible && !covered && !(flags & CUI_IF_TEXT)) {
         if (cui_key_pressed(ui, CUI_KEY_ENTER) || cui_key_pressed(ui, CUI_KEY_SPACE)) {
             r.clicked = true;
@@ -743,21 +758,28 @@ float cui__transition(cui_ctx *ui, cui_transition *s, float target, float durati
 
 float cui__spring(cui_ctx *ui, cui_spring *s, float target, float duration, float bounce) {
     float motion = ui->theme.motion;
+    if (!isfinite(target)) return isfinite(s->x) ? s->x : 0.0f;
+    if (!isfinite(s->x) || !isfinite(s->v)) { s->x = target; s->v = 0; return target; }
     if (motion <= 0.0f || duration <= 0.0f || ui->frame <= 1) { s->x = target; s->v = 0; return target; }
     if (s->x == target && s->v == 0) return target;
     duration *= motion;
+    if (duration < 0.015f) { s->x = target; s->v = 0; return target; }
+    bounce = cui__clampf(bounce, -1.0f, 0.95f);
     float w = 2.0f * CUI_PI / duration;
     float k = w * w;
     float c = 2.0f * (1.0f - bounce) * w;
     float dt = cui__animation_dt(ui);
-    int steps = (int)ceilf(dt / (1.0f / 240.0f));
+    float max_h = CUI_MIN(1.0f / 240.0f, 0.25f / CUI_MAX(1.0f, CUI_MAX(w, c)));
+    int steps = (int)ceilf(dt / max_h);
     if (steps < 1) steps = 1;
+    if (steps > 256) steps = 256;
     float h = dt / (float)steps;
     for (int i = 0; i < steps; i++) {
         float a = -k * (s->x - target) - c * s->v;
         s->v += a * h;
         s->x += s->v * h;
     }
+    if (!isfinite(s->x) || !isfinite(s->v)) { s->x = target; s->v = 0; return target; }
     float eps = 0.002f + 0.0005f * fabsf(target);
     if (fabsf(s->x - target) < eps && fabsf(s->v) < eps * 10.0f) { s->x = target; s->v = 0; }
     else ui->animating = true;
@@ -819,11 +841,13 @@ void cui_begin_frame(cui_ctx *ui, float dt) {
       int cl = ui->prev_focus_layers_cap; ui->prev_focus_layers_cap = ui->focus_layers_cap; ui->focus_layers_cap = cl;
       ui->prev_focus_count = ui->focus_count; ui->focus_count = 0; }
     ui->prev_modal_layer = ui->modal_layer;
+    ui->prev_modal_z = ui->modal_z;
     ui->modal_layer = 0;
     ui->modal_z = 0;
 
     cui__compute_hot(ui);
     if (ui->active && !ui->mdown[0] && !ui->mreleased[0] && !ui->mpressed[0]) ui->active = 0;
+    if (ui->active && ui->mreleased[0] && ui->mpressed[0] && ui->hot != ui->active) ui->active = 0;
 
     /* Tab navigation (uses last frame's focus order; stays inside an open modal).
      * Ctrl+Tab is left to the app: it switches documents, as in a browser. */
@@ -891,9 +915,12 @@ void cui_end_frame(cui_ctx *ui) {
     if (ui->edit) cui__wake_in(ui, 0.53f - (float)fmod(ui->time - ui->caret_time, 0.53));
 
     /* clear per frame input */
+    if (ui->active && ui->mreleased[CUI_MOUSE_LEFT] && !ui->mdown[CUI_MOUSE_LEFT]) ui->active = 0;
     for (int i = 0; i < 3; i++) { ui->mpressed[i] = false; ui->mreleased[i] = false; }
     ui->scroll_dx = ui->scroll_dy = 0;
     memset(ui->kpressed, 0, sizeof ui->kpressed);
+    ui->mods_latched = false;
+    ui->mods = ui->live_mods;
     ui->text_in_len = 0;
     ui->text_in[0] = 0;
     ui->input_this_frame = false;

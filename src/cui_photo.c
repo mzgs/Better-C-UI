@@ -65,30 +65,32 @@ bool cui_image_viewer_ex(cui_ctx *ui, const char *id_str, cui_texture tex, int i
     float vh = pr.h > 0 ? pr.h : (o->height.kind == CUI_SIZE_FIXED && o->height.value > 0 ? o->height.value : 360);
     float fit = CUI_MIN(vw / iw, vh / ih);
     float zmin = CUI_MIN(fit, 1.0f), zmax = CUI_MAX(o->max_zoom > 0 ? o->max_zoom : 16, fit);
-    bool fitted = view->zoom <= 0;
+    bool disabled = cui_is_disabled(ui);
+    bool fitted = !isfinite(view->zoom) || view->zoom <= 0;
     float z = fitted ? fit : cui__clampf(view->zoom, zmin, zmax);
-    float cx = fitted ? iw * 0.5f : view->cx, cy = fitted ? ih * 0.5f : view->cy;
+    float cx = fitted || !isfinite(view->cx) ? iw * 0.5f : view->cx;
+    float cy = fitted || !isfinite(view->cy) ? ih * 0.5f : view->cy;
     float mcx = pr.x + vw * 0.5f, mcy = pr.y + vh * 0.5f;
     /* zoom to nz keeping the image point under (ax, ay) where it is */
 #define CUI__IV_ZOOM(nz, ax, ay) do { \
         float px_ = cx + ((ax) - mcx) / z, py_ = cy + ((ay) - mcy) / z; \
         z = cui__clampf((nz), zmin, zmax); cx = px_ - ((ax) - mcx) / z; cy = py_ - ((ay) - mcy) / z; fitted = false; } while (0)
-    if (ui->scroll_target == wid && ui->scroll_dy != 0 && pr.w > 0) {
+    if (!disabled && ui->scroll_target == wid && ui->scroll_dy != 0 && pr.w > 0) {
         CUI__IV_ZOOM(z * powf(1.2f, ui->scroll_dy), ui->mx, ui->my);
         ui->scroll_dy = 0;
     }
-    if (r.double_clicked && pr.w > 0) {
+    if (!disabled && r.double_clicked && pr.w > 0) {
         if (z < 0.999f || fitted) CUI__IV_ZOOM(1.0f, ui->mx, ui->my);
         else fitted = true;
         st->dragging = false;
-    } else if (r.active && ui->mdown[0] && pr.w > 0) {
+    } else if (!disabled && r.active && ui->mdown[0] && pr.w > 0) {
         if (ui->mpressed[0] || !st->dragging) { st->press_mx = ui->mx; st->press_my = ui->my; st->press_cx = cx; st->press_cy = cy; st->dragging = true; }
         cx = st->press_cx - (ui->mx - st->press_mx) / z;
         cy = st->press_cy - (ui->my - st->press_my) / z;
-        if (cx != before.cx || cy != before.cy) fitted = fitted && cx == iw * 0.5f && cy == ih * 0.5f;
+        if (cx != st->press_cx || cy != st->press_cy) fitted = fitted && cx == iw * 0.5f && cy == ih * 0.5f;
         cui__set_cursor(ui, CUI_CURSOR_MOVE);
     } else st->dragging = false;
-    if (r.focused) {
+    if (!disabled && r.focused) {
         float step = 48 / z;
         if (cui_key_pressed(ui, CUI_KEY_EQUAL)) CUI__IV_ZOOM(z * 1.5f, mcx, mcy);
         if (cui_key_pressed(ui, CUI_KEY_MINUS)) CUI__IV_ZOOM(z / 1.5f, mcx, mcy);
@@ -101,8 +103,10 @@ bool cui_image_viewer_ex(cui_ctx *ui, const char *id_str, cui_texture tex, int i
     }
     if (fitted) { z = fit; cx = iw * 0.5f; cy = ih * 0.5f; }
     cui__iv_clamp(&cx, &cy, z, vw, vh, iw, ih);
-    if (fitted) *view = (cui_image_view){ 0, cx, cy };
-    else *view = (cui_image_view){ z, cx, cy };
+    if (!disabled) {
+        if (fitted) *view = (cui_image_view){ 0, cx, cy };
+        else *view = (cui_image_view){ z, cx, cy };
+    }
     /* ease toward the view, except while dragging */
     if (!st->init) { st->z.x = z; st->x.x = cx; st->y.x = cy; st->init = true; }
     if (st->dragging) { st->x.x = cx; st->y.x = cy; st->x.v = st->y.v = 0; cui__spring(ui, &st->z, z, CUI_SPRING_SMOOTH); }
@@ -160,7 +164,9 @@ bool cui_image_viewer_ex(cui_ctx *ui, const char *id_str, cui_texture tex, int i
     float moving = fabsf(st->z.v) + fabsf(st->x.v) + fabsf(st->y.v);
     if (moving > 0.001f) ui->animating = true;
     ui->last_id = id;
-    return memcmp(&before, view, sizeof before) != 0;
+    if (disabled) return false;
+    if (before.zoom != view->zoom) return true;
+    return view->zoom > 0 && (before.cx != view->cx || before.cy != view->cy);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -341,11 +347,14 @@ bool cui_cropper_ex(cui_ctx *ui, const char *id_str, cui_texture tex, int image_
                 else w = h * aspect;
             }
             /* stay inside the image */
-            float maxw = fix_left ? iw - (m == CUI__CR_NEW ? ax : s0.x) : (m == CUI__CR_N || m == CUI__CR_S ? iw : s0.x + s0.w);
-            float maxh = fix_top ? ih - (m == CUI__CR_NEW ? ay : s0.y) : (m == CUI__CR_E || m == CUI__CR_W ? ih : s0.y + s0.h);
+            float px0 = cui__clampf(st->px, 0, iw), py0 = cui__clampf(st->py, 0, ih);
+            float maxw = m == CUI__CR_NEW ? (fix_left ? iw - px0 : px0)
+                : (fix_left ? iw - s0.x : (m == CUI__CR_N || m == CUI__CR_S ? iw : s0.x + s0.w));
+            float maxh = m == CUI__CR_NEW ? (fix_top ? ih - py0 : py0)
+                : (fix_top ? ih - s0.y : (m == CUI__CR_E || m == CUI__CR_W ? ih : s0.y + s0.h));
             if (w > maxw) { w = maxw; if (aspect > 0) h = w / aspect; }
             if (h > maxh) { h = maxh; if (aspect > 0) w = h * aspect; }
-            if (m == CUI__CR_NEW) { c.x = st->px <= mx ? st->px : st->px - w; c.y = st->py <= my ? st->py : st->py - h; }
+            if (m == CUI__CR_NEW) { c.x = px0 <= mx ? px0 : px0 - w; c.y = py0 <= my ? py0 : py0 - h; }
             else {
                 c.x = fix_left ? s0.x : (m == CUI__CR_N || m == CUI__CR_S ? s0.x + (s0.w - w) * 0.5f : s0.x + s0.w - w);
                 c.y = fix_top ? s0.y : (m == CUI__CR_E || m == CUI__CR_W ? s0.y + (s0.h - h) * 0.5f : s0.y + s0.h - h);

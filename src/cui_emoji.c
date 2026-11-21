@@ -1336,6 +1336,7 @@ static int cui__em_button(cui_ctx *ui, cui_id tid, cui_interact ti, cui_size w, 
     memset(tp, 0, sizeof *tp);
     tp->s = s; tp->len = (int)strlen(s); tp->alpha = 1; tp->icon = icon;
     ui->nodes[b].paint = cui__paint_emoji_tab; ui->nodes[b].paint_data = tp;
+    ui->last_id = tid;
     return b;
 }
 

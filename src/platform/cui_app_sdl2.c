@@ -1,6 +1,9 @@
 /* SDL2 backend: Wayland, X11, Windows, macOS, and everything else SDL runs
  * on. Select it with -DCUI_PLATFORM=sdl2. */
 #include "cui_platform.h"
+#ifndef SDL_MAIN_HANDLED
+#define SDL_MAIN_HANDLED
+#endif
 #include <SDL.h>
 
 typedef struct {

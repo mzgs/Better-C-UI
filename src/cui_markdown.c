@@ -620,10 +620,11 @@ static void md_paint_marker(cui_ctx *ui, cui_node *n, void *data) {
     if (p->kind == 1) {
         float w = cui__text_width(ui, p->f.reg, p->f.size, p->num, -1, true);
         float fh = cui__font_line_height(ui, p->f.reg, p->f.size);
-        cui__draw_text_line(ui, p->f.reg, p->f.size, r.x + r.w - 7 * u - w, r.y + (p->f.lh - fh) * 0.5f, p->c, p->num, -1, true);
+        float tx = n->rtl ? r.x + 7 * u : r.x + r.w - 7 * u - w;
+        cui__draw_text_line(ui, p->f.reg, p->f.size, tx, r.y + (p->f.lh - fh) * 0.5f, p->c, p->num, -1, true);
         return;
     }
-    cui_vec2 c = { r.x + 6 * u, r.y + p->f.lh * 0.5f };
+    cui_vec2 c = { n->rtl ? r.x + r.w - 6 * u : r.x + 6 * u, r.y + p->f.lh * 0.5f };
     int shape = p->depth % 3;
     if (shape == 0) cui_draw_circle(ui, c, 2.5f * u, p->c);
     else if (shape == 1) {
@@ -638,7 +639,8 @@ static void md_paint_marker(cui_ctx *ui, cui_node *n, void *data) {
 static void md_paint_rail(cui_ctx *ui, cui_node *n, void *data) {
     cui_color *c = data;
     float w = 3.0f * CUI_MAX(0.8f, n->pad[3] / 14.0f);
-    cui_draw_rect(ui, (cui_rect){ n->rect.x, n->rect.y, w, n->rect.h }, CUI_CORNERS(w * 0.5f), *c);
+    float x = n->rtl ? n->rect.x + n->rect.w - w : n->rect.x;
+    cui_draw_rect(ui, (cui_rect){ x, n->rect.y, w, n->rect.h }, CUI_CORNERS(w * 0.5f), *c);
 }
 
 typedef struct { float w; bool selectable; } md_root_paint;

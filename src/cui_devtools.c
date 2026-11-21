@@ -1161,13 +1161,17 @@ static void cui__qb_rule_row(cui__qbf *f, int i) {
         cui__open(ui, row);
     }
     /* value */
-    if (type == CUI_QUERY_CHOICE && fd && fd->choice_count > 0) {
+    if (type == CUI_QUERY_CHOICE && fd && fd->choices && fd->choice_count > 0) {
         int ci = 0;
         for (int k = 0; k < fd->choice_count; k++) if (fd->choices[k] && !strcmp(fd->choices[k], nd->value)) ci = k;
         so.width = CUI_FILL;
-        if (cui_select_ex(ui, "value", fd->choices, fd->choice_count, &ci, &so) || !nd->value[0]) {
-            snprintf(nd->value, sizeof nd->value, "%s", fd->choices[ci] ? fd->choices[ci] : "");
-            f->changed = true;
+        bool picked = cui_select_ex(ui, "value", fd->choices, fd->choice_count, &ci, &so);
+        if (picked || (!nd->value[0] && !f->o->read_only && !cui_is_disabled(ui))) {
+            const char *nv = fd->choices[ci] ? fd->choices[ci] : "";
+            if (strcmp(nd->value, nv) != 0) {
+                snprintf(nd->value, sizeof nd->value, "%s", nv);
+                f->changed = true;
+            }
         }
     } else if (type != CUI_QUERY_BOOL) {
         cui_input_opts io;

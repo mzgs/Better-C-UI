@@ -124,7 +124,8 @@ bool cui_knob_ex(cui_ctx *ui, const char *id_str, float *value, float min, float
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
     if (!value) return false;
-    if (!(max > min)) max = min + 1;
+    if (!isfinite(min)) min = 0;
+    if (!isfinite(max) || !(max > min)) max = min + 1;
     cui_id id = cui_make_id(ui, id_str ? id_str : "knob");
     cui_id kid = id ^ 0x4B0Bu, wid = id ^ 0x4B0Cu;
     bool disabled = o->disabled || cui_is_disabled(ui);
@@ -133,21 +134,30 @@ bool cui_knob_ex(cui_ctx *ui, const char *id_str, float *value, float min, float
     cui_pop_disabled(ui);
     cui__knob_state *st = cui_state(ui, id, sizeof *st);
     bool lg = o->log_scale && min > 0;
-    float old = *value, t = cui__dl_pos(*value, min, max, lg);
+    float old = *value;
+    float t = isfinite(*value) ? cui__dl_pos(*value, min, max, lg) : 0;
     if (!st->init) { st->shown.x = t; st->init = true; }
     float reset_t = cui__dl_reset_t(min, max, o->reset, lg);
     /* drag up to turn right: 200 points for the whole range, Shift for a tenth of that */
     bool fine = (ui->mods & CUI_MOD_SHIFT) != 0;
+    bool edited = false;
     if (r.active && ui->mdown[0] && !disabled) {
         if (ui->mpressed[0] || !st->dragging) { st->ref_y = ui->my; st->ref_t = t; st->fine = fine; }
         else if (fine != st->fine) { st->ref_y = ui->pmy; st->ref_t = t; st->fine = fine; }   /* Shift changes the rate from here on */
         st->dragging = true;
         t = cui__clampf(st->ref_t + (st->ref_y - ui->my) / (fine ? 2000.0f : 200.0f), 0, 1);
+        edited = true;
     } else st->dragging = false;
-    if (!disabled) t = cui__dl_input(ui, r, wid, t, min, max, lg ? 0 : o->step, reset_t);
-    float v = cui__dl_value(t, min, max, o->step, lg);
-    *value = v;
-    t = cui__dl_pos(v, min, max, lg);
+    if (!disabled) {
+        float nt = cui__dl_input(ui, r, wid, t, min, max, lg ? 0 : o->step, reset_t);
+        if (nt != t) { t = nt; edited = true; }
+    }
+    float v = isfinite(*value) ? *value : min;
+    if (edited) {
+        v = cui__dl_value(t, min, max, o->step, lg);
+        *value = v;
+        t = cui__dl_pos(v, min, max, lg);
+    }
     if (st->dragging) { st->shown.x = t; st->shown.v = 0; }
     else cui__spring(ui, &st->shown, t, CUI__T_STATE, 0.0f);
     cui__tween(ui, &st->hover, (r.hovered || r.active) ? 1.0f : 0.0f, CUI__T_HOVER);
@@ -352,7 +362,8 @@ bool cui_fader_ex(cui_ctx *ui, const char *id_str, float *value, float min, floa
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
     if (!value) return false;
-    if (!(max > min)) max = min + 1;
+    if (!isfinite(min)) min = 0;
+    if (!isfinite(max) || !(max > min)) max = min + 1;
     cui_id id = cui_make_id(ui, id_str ? id_str : "fader");
     cui_id fid = id ^ 0xFAD0u, wid = id ^ 0xFAD1u;
     bool disabled = o->disabled || cui_is_disabled(ui);
@@ -360,7 +371,8 @@ bool cui_fader_ex(cui_ctx *ui, const char *id_str, float *value, float min, floa
     cui_interact r = cui__interact(ui, fid, CUI_IF_FOCUSABLE | CUI_IF_DRAG);
     cui_pop_disabled(ui);
     cui__fader_state *st = cui_state(ui, id, sizeof *st);
-    float old = *value, t = cui__dl_norm(*value, min, max);
+    float old = *value;
+    float t = isfinite(*value) ? cui__dl_norm(*value, min, max) : 0;
     if (!st->init) { st->shown.x = t; st->init = true; }
     bool hz = o->horizontal;
     const char *fmt = o->format ? o->format : "%.1f";
@@ -380,6 +392,7 @@ bool cui_fader_ex(cui_ctx *ui, const char *id_str, float *value, float min, floa
     cui__fader_travel(pr, hz, lw, &a, &b, &cr);
     float reset_t = cui__dl_reset_t(min, max, o->reset, false);
     bool fine = (ui->mods & CUI_MOD_SHIFT) != 0;
+    bool edited = false;
     if (r.active && ui->mdown[0] && !disabled && pr.w > 0 && fabsf(b - a) > 1) {
         float px = hz ? ui->mx : ui->my;
         if (ui->mpressed[0]) {
@@ -391,11 +404,18 @@ bool cui_fader_ex(cui_ctx *ui, const char *id_str, float *value, float min, floa
         else if (fine != st->fine) { st->ref_px = hz ? ui->pmx : ui->pmy; st->ref_t = t; st->fine = fine; }
         st->dragging = true;
         t = cui__clampf(st->ref_t + (px - st->ref_px) / (b - a) * (fine ? 0.1f : 1.0f), 0, 1);
+        edited = true;
     } else st->dragging = false;
-    if (!disabled) t = cui__dl_input(ui, r, wid, t, min, max, o->step, reset_t);
-    float v = cui__dl_value(t, min, max, o->step, false);
-    *value = v;
-    t = cui__dl_norm(v, min, max);
+    if (!disabled) {
+        float nt = cui__dl_input(ui, r, wid, t, min, max, o->step, reset_t);
+        if (nt != t) { t = nt; edited = true; }
+    }
+    float v = isfinite(*value) ? *value : min;
+    if (edited) {
+        v = cui__dl_value(t, min, max, o->step, false);
+        *value = v;
+        t = cui__dl_norm(v, min, max);
+    }
     if (st->dragging) { st->shown.x = t; st->shown.v = 0; }
     else cui__spring(ui, &st->shown, t, CUI__T_STATE, 0.0f);
     cui__tween(ui, &st->hover, (r.hovered || r.active) ? 1.0f : 0.0f, CUI__T_HOVER);

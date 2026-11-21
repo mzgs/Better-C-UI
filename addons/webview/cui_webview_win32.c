@@ -441,6 +441,9 @@ void cui__webview_native_place(cui__webview *v, bool visible) {
     float scale = v->surface.ui->scale;
     int width = CUI_MAX(1, (int)lroundf(r.w * scale)), height = CUI_MAX(1, (int)lroundf(r.h * scale));
     SetWindowPos(w->host, NULL, (int)lroundf(r.x * scale), (int)lroundf(r.y * scale), width, height, SWP_NOACTIVATE | SWP_NOZORDER);
+    HWND cur_focus = GetFocus();
+    bool had_focus = cur_focus == w->host || IsChild(w->host, cur_focus);
+    if (visible) ShowWindow(w->host, SW_SHOWNA);
     if (w->controller) {
         RECT bounds = {0, 0, width, height};
         ICoreWebView2Controller_put_Bounds(w->controller, bounds);
@@ -448,9 +451,13 @@ void cui__webview_native_place(cui__webview *v, bool visible) {
         ICoreWebView2Controller_put_IsVisible(w->controller, visible);
         if (visible && v->surface.focus_requested) ICoreWebView2Controller_MoveFocus(w->controller, COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
     }
-    if (!visible && IsChild(w->host, GetFocus())) SetFocus(w->parent);
-    ShowWindow(w->host, visible ? SW_SHOWNA : SW_HIDE);
-    if (visible && IsChild(w->host, GetFocus())) cui__webview_claim_focus(v);
+    if (!visible) {
+        if (had_focus) SetFocus(w->parent);
+        ShowWindow(w->host, SW_HIDE);
+    } else {
+        HWND now_focus = GetFocus();
+        if (now_focus == w->host || IsChild(w->host, now_focus)) cui__webview_claim_focus(v);
+    }
 }
 
 void cui__webview_native_pump(void) {}

@@ -82,3 +82,7 @@ compile_commands.json
 # local tool state (shared agent guidance belongs in AGENTS.md)
 /.claude/
 CLAUDE.local.md
+
+# Python bytecode
+__pycache__/
+*.pyc

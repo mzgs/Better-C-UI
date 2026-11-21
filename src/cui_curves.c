@@ -470,7 +470,7 @@ static void cui__cvf_keys(cui__cvf *f) {
             if (cui_key_pressed(ui, CUI_KEY_UP)) ny += fy;
             if ((nx != keys[i].x || ny != keys[i].y) && cui__cv_place(keys, f->n, i, g, nx, ny)) f->res->changed = true;
         }
-        if (r.focused && (cui_key_pressed(ui, CUI_KEY_DELETE) || cui_key_pressed(ui, CUI_KEY_BACKSPACE))) f->remove = i;
+        if (r.focused && !cui__layer_covered(ui) && !ui->edit && (cui_key_pressed(ui, CUI_KEY_DELETE) || cui_key_pressed(ui, CUI_KEY_BACKSPACE))) f->remove = i;
         if (r.hovered && !r.active && ui->active == 0)
             cui__tooltip_passive(ui, kid, cui__frame_printf(ui, "%s %s, %s %s", f->xname, cui__cv_fmt(ui, o->x_format, f->xrd, keys[i].x),
                                                             f->yname, cui__cv_fmt(ui, o->y_format, f->yrd, keys[i].y)));
@@ -991,7 +991,7 @@ static void cui__grf_stops(cui__grf *f) {
             if (cui_key_pressed(ui, CUI_KEY_RIGHT)) { nudge = i; nudge_d += step; }
             if (r.keyboard_activate) f->open_picker = true;
         }
-        if (r.focused && (cui_key_pressed(ui, CUI_KEY_DELETE) || cui_key_pressed(ui, CUI_KEY_BACKSPACE))) f->remove = i;
+        if (r.focused && !cui__layer_covered(ui) && !ui->edit && (cui_key_pressed(ui, CUI_KEY_DELETE) || cui_key_pressed(ui, CUI_KEY_BACKSPACE))) f->remove = i;
     }
     if (nudge >= 0) {
         float pos = cui__clampf(stops[nudge].pos + nudge_d, 0, 1);

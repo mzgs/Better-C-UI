@@ -422,6 +422,7 @@ bool cui_select_ex(cui_ctx *ui, const char *id_str, const char *const *items, in
         if (!open) {
             cui__menu_nav *nav = cui_state(ui, pid ^ 0x4E4156u, sizeof *nav);
             nav->highlight = *index;
+            if (r.keyboard_activate) ui->kpressed[CUI_KEY_ENTER] = ui->kpressed[CUI_KEY_SPACE] = 0;
         }
     }
     if (p && !p->open && r.focus_visible && (cui_key_pressed(ui, CUI_KEY_DOWN) || cui_key_pressed(ui, CUI_KEY_UP))) {
@@ -782,8 +783,8 @@ static bool cui__modal_begin(cui_ctx *ui, cui_id id, const char *title, bool *op
     if (is_open && (!ui->modal_layer || z > ui->modal_z)) {
         ui->modal_layer = id;
         ui->modal_z = z;
-        /* move keyboard focus into the dialog when it opens */
-        if (st->opened == ui->frame && ui->focus_visible) ui->focus = 0;
+        /* clear background focus when a modal opens so keys cannot bleed behind it */
+        if (st->opened == ui->frame) ui->focus = 0;
     }
     cui__interact(ui, scrim_id, 0);
     int root = cui__float_begin(ui, id, z, 0, CUI__PLACE_FULL, 0);
@@ -972,7 +973,7 @@ static void cui__toasts_render(cui_ctx *ui) {
     cui__toasts_state *ts = cui_state(ui, root_id, sizeof *ts);
     bool hovered = ui->hot_layer == root_id;
     cui__tween(ui, &ts->hover, hovered ? 1.0f : 0.0f, CUI__T_HOVER);
-    float W = CUI_MIN(360.0f, ui->vw - 32);
+    float W = CUI_MAX(1.0f, CUI_MIN(360.0f, ui->vw - 32));
     /* age, dismissal, removal */
     for (int i = 0; i < ui->toast_count; i++) {
         cui_toast_item *t = &ui->toasts[i];
@@ -1692,10 +1693,8 @@ void cui__widgets_begin_frame(cui_ctx *ui) {
     ui->acc_depth = 0;
     ui->tree_depth = 0;
     ui->button_group_depth = 0;
-    ui->building.reorder = NULL;
     ui->dialog_depth = 0;
-    ui->building.split = NULL;
-    ui->building.table = NULL;
+    memset(&ui->building, 0, sizeof ui->building);
 }
 
 void cui__widgets_end_frame(cui_ctx *ui) {

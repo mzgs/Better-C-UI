@@ -368,10 +368,12 @@ static void cui__xy_chart(cui_ctx *ui, const char *id_str, const cui_series *ser
     int hover = -1;
     if (r.hovered && npts > 0 && pr.w > 0) {
         float px = pr.x + (st->plot_w > 0 ? st->plot_x : 40), pw = st->plot_w > 0 ? st->plot_w : pr.w - 42;
-        float rel = (ui->mx - px) / pw;
-        if (bars) hover = (int)floorf(rel * (float)npts);
-        else hover = (int)floorf(rel * (float)(npts - 1) + 0.5f);
-        hover = CUI_CLAMP(hover, 0, npts - 1);
+        if (pw > 0.5f) {
+            float rel = (ui->mx - px) / pw;
+            if (bars) hover = (int)floorf(rel * (float)npts);
+            else hover = npts > 1 ? (int)floorf(rel * (float)(npts - 1) + 0.5f) : 0;
+            hover = CUI_CLAMP(hover, 0, npts - 1);
+        }
     }
     cui__spring(ui, &st->intro, 1.0f, 0.9f, 0.0f);
     cui__tween(ui, &st->hover_t, hover >= 0 ? 1.0f : 0.0f, hover >= 0 ? 0.12f : 0.2f);
@@ -411,10 +413,10 @@ static void cui__xy_chart(cui_ctx *ui, const char *id_str, const cui_series *ser
     p->hover_t = st->hover_t;
     p->bars = bars;
     p->st = st;
-    if (!bars && pr.w > 0 && npts > 1) {
+    if (!bars && pr.w > 0 && npts > 0) {
         /* glide the crosshair between points */
-        float px = pr.x + (st->plot_w > 0 ? st->plot_x : 40), pw = st->plot_w > 0 ? st->plot_w : pr.w - 42;
-        float target = px + pw * (float)st->hover / (float)(npts - 1);
+        float px = pr.x + (st->plot_w > 0 ? st->plot_x : 40), pw = st->plot_w > 0 ? st->plot_w : CUI_MAX(1.0f, pr.w - 42);
+        float target = npts > 1 ? px + pw * (float)st->hover / (float)(npts - 1) : px;
         if (!st->init || st->hover_t < 0.05f) { st->hx.x = target; st->init = true; }
         cui__spring(ui, &st->hx, target, 0.22f, 0.0f);
         p->hx = st->hx.x;
@@ -505,7 +507,9 @@ void cui_donut_chart_ex(cui_ctx *ui, const char *id_str, const float *values, co
             if (ang < 0) ang += 2 * CUI_PI;
             float acc = 0;
             for (int k = 0; k < count; k++) {
-                acc += values[k] / total * 2 * CUI_PI;
+                float vk = values[k] > 0 ? values[k] : 0;
+                if (vk <= 0) continue;
+                acc += vk / total * 2 * CUI_PI;
                 if (ang <= acc) { hover = k; break; }
             }
         }
@@ -526,7 +530,8 @@ void cui_donut_chart_ex(cui_ctx *ui, const char *id_str, const float *values, co
             float ml = 0, mv = 0;
             for (int k = 0; k < count; k++) {
                 ml = CUI_MAX(ml, cui__text_width(ui, CUI_FONT_BODY, fs, labels[k] ? labels[k] : "", -1, false));
-                const char *v = cui__frame_printf(ui, "%.0f%%", total > 0 ? (double)(values[k] / total * 100) : 0.0);
+                float vk = values[k] > 0 ? values[k] : 0;
+                const char *v = cui__frame_printf(ui, "%.0f%%", total > 0 ? (double)(vk / total * 100) : 0.0);
                 mv = CUI_MAX(mv, cui__text_width(ui, CUI_FONT_MEDIUM, fs, v, -1, true));
             }
             legend_w = 8 + 8 + ml + 8 + 16 + 8 + mv + 2;
@@ -583,7 +588,8 @@ void cui_donut_chart_ex(cui_ctx *ui, const char *id_str, const float *values, co
             ui->nodes[t].flags |= CUI_NF_KEEP_W;   /* a legend never truncates its names */
             int gapn = cui__leaf(ui, 0, CUI_GROW(1), CUI_PX(1));
             ui->nodes[gapn].min_w = 16;
-            int v = cui__text_node(ui, cui__frame_printf(ui, "%.0f%%", total > 0 ? (double)(values[k] / total * 100) : 0.0), -1,
+            float vk = values[k] > 0 ? values[k] : 0;
+            int v = cui__text_node(ui, cui__frame_printf(ui, "%.0f%%", total > 0 ? (double)(vk / total * 100) : 0.0), -1,
                                    CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_body), CUI_C(ui, FOREGROUND), false);
             ui->nodes[v].line_height = 1.3f;
             ui->nodes[v].flags |= CUI_NF_TABULAR;

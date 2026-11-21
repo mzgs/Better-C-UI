@@ -1563,7 +1563,7 @@ static cui_vec2 cui__sc_pt(const cui__sc_geo *g, cui_vec2 v) {
 }
 
 static float cui__sc_radius(const cui__sc_geo *g, const cui_scatter_series *s, int i) {
-    if (!s->sizes || g->smax <= 0) return 4.5f;
+    if (!s->sizes || g->smax <= 0 || !isfinite(s->sizes[i])) return 4.5f;
     return 3.5f + sqrtf(CUI_MAX(0.0f, s->sizes[i]) / g->smax) * 11;
 }
 
@@ -1598,6 +1598,7 @@ static void cui__paint_scatter(cui_ctx *ui, cui_node *n, void *data) {
         cui_color col = cui__viz_color(ui, s->color, k);
         bool dim = p->hs >= 0 && p->tip.alpha > 0.01f && p->hs != k;
         for (int i = 0; i < s->count; i++) {
+            if (!isfinite(s->points[i].x) || !isfinite(s->points[i].y)) continue;
             cui_vec2 q = cui__sc_pt(&g, s->points[i]);
             float rr = cui__sc_radius(&g, s, i);
             float e = cui__clampf(p->intro * 1.6f - (q.x - pl.x) / CUI_MAX(1.0f, pl.w) * 0.6f, 0, 1);
@@ -1718,6 +1719,7 @@ static void cui__paint_radial_gauge(cui_ctx *ui, cui_node *n, void *data) {
     if (p->nband > 0) {
         float from = 0;
         for (int k = 0; k < p->nband; k++) {
+            if (!isfinite(p->bands[k].to)) continue;
             float to = cui__clampf((p->bands[k].to - p->lo) / span, 0, 1);
             if (to > from) {
                 cui_color bc = cui__tone_color(ui, p->bands[k].tone);
@@ -1789,10 +1791,11 @@ void cui_radial_gauge_ex(cui_ctx *ui, const char *id_str, float value, float min
     cui_radial_gauge_opts d;
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
-    if (!(max > min)) max = min + 1;
+    if (!isfinite(min)) min = 0;
+    if (!isfinite(max) || !(max > min)) max = min + 1;
     cui_id id = cui_make_id(ui, id_str ? id_str : "gauge");
     cui__rg_state *st = cui_state(ui, id, sizeof *st);
-    float t = value == value ? cui__clampf((value - min) / (max - min), 0, 1) : 0;
+    float t = isfinite(value) ? cui__clampf((value - min) / (max - min), 0, 1) : 0;
     if (!st->init) { st->needle.x = 0; st->init = true; }
     cui__spring(ui, &st->needle, t, 0.55f, 0.16f);   /* a little overshoot, like a real needle */
     float size = o->size > 0 ? o->size : 200;
@@ -2005,6 +2008,7 @@ int cui_candlestick_ex(cui_ctx *ui, const char *id_str, const cui_candle *candle
         st->first = count - st->span;
         st->follow = true; st->cursor = count - 1; st->init = true; st->sized = pr.w > 0;
     }
+    st->span = CUI_CLAMP(st->span, min_span, max_span);
     if (st->follow && count != st->count) st->first = count - st->span;   /* new candles come into view */
     st->count = count;
     g = cui__cs_layout(rr, st->axis_w, st->span, volume);
@@ -2051,7 +2055,10 @@ int cui_candlestick_ex(cui_ctx *ui, const char *id_str, const cui_candle *candle
         int i = (int)floor(st->first + (ui->mx - g.plot.x) / g.cw);
         if (i >= 0 && i < count) hover = i;
     }
-    if (st->keys && r.focused && count > 0) hover = st->cursor;
+    if (st->keys && r.focused && count > 0) {
+        st->cursor = CUI_CLAMP(st->cursor, 0, count - 1);
+        hover = st->cursor;
+    }
     cui__viz_hover(ui, vs, hover);
 
     /* candles in view: the price range follows them */
@@ -2106,8 +2113,12 @@ int cui_candlestick_ex(cui_ctx *ui, const char *id_str, const cui_candle *candle
             for (int s = 0; s < nov; s++) p->ov[s * cols + k] = NAN;
             if (a >= b) { bar->h = NAN; continue; }
             bar->o = candles[a].open; bar->c = candles[b - 1].close;
-            for (int i = a; i < b; i++) { bar->h = CUI_MAX(bar->h, candles[i].high); bar->l = CUI_MIN(bar->l, candles[i].low); bar->v += candles[i].volume; }
-            bvmax = CUI_MAX(bvmax, bar->v);
+            for (int i = a; i < b; i++) {
+                if (isfinite(candles[i].high)) bar->h = CUI_MAX(bar->h, candles[i].high);
+                if (isfinite(candles[i].low)) bar->l = CUI_MIN(bar->l, candles[i].low);
+                if (isfinite(candles[i].volume) && candles[i].volume > 0) bar->v += candles[i].volume;
+            }
+            if (isfinite(bar->v)) bvmax = CUI_MAX(bvmax, bar->v);
             for (int s = 0; s < nov; s++) if (o->overlays[s].values && b - 1 < o->overlays[s].count) p->ov[s * cols + k] = o->overlays[s].values[b - 1];
         }
         p->vmax = bvmax;

@@ -72,9 +72,10 @@ def platform_block(emit):
 class Emitter:
     """Writes files with their local includes inlined, each file at most once."""
 
-    def __init__(self):
+    def __init__(self, quiet_internal_unused=False):
         self.out = []
         self.seen = set()
+        self.quiet_internal_unused = quiet_internal_unused
 
     def __call__(self, text):
         self.out.append(text)
@@ -93,7 +94,10 @@ class Emitter:
             return
         self.seen.add(path)
         rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        wrap_unused = self.quiet_internal_unused and rel == "src/cui_internal.h"
         self.out.append(f"\n/* ==== {rel} ==== */\n")
+        if wrap_unused:
+            self.out.append("#if defined(__clang__) || defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored \"-Wunused-function\"\n#endif\n")
         with open(path, encoding="utf-8") as f:
             for line in f:
                 m = LOCAL.match(line)
@@ -104,6 +108,8 @@ class Emitter:
                     self.out.append(line)
         if not self.out[-1].endswith("\n"):
             self.out.append("\n")
+        if wrap_unused:
+            self.out.append("#if defined(__clang__) || defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n")
 
     def text(self):
         return "".join(self.out)
@@ -129,7 +135,8 @@ def banner(what):
 
 def licenses():
     parts = []
-    for rel in ["LICENSE", "third_party/LICENSE-Unicode.txt"]:
+    for rel in ["LICENSE", "third_party/LICENSE-Unicode.txt",
+                "assets/fonts/LICENSE-Inter.txt", "assets/fonts/LICENSE-Geist.txt", "assets/fonts/LICENSE-Lucide.txt"]:
         p = os.path.join(ROOT, rel)
         if os.path.isfile(p):
             with open(p, encoding="utf-8") as f:
@@ -162,14 +169,16 @@ def build_webview(header_seen):
     header = Emitter()
     header.seen = set(header_seen)
     header.file("include/cui/cui_webview.h")
-    source = Emitter()
+    source = Emitter(quiet_internal_unused=True)
     source.seen = set(header.seen)
     source("#ifndef CUI_WEBVIEW\n#define CUI_WEBVIEW\n#endif\n")
     source("#ifdef CUI_NO_APP\n#error \"The WebView add-on requires the app layer\"\n#endif\n")
     source.file("addons/webview/cui_webview.c")
     source("#if defined(CUI_PLATFORM_SDL2) || defined(CUI_PLATFORM_GLFW)\n#error \"The WebView add-on requires a native window backend\"\n")
     source("#elif defined(_WIN32)\n"); source.file("addons/webview/cui_webview_win32.c")
-    source("#elif defined(__APPLE__)\n"); source.file("addons/webview/cui_webview_cocoa.m")
+    source("#elif defined(__APPLE__)\n")
+    source("#ifndef __OBJC__\n#error \"CUI WebView on macOS: compile cui_webview.c as Objective-C (-x objective-c -fobjc-arc)\"\n#endif\n")
+    source.file("addons/webview/cui_webview_cocoa.m")
     source("#else\n"); source.file("addons/webview/cui_webview_gtk.c")
     source("#endif\n")
     return header.text(), source.text()
@@ -189,7 +198,7 @@ def build_video(header_seen):
     header = Emitter()
     header.seen = set(header_seen)
     header.file("include/cui/cui_mpv.h")
-    source = Emitter()
+    source = Emitter(quiet_internal_unused=True)
     source.seen = set(header.seen)
     source("#ifdef CUI_NO_APP\n#error \"The video add-on requires the app layer\"\n#endif\n")
     source.file("addons/video/cui_mpv.c")
@@ -213,19 +222,20 @@ def main():
         f.write("\n#ifdef CUI_IMPLEMENTATION\n#ifndef CUI_IMPLEMENTATION_DONE\n#define CUI_IMPLEMENTATION_DONE\n")
         f.write(source)
         f.write("#endif\n#endif /* CUI_IMPLEMENTATION */\n" + licenses())
+    inc_cui = '#ifndef CUI_H\n#include "cui.h"\n#endif\n'
     addon_header, addon_source = build_webview(he.seen)
     with open(os.path.join(out, "cui_webview.h"), "w", encoding="utf-8") as f:
-        f.write(banner("optional WebView add-on header") + '#include "cui.h"\n' + addon_header)
+        f.write(banner("optional WebView add-on header") + inc_cui + addon_header)
     with open(os.path.join(out, "cui_webview.c"), "w", encoding="utf-8") as f:
         f.write(banner("optional WebView add-on") + POSIX + '#include "cui_webview.h"\n' + addon_source)
     ts_header, ts_source = build_tree_sitter(he.seen)
     with open(os.path.join(out, "cui_tree_sitter.h"), "w", encoding="utf-8") as f:
-        f.write(banner("optional Tree-sitter add-on header") + '#include "cui.h"\n' + ts_header)
+        f.write(banner("optional Tree-sitter add-on header") + inc_cui + ts_header)
     with open(os.path.join(out, "cui_tree_sitter.c"), "w", encoding="utf-8") as f:
         f.write(banner("optional Tree-sitter add-on") + POSIX + '#include "cui_tree_sitter.h"\n' + ts_source)
     video_header, video_source = build_video(he.seen)
     with open(os.path.join(out, "cui_mpv.h"), "w", encoding="utf-8") as f:
-        f.write(banner("optional libmpv add-on header") + '#include "cui.h"\n' + video_header)
+        f.write(banner("optional libmpv add-on header") + inc_cui + video_header)
     with open(os.path.join(out, "cui_mpv.c"), "w", encoding="utf-8") as f:
         f.write(banner("optional libmpv add-on") + POSIX + '#include "cui_mpv.h"\n' + video_source)
     for name in ["cui.h", "cui.c", "cui_single.h", "cui_webview.h", "cui_webview.c", "cui_tree_sitter.h", "cui_tree_sitter.c", "cui_mpv.h", "cui_mpv.c"]:

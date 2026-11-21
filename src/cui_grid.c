@@ -33,6 +33,7 @@ struct cui_grid_build {
     bool clicked_row;
     bool row_double;         /* the current row was double clicked this frame */
     bool focused;
+    bool edit_seen;
 };
 
 
@@ -128,7 +129,7 @@ bool cui_data_grid_begin_ex(cui_ctx *ui, const char *id_str, const cui_grid_colu
     b->focused = ui->focus == b->id;
     if (b->focused && nrows > 0 && st->edit_row < 0) {
         int c = st->cursor < 0 ? 0 : st->cursor;
-        int page = (int)(view_h / b->row_h) - 1;
+        int page = CUI_MAX(1, (int)(view_h / b->row_h) - 1);
         if (cui_key_pressed(ui, CUI_KEY_DOWN)) c++;
         if (cui_key_pressed(ui, CUI_KEY_UP)) c--;
         if (cui_key_pressed(ui, CUI_KEY_PAGE_DOWN)) c += page;
@@ -433,12 +434,14 @@ bool cui_data_grid_edit(cui_ctx *ui, char *buf, size_t cap) {
         if (over && ui->hot) cui__set_cursor(ui, CUI_CURSOR_TEXT);
         if (start) {
             st->edit_row = b->row; st->edit_col = col;
+            b->edit_seen = true;
             snprintf(st->backup, sizeof st->backup, "%s", buf);
             ui->focus = fid;
             ui->tf_select_all = fid;
         }
         return false;
     }
+    b->edit_seen = true;
     bool cancel = ui->focus == fid && cui_key_pressed(ui, CUI_KEY_ESCAPE);
     if (cancel) {
         snprintf(buf, cap, "%s", st->backup);
@@ -464,6 +467,7 @@ bool cui_data_grid_edit(cui_ctx *ui, char *buf, size_t cap) {
 void cui_data_grid_end(cui_ctx *ui) {
     struct cui_grid_build *b = ui->building.grid;
     if (!b) return;
+    if (b->st->edit_row >= 0 && !b->edit_seen) b->st->edit_row = b->st->edit_col = -1;
     cui__grid_close_row(ui, b);
     if (b->last < b->nrows) cui__leaf(ui, 0, CUI_PX(b->total_w), CUI_PX((b->nrows - b->last) * b->row_h));
     if (b->nrows == 0) {

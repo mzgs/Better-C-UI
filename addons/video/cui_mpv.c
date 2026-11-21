@@ -373,6 +373,11 @@ static bool cui__mpv_output(cui_mpv *p, int width, int height) {
 bool cui_mpv_update(cui_mpv *p, int width, int height) {
     if (!p) return false;
     cui__mpv_events(p);
+    int framebuffer = 0;
+    if (p->app->gl) {
+        p->gl.GetIntegerv(0x8CA6, &framebuffer); /* GL_DRAW_FRAMEBUFFER_BINDING */
+        cui__mpv_gl_defaults(p);
+    }
     uint64_t flags = mpv_render_context_update(p->render);
     if (width <= 0 || height <= 0) {
         bool changed = p->video.frame != 0;
@@ -383,13 +388,18 @@ bool cui_mpv_update(cui_mpv *p, int width, int height) {
             int err = mpv_render_context_render(p->render, params);
             if (err < 0) p->error = err;
         }
+        if (p->app->gl) p->gl.BindFramebuffer(0x8D40, (unsigned int)framebuffer);
         return changed;
     }
-    if (p->idle && !p->video.frame && !(flags & MPV_RENDER_UPDATE_FRAME)) return false;
+    if (p->idle && !p->video.frame && !(flags & MPV_RENDER_UPDATE_FRAME)) {
+        if (p->app->gl) p->gl.BindFramebuffer(0x8D40, (unsigned int)framebuffer);
+        return false;
+    }
     bool resized = width != p->width || height != p->height;
-    if (!resized && !(flags & MPV_RENDER_UPDATE_FRAME)) return false;
-    int framebuffer = 0;
-    if (p->app->gl) p->gl.GetIntegerv(0x8CA6, &framebuffer); /* GL_DRAW_FRAMEBUFFER_BINDING */
+    if (!resized && !(flags & MPV_RENDER_UPDATE_FRAME)) {
+        if (p->app->gl) p->gl.BindFramebuffer(0x8D40, (unsigned int)framebuffer);
+        return false;
+    }
     bool ok = cui__mpv_output(p, width, height);
     /* CUI samples texture v=0 at the top; an offscreen FBO needs no flip. */
     int block = 0, flip = 0;
@@ -407,6 +417,12 @@ bool cui_mpv_update(cui_mpv *p, int width, int height) {
         if (err < 0) { p->error = err; ok = false; }
         else if (!p->app->gl) p->app->ui->renderer.texture_update(p->app->ui->renderer.user,
             p->video.frame, 0, 0, width, height, p->pixels, (int)stride);
+    } else if (flags & MPV_RENDER_UPDATE_FRAME) {
+        int skip = 1;
+        mpv_render_param params[] = { { MPV_RENDER_PARAM_SKIP_RENDERING, &skip }, { 0, NULL } };
+        if (p->app->gl) cui__mpv_gl_defaults(p);
+        int err = mpv_render_context_render(p->render, params);
+        if (err < 0 && !p->error) p->error = err;
     }
     if (p->app->gl) p->gl.BindFramebuffer(0x8D40, (unsigned int)framebuffer);
     return ok;

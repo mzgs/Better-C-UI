@@ -342,8 +342,9 @@ static cui_texture cui__gl_tex_create(void *user, int w, int h, cui_texture_form
 
 static void cui__gl_tex_update(void *user, cui_texture tex, int x, int y, int w, int h, const void *pixels, int stride) {
     cui_gl_renderer *r = user;
-    int slot = (int)tex - 1;
-    if (slot < 0 || slot >= r->tex_count || !r->tex[slot].id) return;
+    if (!tex || tex > (cui_texture)r->tex_count) return;
+    int slot = (int)(tex - 1);
+    if (!r->tex[slot].id) return;
     int bpp = (int)r->tex[slot].fmt;
     if (!pixels || x < 0 || y < 0 || w <= 0 || h <= 0 || x > r->tex[slot].w || y > r->tex[slot].h ||
         w > r->tex[slot].w - x || h > r->tex[slot].h - y || stride < 0 || (size_t)stride < (size_t)w * (size_t)bpp) return;
@@ -360,8 +361,9 @@ static void cui__gl_tex_update(void *user, cui_texture tex, int x, int y, int w,
 
 static void cui__gl_tex_destroy(void *user, cui_texture tex) {
     cui_gl_renderer *r = user;
-    int slot = (int)tex - 1;
-    if (slot < 0 || slot >= r->tex_count || !r->tex[slot].id) return;
+    if (!tex || tex > (cui_texture)r->tex_count) return;
+    int slot = (int)(tex - 1);
+    if (!r->tex[slot].id) return;
     r->gl.DeleteTextures(1, &r->tex[slot].id);
     r->tex[slot].id = 0;
 }
@@ -417,8 +419,7 @@ void cui_gl_render(cui_gl_renderer *r, const cui_draw_data *dd, bool clear) {
         if (x1 <= x0 || y1 <= y0) continue;
         r->gl.Scissor(x0, H - y1, x1 - x0, y1 - y0);
         cui_texture t = c->texture ? c->texture : dd->font_atlas;
-        int slot = (int)t - 1;
-        GLuint_ tid = (slot >= 0 && slot < r->tex_count) ? r->tex[slot].id : 0;
+        GLuint_ tid = (t && t <= (cui_texture)r->tex_count) ? r->tex[(size_t)(t - 1)].id : 0;
         if (tid != bound) { r->gl.BindTexture(GL_TEXTURE_2D_, tid); bound = tid; }
         r->gl.DrawElements(GL_TRIANGLES_, (GLsizei_)c->index_count, GL_UNSIGNED_INT_, (const void *)(uintptr_t)(c->index_offset * sizeof(uint32_t)));
     }

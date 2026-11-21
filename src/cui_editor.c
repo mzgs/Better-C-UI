@@ -449,9 +449,12 @@ static void cui__ed_run(cui_ctx *ui, const cui__ed_paint *p, const char *s, int 
 }
 
 static void cui__ed_thumb(float track, double view, double max, double pos, float *at, float *len) {
+    if (track < 0) track = 0;
+    if (view < 0) view = 0;
+    if (max < 0) max = 0;
     double total = view + max;
-    *len = CUI_MAX(28.0f, track * (float)(view / total));
-    *at = max > 0 ? (float)(pos / max) * (track - *len) : 0;
+    *len = total > 0 ? CUI_MIN(track, CUI_MAX(28.0f, track * (float)(view / total))) : track;
+    *at = max > 0 ? (float)(pos / max) * CUI_MAX(0.0f, track - *len) : 0;
 }
 
 static void cui__paint_editor(cui_ctx *ui, cui_node *n, void *data) {
@@ -561,7 +564,11 @@ static void cui__paint_editor(cui_ctx *ui, cui_node *n, void *data) {
             col = cui__ed_adv(s, a, b, p->tab, col);
             pos = b;
             if (ca >= p->vc1) break;
-            if (toks[t].kind == 0 && (s[a] == ' ' || s[a] == '\t')) continue;   /* white space */
+            if (toks[t].kind == 0 && (s[a] == ' ' || s[a] == '\t')) {
+                bool blank = true;
+                for (int q = a; q < b; q++) if (s[q] != ' ' && s[q] != '\t') { blank = false; break; }
+                if (blank) continue;   /* pure white space */
+            }
             cui__ed_run(ui, p, s, a, b, ca, x0, y + ty, p->colors[toks[t].kind]);
         }
         /* a block comment opened past the columns in view still carries on */

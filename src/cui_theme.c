@@ -289,7 +289,6 @@ static void cui__theme_retarget(cui_ctx *ui) {
     ui->from_theme = ui->theme;
     cui__theme_build(&ui->target_theme, ui->mode, ui->accent);
     /* keep user customizations of the non-color fields */
-    memcpy(ui->target_theme.shadow_resting, keep.shadow_resting, sizeof keep.shadow_resting);
     ui->target_theme.radius_control = keep.radius_control;
     ui->target_theme.radius_panel = keep.radius_panel;
     ui->target_theme.radius_surface = keep.radius_surface;

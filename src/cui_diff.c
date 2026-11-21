@@ -827,7 +827,9 @@ static void cui__diff_paint_text(cui_ctx *ui, const cui__diff_common *c, const c
         for (int k = 0; k < sd->ntok; k++) {
             const char *s = sd->text + sd->toks[k].start;
             int len = sd->toks[k].len;
-            if (s[0] != ' ') cui__draw_text_line(ui, CUI_FONT_MONO, size, px, ty, c->colors[sd->toks[k].kind], s, len, true);
+            bool blank = true;
+            for (int q = 0; q < len; q++) if (s[q] != ' ') { blank = false; break; }
+            if (!blank) cui__draw_text_line(ui, CUI_FONT_MONO, size, px, ty, c->colors[sd->toks[k].kind], s, len, true);
             px += cui__text_width(ui, CUI_FONT_MONO, size, s, len, true);
         }
         /* text past the last token (more tokens than the tokenizer keeps) */

@@ -89,8 +89,9 @@ static cui_texture cui__sw_tex_create(void *user, int w, int h, cui_texture_form
 
 static void cui__sw_tex_update(void *user, cui_texture tex, int x, int y, int w, int h, const void *pixels, int stride) {
     cui_sw_renderer *r = user;
-    int slot = (int)tex - 1;
-    if (slot < 0 || slot >= r->tex_count || !r->tex[slot].used) return;
+    if (!tex || tex > (cui_texture)r->tex_count) return;
+    int slot = (int)(tex - 1);
+    if (!r->tex[slot].used) return;
     cui__sw_tex *t = &r->tex[slot];
     if (!pixels || x < 0 || y < 0 || w <= 0 || h <= 0 || x > t->w || y > t->h ||
         w > t->w - x || h > t->h - y || stride < 0 || (size_t)stride < (size_t)w * (size_t)t->fmt) return;
@@ -105,8 +106,8 @@ static void cui__sw_tex_update(void *user, cui_texture tex, int x, int y, int w,
 
 static void cui__sw_tex_destroy(void *user, cui_texture tex) {
     cui_sw_renderer *r = user;
-    int slot = (int)tex - 1;
-    if (slot < 0 || slot >= r->tex_count) return;
+    if (!tex || tex > (cui_texture)r->tex_count) return;
+    int slot = (int)(tex - 1);
     free(r->tex[slot].data);
     r->tex[slot].data = NULL;
     r->tex[slot].used = false;
@@ -582,8 +583,7 @@ static void cui__sw_run(cui__sw_job *job) {
         int cy1 = CUI_MIN(job->y1, (int)ceilf(cmd->clip.y + cmd->clip.h));
         if (cx0 >= cx1 || cy0 >= cy1) continue;
         cui_texture tid = cmd->texture ? cmd->texture : dd->font_atlas;
-        int slot = (int)tid - 1;
-        const cui__sw_tex *tex = (slot >= 0 && slot < r->tex_count && r->tex[slot].used) ? &r->tex[slot] : NULL;
+        const cui__sw_tex *tex = (tid && tid <= (cui_texture)r->tex_count && r->tex[(size_t)(tid - 1)].used) ? &r->tex[(size_t)(tid - 1)] : NULL;
         for (uint32_t k = 0; k + 2 < cmd->index_count; k += 3) {
             const uint32_t *ix = dd->indices + cmd->index_offset + k;
             if (k + 5 < cmd->index_count && ix[3] == ix[0] && ix[4] == ix[2] && ix[1] == ix[0] + 1 && ix[2] == ix[0] + 2 && ix[5] == ix[0] + 3) {
@@ -664,8 +664,9 @@ static void cui__sw_tile_hashes(cui_sw_renderer *r, const cui_draw_data *dd, uin
         bool tex_changed = false;
         for (int k = 0; k < r->nchanged; k++)
             if (r->changed[k].t == tid) {
-                int slot = (int)tid - 1;
-                if (slot >= 0 && slot < r->tex_count && r->tex[slot].used) { tw_px = (float)r->tex[slot].w; th_px = (float)r->tex[slot].h; }
+                if (tid && tid <= (cui_texture)r->tex_count && r->tex[(size_t)(tid - 1)].used) {
+                    tw_px = (float)r->tex[(size_t)(tid - 1)].w; th_px = (float)r->tex[(size_t)(tid - 1)].h;
+                }
                 cx0 = r->changed[k].x0; cy0 = r->changed[k].y0; cx1 = r->changed[k].x1; cy1 = r->changed[k].y1;
                 tex_changed = true;
                 break;

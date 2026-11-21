@@ -48,7 +48,8 @@ struct cui_reasoning_build { cui_id id; bool open; struct cui_reasoning_build *p
 typedef struct { float w; cui_color c; } cui__rail_paint;
 static void cui__paint_rail(cui_ctx *ui, cui_node *n, void *data) {
     cui__rail_paint *p = data;
-    cui_draw_rect(ui, (cui_rect){ n->rect.x + 7, n->rect.y + 4, 1.5f, CUI_MAX(0.0f, n->rect.h - 8) }, CUI_CORNERS(0.75f), p->c);
+    float x = n->rtl ? n->rect.x + n->rect.w - 8.5f : n->rect.x + 7;
+    cui_draw_rect(ui, (cui_rect){ x, n->rect.y + 4, 1.5f, CUI_MAX(0.0f, n->rect.h - 8) }, CUI_CORNERS(0.75f), p->c);
 }
 
 bool cui_reasoning_begin(cui_ctx *ui, const char *id_str, const cui_reasoning_opts *o) {
@@ -495,7 +496,7 @@ int cui_source_list(cui_ctx *ui, const char *id_str, const cui_source *sources, 
         cui__focus_ring(ui, c, r.focus_visible ? 1.0f : 0.0f);
         if (s->snippet || s->url) {
             ui->last_id = cid;
-            cui_tooltip(ui, s->url);
+            cui_tooltip(ui, s->snippet ? s->snippet : s->url);
         }
     }
     cui__close(ui);

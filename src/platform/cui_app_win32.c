@@ -269,7 +269,7 @@ static LRESULT CALLBACK cui__win32_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
     }
     case WM_GETMINMAXINFO: {
         MINMAXINFO *mm = (MINMAXINFO *)lp;
-        float sc = w ? w->scale : cui__win32_window_scale(hwnd);
+        float sc = (w && w->scale > 0) ? w->scale : cui__win32_window_scale(hwnd);
         RECT r = { 0, 0, (LONG)(app->desc.min_width * sc), (LONG)(app->desc.min_height * sc) };
         cui__win32_adjust_rect(&r, (DWORD)GetWindowLongW(hwnd, GWL_STYLE), sc);
         mm->ptMinTrackSize.x = r.right - r.left;
@@ -465,18 +465,26 @@ bool cui__plat_gl_create(cui_app *app, bool vsync) {
     pfd.cColorBits = 32;
     pfd.cAlphaBits = 8;
     pfd.iLayerType = PFD_MAIN_PLANE;
+    /* Probe WGL on a throwaway window so a failed GL 3.3 lookup never taints the real HWND's pixel format. */
+    HWND dummy = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 1, 1, NULL, NULL, GetModuleHandleW(NULL), NULL);
+    if (!dummy) return false;
+    HDC ddc = GetDC(dummy);
+    int dpf = ddc ? ChoosePixelFormat(ddc, &pfd) : 0;
+    HGLRC legacy = (dpf && SetPixelFormat(ddc, dpf, &pfd)) ? wglCreateContext(ddc) : NULL;
+    PFN_wglCreateContextAttribsARB create = NULL;
+    if (legacy && wglMakeCurrent(ddc, legacy)) {
+        create = (PFN_wglCreateContextAttribsARB)(void *)wglGetProcAddress("wglCreateContextAttribsARB");
+        wglMakeCurrent(NULL, NULL);
+    }
+    if (legacy) wglDeleteContext(legacy);
+    if (ddc) ReleaseDC(dummy, ddc);
+    DestroyWindow(dummy);
+    if (!create) return false;
     int pf = ChoosePixelFormat(w->hdc, &pfd);
     if (!pf || !SetPixelFormat(w->hdc, pf, &pfd)) return false;
-    HGLRC legacy = wglCreateContext(w->hdc);
-    if (!legacy) return false;
-    wglMakeCurrent(w->hdc, legacy);
-    PFN_wglCreateContextAttribsARB create = (PFN_wglCreateContextAttribsARB)(void *)wglGetProcAddress("wglCreateContextAttribsARB");
-    if (!create) { wglMakeCurrent(NULL, NULL); wglDeleteContext(legacy); return false; }
     int attrs[] = { WGL_CONTEXT_MAJOR_VERSION_ARB_, 3, WGL_CONTEXT_MINOR_VERSION_ARB_, 3,
                     WGL_CONTEXT_PROFILE_MASK_ARB_, WGL_CONTEXT_CORE_PROFILE_BIT_ARB_, 0 };
     HGLRC ctx = create(w->hdc, NULL, attrs);
-    wglMakeCurrent(NULL, NULL);
-    wglDeleteContext(legacy);
     if (!ctx) return false;
     if (!wglMakeCurrent(w->hdc, ctx)) { wglDeleteContext(ctx); return false; }
     w->glrc = ctx;
@@ -587,5 +595,30 @@ double cui__plat_refresh_hz(cui_app *app) {
 
 void cui__plat_gl_release(cui_app *app) {
     cui__win32 *w = cui__w(app);
+    if (!w) return;
     if (w->glrc) { wglMakeCurrent(NULL, NULL); wglDeleteContext(w->glrc); w->glrc = NULL; }
+    if (w->hwnd && GetPixelFormat(w->hdc)) {
+        /* SetPixelFormat(PFD_DOUBLEBUFFER) is write-once and excludes GDI; recreate the hidden window for software fallback. */
+        HINSTANCE inst = GetModuleHandleW(NULL);
+        DWORD style = (DWORD)GetWindowLongW(w->hwnd, GWL_STYLE);
+        RECT wr;
+        GetWindowRect(w->hwnd, &wr);
+        WCHAR title[256];
+        MultiByteToWideChar(CP_UTF8, 0, app->title, -1, title, 256);
+        HWND nw = CreateWindowExW(0, L"CUIWindow", title, style, CW_USEDEFAULT, CW_USEDEFAULT,
+                                  wr.right - wr.left, wr.bottom - wr.top, NULL, NULL, inst, app);
+        if (nw) {
+            if (w->hdc) ReleaseDC(w->hwnd, w->hdc);
+            SetWindowLongPtrW(w->hwnd, GWLP_USERDATA, 0);
+            DestroyWindow(w->hwnd);
+            w->hwnd = nw;
+            DragAcceptFiles(w->hwnd, TRUE);
+            w->scale = cui__win32_window_scale(w->hwnd);
+            RECT cr;
+            GetClientRect(w->hwnd, &cr);
+            w->width = cr.right; w->height = cr.bottom;
+            w->hdc = GetDC(w->hwnd);
+            cui__win32_dark_titlebar(w->hwnd, app->desc.theme == CUI_THEME_DARK);
+        }
+    }
 }

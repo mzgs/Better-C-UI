@@ -78,7 +78,7 @@ static bool cui__check_item(cui_ctx *ui, const char *label, const char *icon, bo
     ui->nodes[t].line_height = 1.3f;
     ui->nodes[t].w = CUI_FILL;
     cui__close(ui);
-    bool toggle = r.clicked || (hl && (cui_key_pressed(ui, CUI_KEY_ENTER) || cui_key_pressed(ui, CUI_KEY_SPACE)));
+    bool toggle = r.clicked || (hl && (cui_key_pressed(ui, CUI_KEY_ENTER) || (!ui->edit && cui_key_pressed(ui, CUI_KEY_SPACE))));
     return toggle;
 }
 
@@ -266,7 +266,8 @@ static void cui__paint_range_day(cui_ctx *ui, cui_node *n, void *data) {
     cui_rect circle = { r.x + (r.w - s) * 0.5f, r.y + (r.h - s) * 0.5f, s, s };
     if (p->band) {
         cui_rect b = { r.x, r.y + 1, r.w, r.h - 2 };
-        cui_corners c = { p->band_l ? b.h * 0.5f : 0, p->band_r ? b.h * 0.5f : 0, p->band_r ? b.h * 0.5f : 0, p->band_l ? b.h * 0.5f : 0 };
+        bool bl = n->rtl ? p->band_r : p->band_l, br = n->rtl ? p->band_l : p->band_r;
+        cui_corners c = { bl ? b.h * 0.5f : 0, br ? b.h * 0.5f : 0, br ? b.h * 0.5f : 0, bl ? b.h * 0.5f : 0 };
         cui_draw_rect(ui, b, c, p->band_c);
     }
     if (p->knob) cui_draw_rect(ui, cui__rect_inset(circle, 1), CUI_CORNERS(s * 0.5f - 1), p->knob_c);
@@ -1017,7 +1018,7 @@ static void cui__paint_ruler(cui_ctx *ui, cui_node *n, void *data) {
             double v = (double)p->min + k * (double)p->step;
             if (v < (double)p->min - (double)p->step * 0.01 || v > (double)p->max + (double)p->step * 0.01) continue;
             float x = cx + (float)(((v - (double)p->value) / (double)p->step) * (double)p->spacing);
-            float fade = 1.0f - cui__clampf(fabsf(x - cx) / (r.w * 0.5f), 0, 1);
+            float fade = r.w > 0 ? 1.0f - cui__clampf(fabsf(x - cx) / (r.w * 0.5f), 0, 1) : 1.0f;
             fade = fade * fade * (3 - 2 * fade);
             int64_t ki = (int64_t)llround(k);
             bool major = p->major > 0 && ki % p->major == 0;
@@ -1141,7 +1142,7 @@ static void cui__paint_hist(cui_ctx *ui, cui_node *n, void *data) {
     for (int k = 0; k < p->n; k++) {
         float h = (p->bins[k] / p->tmax) * (r.h - 2);
         if (h < 1.5f) h = 1.5f;
-        float bx = x0 + k * bw + 1;
+        float bx = n->rtl ? x1 - (k + 1) * bw + 1 : x0 + k * bw + 1;
         float mid = (k + 0.5f) / p->n;
         bool in = mid >= p->lo_t && mid <= p->hi_t;
         cui_draw_rect(ui, (cui_rect){ bx, r.y + r.h - h, CUI_MAX(1.0f, bw - 2), h }, (cui_corners){ 2, 2, 0, 0 }, in ? p->on : p->off);
@@ -1399,7 +1400,7 @@ bool cui_path_has_extension(const char *path, const char *accept) {
 /* Claims this frame's drop if it landed inside r. Returns accepted count. */
 static int cui__claim_drop(cui_ctx *ui, cui_rect r, const char *accept, int *rejected) {
     *rejected = 0;
-    if (ui->drop_count == 0 || ui->drop_claimed || r.w <= 0) return 0;
+    if (ui->drop_count == 0 || ui->drop_claimed || r.w <= 0 || cui_is_disabled(ui) || cui__layer_covered(ui)) return 0;
     if (!cui__rect_contains(r, ui->drop_x, ui->drop_y)) return 0;
     ui->drop_claimed = true;
     int ok = 0;

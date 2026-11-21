@@ -525,8 +525,9 @@ static int cui__text_wrap_greedy(cui_ctx *ui, cui_font font, float size, const c
     int count = 0;
     int line_start = 0;
     float line_w = 0;
-    int last_break = -1;        /* byte index of the last space in line */
+    int last_break = -1;        /* byte index of the first space in the latest space run */
     float width_at_break = 0;
+    bool prev_space = false;
     cui__glyph_iter it;
     cui__iter_init(&it, ui, font, size, text, len, false);
     float base_x = 0;
@@ -534,15 +535,19 @@ static int cui__text_wrap_greedy(cui_ctx *ui, cui_font font, float size, const c
     while (cui__iter_next(&it)) {
         if (it.cp == '\n') {
             CUI__EMIT(line_start, it.start, it.gx - base_x);
-            line_start = it.end; base_x = it.x; last_break = -1; it.prev_gi = 0;
+            line_start = it.end; base_x = it.x; last_break = -1; prev_space = false; it.prev_gi = 0;
             continue;
         }
         float right = it.gx + it.adv - base_x;
         if (cui__is_space(it.cp)) {
-            last_break = it.start;
-            width_at_break = it.gx - base_x;
+            if (!prev_space && it.start > line_start) {
+                last_break = it.start;
+                width_at_break = it.gx - base_x;
+            }
+            prev_space = true;
             continue;
         }
+        prev_space = false;
         if (right > width + 0.01f && it.start > line_start) {
             if (last_break > line_start) {
                 CUI__EMIT(line_start, last_break, width_at_break);
@@ -976,7 +981,13 @@ static float cui__shape_run(cui_ctx *ui, cui_font font, float size, const char *
             while (start < end) {
                 uint32_t cp;
                 cui_font gf; int gi;
-                cui__utf8_decode(text + start, end - start, &cp);
+                int probe = start;
+                cui__utf8_decode(text + probe, end - probe, &cp);
+                /* If a run begins with a joiner/format control (e.g. ZWJ), pick the font of the first non-control char. */
+                while (probe < end && cp >= 0x200b && cp <= 0x200f) {
+                    probe += cui__utf8_decode(text + probe, end - probe, &cp);
+                    if (probe < end) cui__utf8_decode(text + probe, end - probe, &cp);
+                }
                 cui__find_glyph(ui, font, cp, &gf, &gi);
                 int cap = (end - start) * 4 + 16, input_count = 0, at = start;
                 cui_shape_glyph *input = cui__alloc(ui, (size_t)cap * sizeof *input);
@@ -1048,13 +1059,13 @@ paint:
         }
         *cluster_count = count;
     }
-    if (draw) {
+    if (draw && isfinite(size) && size > 0) {
         float scale = ui->scale;
         float baseline = roundf((y + base->ascent * size) * scale);
         for (int j = 0; j < cached->count; j++) {
             cui_shaped_glyph *sg = &cached->glyphs[j];
             float gx = sg->x;
-            if (!sg->id || x + gx > max_x) continue;
+            if (sg->id <= 0 || x + gx > max_x) continue;
             float px = (x + gx) * scale, fl = floorf(px);
             int subpx = CUI_MIN(2, (int)((px - fl) * 3));
             float gy = baseline - sg->y * scale;
@@ -1205,17 +1216,20 @@ void cui__draw_text_ellipsis(cui_ctx *ui, cui_font font, float size, float x, fl
     /* right-to-left text ends on the left, so its ellipsis goes there */
     bool rtl = false;
 #ifdef CUI_TEXT_SHAPING
-    for (int at = 0; at < len;) {
+    if (ui->text_direction == CUI_DIRECTION_RTL) rtl = true;
+    else if (ui->text_direction == CUI_DIRECTION_LTR) rtl = false;
+    else for (int at = 0; at < len;) {
         uint32_t cp;
         at += cui__utf8_decode(text + at, len - at, &cp);
         int dir = cui__bidi_strong_direction(cp);
         if (dir >= 0) { rtl = dir == 1; break; }
     }
 #endif
-    cui__draw_run(ui, font, size, rtl ? x + ew : x, y, color, text, cut, tabular, 1e30f);
+    float rtl_x = rtl ? x + CUI_MAX(0.0f, max_w - cut_w - ew) : x;
+    cui__draw_run(ui, font, size, rtl ? rtl_x + ew : x, y, color, text, cut, tabular, 1e30f);
     cui__text_fx_fn fx = ui->text_fx;
     ui->text_fx = NULL;   /* the ellipsis is not part of the text */
-    cui__draw_run(ui, font, size, rtl ? x : x + cut_w, y, color, ell, 3, false, 1e30f);
+    cui__draw_run(ui, font, size, rtl ? rtl_x : x + cut_w, y, color, ell, 3, false, 1e30f);
     ui->text_fx = fx;
 }
 

@@ -1,5 +1,8 @@
 /* Regression cases from the large-data and input-boundary audit. Runs headless. */
 #include "cui_internal.h"
+#ifdef CUI_TEXT_SHAPING
+#include "cui_shape.h"
+#endif
 #include "cui/cui_render.h"
 #include <limits.h>
 #include <float.h>
@@ -900,6 +903,476 @@ static void test_wants_keyboard_start_of_frame(void) {
     cui_destroy(ui);
 }
 
+static void test_pass3_audit_fixes(void) {
+    /* 1. State store rehash past 1024 entries must preserve all slots without corruption */
+    {
+        cui_ctx *ui = context(false);
+        cui_begin_frame(ui, 1.0f / 60);
+        for (uint32_t i = 1; i <= 1500; i++) {
+            uint32_t *slot = cui_state(ui, (cui_id)(i * 2654435761u | 1u), sizeof *slot);
+            *slot = i;
+        }
+        bool ok = true;
+        for (uint32_t i = 1; i <= 1500; i++) {
+            uint32_t *slot = cui_state(ui, (cui_id)(i * 2654435761u | 1u), sizeof *slot);
+            if (*slot != i) { ok = false; break; }
+        }
+        CHECK(ok);
+        cui_end_frame(ui);
+        cui_destroy(ui);
+    }
+
+    /* 2. cui_url_set_params rejects base >= cap and NULL pairs safely */
+    {
+        char short_url[16] = "https://a.test";
+        cui_kv_pair kv = { "k", "v", true };
+        CHECK(!cui_url_set_params(short_url, 4, &kv, 1));
+        CHECK(cui_url_set_params(short_url, sizeof short_url, NULL, 2));
+        CHECK(strcmp(short_url, "https://a.test") == 0);
+    }
+
+    /* 3. cui_time_histogram_ex with +INFINITY bucket does not hang */
+    {
+        cui_ctx *ui = context(false);
+        float counts[4] = { 1.0f, INFINITY, 2.0f, 3.0f };
+        cui_histogram_series s = { .name = "s", .counts = counts };
+        double sel0 = 0, sel1 = 10;
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_time_histogram_ex(ui, "th_inf", 0.0, 60.0, 4, &s, 1, &sel0, &sel1, NULL);
+        cui_end_frame(ui);
+        CHECK(cui_get_draw_data(ui)->vertex_count > 0);
+        cui_destroy(ui);
+    }
+
+    /* 4. Code block, code editor and diff view render leading-space/tab lines */
+    {
+        cui_ctx *ui = context(false);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_code_block(ui, "cb_empty", "", .lang = "text");
+        cui_end_frame(ui);
+        int empty_v = cui_get_draw_data(ui)->vertex_count;
+
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_code_block(ui, "cb_ws", "    indented\n\ttabbed\n", .lang = "text");
+        cui_end_frame(ui);
+        CHECK(cui_get_draw_data(ui)->vertex_count > empty_v);
+
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_code_block(ui, "cb_c", "/* start\n    still comment\n*/\n", .lang = "c");
+        cui_end_frame(ui);
+        CHECK(cui_get_draw_data(ui)->vertex_count > empty_v);
+
+        char ed_empty[64] = "";
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_code_editor_ex(ui, "ed_empty", ed_empty, sizeof ed_empty, &(cui_code_editor_opts){ .lang = "text", .height = 120 });
+        cui_end_frame(ui);
+        int ed_empty_v = cui_get_draw_data(ui)->vertex_count;
+
+        char ed_ws[64] = "    hello\n\tworld";
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_code_editor_ex(ui, "ed_ws", ed_ws, sizeof ed_ws, &(cui_code_editor_opts){ .lang = "text", .height = 120 });
+        cui_end_frame(ui);
+        CHECK(cui_get_draw_data(ui)->vertex_count > ed_empty_v);
+
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_diff_view_ex(ui, "dv_empty", "", "", NULL);
+        cui_end_frame(ui);
+        int dv_empty_v = cui_get_draw_data(ui)->vertex_count;
+
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_diff_view_ex(ui, "dv_ws", "    old_line\n", "    new_line\n", NULL);
+        cui_end_frame(ui);
+        CHECK(cui_get_draw_data(ui)->vertex_count > dv_empty_v);
+        cui_destroy(ui);
+    }
+
+    /* 5. Money input >= 1,000 keeps value when clicked and blurred */
+    {
+        cui_ctx *ui = context(false);
+        double amount = 1234.56;
+        cui_id mid = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_money_input_ex(ui, "amt", &amount, NULL);
+            mid = cui_last_id(ui);
+            cui_end_frame(ui);
+        }
+        cui_rect mr = cui_get_rect(ui, mid);
+        cui_input_mouse_move(ui, mr.x + mr.w * 0.5f, mr.y + mr.h * 0.5f);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_money_input_ex(ui, "amt", &amount, NULL);
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_money_input_ex(ui, "amt", &amount, NULL);
+        cui_end_frame(ui);
+        /* Click outside to blur */
+        cui_input_mouse_move(ui, 790, 590);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_money_input_ex(ui, "amt", &amount, NULL);
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        CHECK(fabs(amount - 1234.56) < 0.001);
+        cui_destroy(ui);
+    }
+
+    /* 6. Candlestick shrinking count re-clamps cursor and span safely */
+    {
+        cui_ctx *ui = context(false);
+        cui_candle candles[20];
+        for (int i = 0; i < 20; i++) candles[i] = (cui_candle){ 10 + i, 12 + i, 9 + i, 11 + i, 100 };
+        cui_id cid = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_candlestick_ex(ui, "cs_shrink", candles, 20, NULL);
+            cid = cui_last_id(ui);
+            cui_end_frame(ui);
+        }
+        ui->focus = cid;
+        ui->focus_visible = true;
+        cui_input_key(ui, CUI_KEY_END, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_candlestick_ex(ui, "cs_shrink", candles, 20, NULL);
+        cui_end_frame(ui);
+        cui_input_key(ui, CUI_KEY_END, false, 0);
+        /* Now shrink to 3 candles while cursor was at 19 */
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_candlestick_ex(ui, "cs_shrink", candles, 3, NULL);
+        cui_end_frame(ui);
+        CHECK(cui_get_draw_data(ui)->vertex_count > 0);
+        cui_destroy(ui);
+    }
+
+    /* 7. Modal layer ID matches inside modal and blocks click-focused background button */
+    {
+        cui_ctx *ui = context(false);
+        bool bg_clicked = false, modal_open = false, modal_btn_clicked = false;
+        cui_id bg_id = 0, mb_id = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            if (cui_button(ui, "BgBtn")) bg_clicked = true;
+            bg_id = cui_last_id(ui);
+            cui_end_frame(ui);
+        }
+        /* Click-focus BgBtn (focus_visible == false), then open modal */
+        ui->focus = bg_id;
+        ui->focus_visible = false;
+        modal_open = true;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            if (cui_button(ui, "BgBtn")) bg_clicked = true;
+            if (cui_dialog_begin(ui, "Dialog", &modal_open, NULL)) {
+                if (cui_button(ui, "InsideBtn")) modal_btn_clicked = true;
+                mb_id = cui_last_id(ui);
+                cui_dialog_end(ui);
+            }
+            cui_end_frame(ui);
+        }
+        /* Focus was cleared on modal open; even if re-forced onto bg_id, Enter must not click BgBtn */
+        CHECK(ui->focus != bg_id);
+        ui->focus = bg_id;
+        bg_clicked = false;
+        cui_input_key(ui, CUI_KEY_ENTER, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        if (cui_button(ui, "BgBtn")) bg_clicked = true;
+        if (cui_dialog_begin(ui, "Dialog", &modal_open, NULL)) {
+            if (cui_button(ui, "InsideBtn")) modal_btn_clicked = true;
+            cui_dialog_end(ui);
+        }
+        cui_end_frame(ui);
+        CHECK(!bg_clicked);
+        cui_input_key(ui, CUI_KEY_ENTER, false, 0);
+        /* Clicking InsideBtn works cleanly */
+        cui_rect mbr = cui_get_rect(ui, mb_id);
+        CHECK(mbr.w > 0);
+        cui_input_mouse_move(ui, mbr.x + mbr.w * 0.5f, mbr.y + mbr.h * 0.5f);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_button(ui, "BgBtn");
+        if (cui_dialog_begin(ui, "Dialog", &modal_open, NULL)) {
+            if (cui_button(ui, "InsideBtn")) modal_btn_clicked = true;
+            cui_dialog_end(ui);
+        }
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_button(ui, "BgBtn");
+        if (cui_dialog_begin(ui, "Dialog", &modal_open, NULL)) {
+            if (cui_button(ui, "InsideBtn")) modal_btn_clicked = true;
+            cui_dialog_end(ui);
+        }
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_button(ui, "BgBtn");
+        if (cui_dialog_begin(ui, "Dialog", &modal_open, NULL)) {
+            if (cui_button(ui, "InsideBtn")) modal_btn_clicked = true;
+            cui_dialog_end(ui);
+        }
+        cui_end_frame(ui);
+        CHECK(modal_btn_clicked);
+        cui_destroy(ui);
+    }
+
+    /* 8. Rapid release+press across two buttons clears stale ui->active */
+    {
+        cui_ctx *ui = context(false);
+        cui_id id_a = 0, id_b = 0;
+        bool b_clicked = false;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_button(ui, "BtnA"); id_a = cui_last_id(ui);
+            if (cui_button(ui, "BtnB")) b_clicked = true;
+            id_b = cui_last_id(ui);
+            cui_end_frame(ui);
+        }
+        cui_rect ra = cui_get_rect(ui, id_a), rb = cui_get_rect(ui, id_b);
+        cui_input_mouse_move(ui, ra.x + ra.w * 0.5f, ra.y + ra.h * 0.5f);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_button(ui, "BtnA"); cui_button(ui, "BtnB");
+        cui_end_frame(ui);
+        CHECK(ui->active == id_a);
+        /* In one inter-frame burst: release on A, move to B, press on B */
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        cui_input_mouse_move(ui, rb.x + rb.w * 0.5f, rb.y + rb.h * 0.5f);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_button(ui, "BtnA");
+        if (cui_button(ui, "BtnB")) b_clicked = true;
+        cui_end_frame(ui);
+        CHECK(ui->active == id_b);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_button(ui, "BtnA");
+        if (cui_button(ui, "BtnB")) b_clicked = true;
+        cui_end_frame(ui);
+        CHECK(b_clicked);
+        cui_destroy(ui);
+    }
+
+    /* 9. Spring numerical stability for extreme duration/bounce & theme shadow_resting retarget */
+    {
+        cui_ctx *ui = cui_create(NULL);
+        cui_set_viewport(ui, 800, 600, 1);
+        cui_begin_frame(ui, 1.0f / 60);
+        float s0 = cui_animate_spring(ui, 99, 0.0f, 0.01f, 1.5f);
+        CHECK(isfinite(s0));
+        cui_end_frame(ui);
+        for (int f = 0; f < 10; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            float v = cui_animate_spring(ui, 99, 100.0f, 0.01f, 1.5f);
+            CHECK(isfinite(v));
+            cui_end_frame(ui);
+        }
+        float light_shadow_a = ui->theme.shadow_resting[0].alpha;
+        cui_set_reduced_motion(ui, true);
+        cui_set_theme(ui, CUI_THEME_DARK);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_end_frame(ui);
+        CHECK(ui->theme.shadow_resting[0].alpha > light_shadow_a);
+        cui_destroy(ui);
+    }
+
+    /* 10. Keyboard Enter opening select / confirm popover must not close/confirm same frame */
+    {
+        cui_ctx *ui = context(false);
+        const char *items[2] = { "Alpha", "Beta" };
+        int sel = 0;
+        cui_id sel_id = 0, trig_id = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_select_ex(ui, "sel_kb", items, 2, &sel, NULL);
+            sel_id = cui_last_id(ui);
+            if (cui_button(ui, "Delete")) cui_popover_open(ui, "cp_kb");
+            trig_id = cui_last_id(ui);
+            cui_confirm_popover_ex(ui, "cp_kb", &(cui_confirm_popover_opts){ .title = "Really?" });
+            cui_end_frame(ui);
+        }
+        ui->focus = sel_id;
+        ui->focus_visible = true;
+        cui_input_key(ui, CUI_KEY_ENTER, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_select_ex(ui, "sel_kb", items, 2, &sel, NULL);
+        cui_end_frame(ui);
+        cui_input_key(ui, CUI_KEY_ENTER, false, 0);
+        bool any_open = false;
+        for (int i = 0; i < ui->popup_count; i++) if (ui->popups[i].open) any_open = true;
+        CHECK(any_open);
+        cui_destroy(ui);
+
+        /* Confirm popover opened via Enter on trigger button must not confirm same frame */
+        ui = context(false);
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            if (cui_button(ui, "Delete")) cui_popover_open(ui, "cp_kb");
+            trig_id = cui_last_id(ui);
+            cui_confirm_popover_ex(ui, "cp_kb", &(cui_confirm_popover_opts){ .title = "Really?" });
+            cui_end_frame(ui);
+        }
+        ui->focus = trig_id;
+        ui->focus_visible = true;
+        cui_input_key(ui, CUI_KEY_ENTER, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        if (cui_button(ui, "Delete")) cui_popover_open(ui, "cp_kb");
+        bool confirmed = cui_confirm_popover_ex(ui, "cp_kb", &(cui_confirm_popover_opts){ .title = "Really?" });
+        cui_end_frame(ui);
+        cui_input_key(ui, CUI_KEY_ENTER, false, 0);
+        CHECK(!confirmed && cui_popover_is_open(ui, "cp_kb"));
+        cui_destroy(ui);
+    }
+
+    /* 11. Untouched/disabled value controls and non-finite number input */
+    {
+        cui_ctx *ui = context(false);
+        float sv = 0.33333334f, rlo = 0.25f, rhi = 0.75f, kv = 0.42f, fv = 0.67f;
+        double nv = 42.0;
+        cui_image_view iv = { 0 };
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_push_disabled(ui, true);
+        CHECK(!cui_slider_ex(ui, "sl", &sv, 0.0f, 1.0f, NULL));
+        CHECK(!cui_range_slider(ui, "rs", &rlo, &rhi, 0.0f, 1.0f));
+        CHECK(!cui_knob_ex(ui, "kn", &kv, 0.0f, 1.0f, NULL));
+        CHECK(!cui_fader_ex(ui, "fd", &fv, 0.0f, 1.0f, NULL));
+        CHECK(!cui_image_viewer_ex(ui, "iv", 0, 200, 100, &iv, NULL));
+        cui_pop_disabled(ui);
+        CHECK(!cui_image_viewer_ex(ui, "iv_en", 0, 200, 100, &iv, NULL));
+        cui_end_frame(ui);
+        CHECK(sv == 0.33333334f && rlo == 0.25f && rhi == 0.75f && kv == 0.42f && fv == 0.67f);
+
+        /* cui_number rejects "nan" */
+        cui_id nid = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_number_ex(ui, "num", &nv, 0.0, 100.0, NULL);
+            nid = cui_last_id(ui);
+            cui_end_frame(ui);
+        }
+        ui->focus = nid;
+        cui_input_key(ui, CUI_KEY_A, true, CUI_MOD_PRIMARY);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_number_ex(ui, "num", &nv, 0.0, 100.0, NULL);
+        cui_end_frame(ui);
+        cui_input_key(ui, CUI_KEY_A, false, 0);
+        cui_input_text(ui, "nan");
+        cui_input_key(ui, CUI_KEY_ENTER, true, 0);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_number_ex(ui, "num", &nv, 0.0, 100.0, NULL);
+        cui_end_frame(ui);
+        CHECK(isfinite(nv) && nv == 42.0);
+        cui_destroy(ui);
+    }
+
+    /* 12. Shadow negative spread, 16-item speed dial, snippet-only source list,
+       negative donut, 1-pt line chart, query builder NULL choices, tiny hex/log, month NULL */
+    {
+        cui_ctx *ui = context(false);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_draw_shadow(ui, (cui_rect){ 10, 10, 80, 40 }, CUI_CORNERS(0), 6, -4, (cui_vec2){ 0, 2 }, cui__rgba(0, 0, 0, 80));
+        cui_speed_action acts[16];
+        for (int i = 0; i < 16; i++) acts[i] = (cui_speed_action){ "+", "Item" };
+        cui_speed_dial_ex(ui, "sd16", acts, 16, NULL);
+        cui_source src = { .title = "Doc", .url = NULL, .snippet = "Summary text" };
+        cui_source_list(ui, "srcs", &src, 1);
+        float neg_donut[3] = { -5.0f, 10.0f, 20.0f };
+        const char *dlab[3] = { "Neg", "A", "B" };
+        cui_donut_chart_ex(ui, "dn_neg", neg_donut, dlab, 3, NULL);
+        float one_pt[1] = { 7.0f };
+        cui_series one_ser = { .values = one_pt, .count = 1 };
+        cui_line_chart_ex(ui, "lc1", &one_ser, 1, NULL);
+        cui_query_field qf = { .name = "Status", .type = CUI_QUERY_CHOICE, .choices = NULL, .choice_count = 2 };
+        cui_query_node qn[2] = { { .group = true, .depth = 0 }, { .depth = 1, .field = 0 } };
+        int qcnt = 2;
+        CHECK(!cui_query_builder_ex(ui, "qb_ro", &qf, 1, qn, &qcnt, 2, &(cui_query_opts){ .read_only = true }));
+        uint8_t hbytes[4] = { 1, 2, 3, 4 };
+        cui_hex_view_ex(ui, "hx_tiny", hbytes, 4, NULL, &(cui_hex_view_opts){ .size = 0.1f });
+        cui_log_view_ex(ui, "lv_tiny", NULL, &(cui_log_view_opts){ .size = 0.1f });
+        cui_month_calendar_ex(ui, "mc_a", NULL, NULL, 0, NULL);
+        cui_month_calendar_ex(ui, "mc_b", NULL, NULL, 0, NULL);
+        cui_end_frame(ui);
+        const cui_draw_data *dd = cui_get_draw_data(ui);
+        bool all_finite = true;
+        for (int v = 0; v < dd->vertex_count; v++) {
+            if (!isfinite(dd->vertices[v].x) || !isfinite(dd->vertices[v].y)) { all_finite = false; break; }
+        }
+        CHECK(all_finite && dd->vertex_count > 0);
+        cui_destroy(ui);
+    }
+
+    /* 13. Cropper CUI__CR_NEW drag up-left is not clamped to previous crop */
+    {
+        cui_ctx *ui = context(false);
+        cui_rect crop = { 50, 50, 100, 100 };
+        cui_id cr_id = 0;
+        for (int f = 0; f < 2; f++) {
+            cui_begin_frame(ui, 1.0f / 60);
+            cui_cropper_ex(ui, "cr", 0, 400, 300, &crop, &(cui_cropper_opts){ .width = CUI_PX(428), .height = CUI_PX(328) });
+            cr_id = cui_last_id(ui);
+            cui_end_frame(ui);
+        }
+        cui_rect pr = cui_get_rect(ui, cr_id);
+        /* pad is 14 -> scale z = 1, ox = pr.x + 14, oy = pr.y + 14 */
+        float ox = pr.x + 14, oy = pr.y + 14;
+        cui_input_mouse_move(ui, ox + 300, oy + 250);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_cropper_ex(ui, "cr", 0, 400, 300, &crop, &(cui_cropper_opts){ .width = CUI_PX(428), .height = CUI_PX(328) });
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, true);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_cropper_ex(ui, "cr", 0, 400, 300, &crop, &(cui_cropper_opts){ .width = CUI_PX(428), .height = CUI_PX(328) });
+        cui_end_frame(ui);
+        cui_input_mouse_move(ui, ox + 100, oy + 100);
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_cropper_ex(ui, "cr", 0, 400, 300, &crop, &(cui_cropper_opts){ .width = CUI_PX(428), .height = CUI_PX(328) });
+        cui_end_frame(ui);
+        cui_input_mouse_button(ui, CUI_MOUSE_LEFT, false);
+        CHECK(fabsf(crop.x - 100.0f) < 2.0f && fabsf(crop.w - 200.0f) < 2.0f);
+        CHECK(fabsf(crop.y - 100.0f) < 2.0f && fabsf(crop.h - 150.0f) < 2.0f);
+        cui_destroy(ui);
+    }
+
+    /* 14. Flexbox grow distribution with mixed min/max constraints conserves full container width */
+    {
+        cui_ctx *ui = context(false);
+        cui_id ids[3] = { 0 };
+        cui_begin_frame(ui, 1.0f / 60);
+        cui_row(ui, .width = CUI_PX(300)) {
+            ids[0] = cui_box_begin(ui, &(cui_box){ .id = "g0", .width = CUI_GROW(1), .max_width = 50, .height = CUI_PX(20) });
+            cui_box_end(ui);
+            ids[1] = cui_box_begin(ui, &(cui_box){ .id = "g1", .width = CUI_GROW(1), .min_width = 160, .height = CUI_PX(20) });
+            cui_box_end(ui);
+            ids[2] = cui_box_begin(ui, &(cui_box){ .id = "g2", .width = CUI_GROW(1), .height = CUI_PX(20) });
+            cui_box_end(ui);
+        }
+        cui_end_frame(ui);
+        cui_rect r0 = cui_get_rect(ui, ids[0]), r1 = cui_get_rect(ui, ids[1]), r2 = cui_get_rect(ui, ids[2]);
+        CHECK(fabsf((r0.w + r1.w + r2.w) - 300.0f) < 1.0f);
+        CHECK(fabsf(r0.w - 50.0f) < 1.0f && fabsf(r1.w - 160.0f) < 1.0f && fabsf(r2.w - 90.0f) < 1.0f);
+        cui_destroy(ui);
+    }
+
+#ifdef CUI_TEXT_SHAPING
+    /* 15. OpenType cmap format 12 out-of-range startGlyphID returns 0 */
+    {
+        uint8_t buf[64];
+        memset(buf, 0, sizeof buf);
+        /* format 12 at offset 4: format=12, length=28, numGroups=1, group: start=0x41, end=0x42, startGlyphID=0x80000000 */
+        buf[4] = 0; buf[5] = 12;
+        buf[15] = 28;
+        buf[19] = 1;
+        buf[23] = 0x41; buf[27] = 0x42;
+        buf[28] = 0x80; buf[29] = 0; buf[30] = 0; buf[31] = 0;
+        cui_shape_font sf;
+        memset(&sf, 0, sizeof sf);
+        sf.data = buf;
+        sf.size = sizeof buf;
+        sf.cmap = 4;
+        CHECK(cui__shape_map(&sf, 0x41) == 0);
+    }
+#endif
+}
+
 int main(void) {
     test_ascii_helpers(); test_scopes();
     test_shrinking_list(); test_table_controls(); test_horizontal_drag(); test_code_scroll_routing();
@@ -910,6 +1383,7 @@ int main(void) {
     test_deep_audit_fixes();
     test_pass2_component_fixes();
     test_wants_keyboard_start_of_frame();
+    test_pass3_audit_fixes();
     printf("audit regressions: %d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
 }

@@ -131,6 +131,7 @@ int cui__float_begin(cui_ctx *ui, cui_id id, int z, cui_id anchor, int placement
     n->flags |= CUI_NF_FLOATING;
     n->z = z;
     n->anchor = anchor;
+    n->layer_id = id;
     n->placement = (uint8_t)placement;
     n->offset = offset;
     CUI__GROW(ui, ui->float_roots, ui->float_count, ui->float_cap, 1);
@@ -364,27 +365,43 @@ static void cui__distribute(cui_ctx *ui, cui_node *n, int first, int count, floa
     }
     float free_space = avail - used;
     if (grow_total > 0) {
-        /* share free space by weight; children that hit min/max freeze */
+        /* share free space by weight; freeze only the violating side per pass (CSS Flexbox) */
         float remaining = free_space > 0 ? free_space : 0;
         uint8_t *frozen = cui__frame_alloc(ui, (size_t)count);
-        for (int pass = 0; pass < 6; pass++) {
+        for (int pass = 0; pass <= count; pass++) {
             float per = grow_total > 0 ? remaining / grow_total : 0;
-            bool any = false;
+            float violation = 0;
+            bool any_min = false, any_max = false;
             int k = 0;
             for (int c = first; c >= 0 && k < count; c = ui->nodes[c].next, k++) {
                 cui_node *ch = &ui->nodes[c];
                 cui_size sz = CUI__SZ(ch);
                 if (sz.kind != CUI_SIZE_GROW || frozen[k]) continue;
                 float wgt = sz.value > 0 ? sz.value : 1;
-                float v = per * wgt, mn = CUI__MIN(ch), mx = CUI__MAXV(ch);
-                if (v < mn || v > mx) {
-                    v = v < mn ? mn : mx;
-                    frozen[k] = 1; any = true;
+                float raw = per * wgt, mn = CUI__MIN(ch), mx = CUI__MAXV(ch);
+                float v = cui__clamp_size(raw, mn, mx);
+                *CUI__DST(ch) = v;
+                if (v > raw) any_min = true;
+                else if (v < raw) any_max = true;
+                violation += v - raw;
+            }
+            if (!any_min && !any_max) break;
+            bool freeze_min = violation >= 0;
+            bool freeze_max = violation <= 0;
+            bool froze = false;
+            k = 0;
+            for (int c = first; c >= 0 && k < count; c = ui->nodes[c].next, k++) {
+                cui_node *ch = &ui->nodes[c];
+                cui_size sz = CUI__SZ(ch);
+                if (sz.kind != CUI_SIZE_GROW || frozen[k]) continue;
+                float wgt = sz.value > 0 ? sz.value : 1;
+                float raw = per * wgt, v = *CUI__DST(ch);
+                if ((freeze_min && v > raw) || (freeze_max && v < raw)) {
+                    frozen[k] = 1; froze = true;
                     remaining -= v; grow_total -= wgt;
                 }
-                *CUI__DST(ch) = v;
             }
-            if (!any) break;
+            if (!froze) break;
             if (remaining < 0) remaining = 0;
         }
         used = 0;
@@ -881,9 +898,9 @@ static void cui__layout_float(cui_ctx *ui, int i) {
             break;
         }
         switch (n->placement) {
-        case CUI_PLACE_BOTTOM_START: case CUI_PLACE_TOP_START: x = A.x; break;
+        case CUI_PLACE_BOTTOM_START: case CUI_PLACE_TOP_START: x = n->rtl ? A.x + A.w - W : A.x; break;
         case CUI_PLACE_BOTTOM: case CUI_PLACE_TOP: x = A.x + (A.w - W) * 0.5f; break;
-        case CUI_PLACE_BOTTOM_END: case CUI_PLACE_TOP_END: x = A.x + A.w - W; break;
+        case CUI_PLACE_BOTTOM_END: case CUI_PLACE_TOP_END: x = n->rtl ? A.x : A.x + A.w - W; break;
         case CUI_PLACE_RIGHT_START: case CUI_PLACE_LEFT_START: y = A.y; break;
         case CUI_PLACE_RIGHT: case CUI_PLACE_LEFT: y = A.y + (A.h - H) * 0.5f; break;
         }
@@ -1093,7 +1110,8 @@ void cui__paint(cui_ctx *ui) {
         order[b + 1] = v;
     }
     for (int k = 0; k < n; k++) {
-        ui->current_layer = ui->nodes[order[k]].id;
+        cui_node *fn = &ui->nodes[order[k]];
+        ui->current_layer = fn->layer_id ? fn->layer_id : fn->id;
         cui__paint_node(ui, order[k], full);
     }
     ui->current_layer = 0;

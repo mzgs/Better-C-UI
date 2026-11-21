@@ -13,7 +13,7 @@
 
 @class CUIView;
 
-@interface CUIPlat : NSObject <NSWindowDelegate>
+@interface CUIPlat : NSObject <NSWindowDelegate, NSApplicationDelegate>
 @property (nonatomic, strong) NSWindow *window;
 @property (nonatomic, strong) CUIView *view;
 @property (nonatomic, strong) NSOpenGLContext *gl;
@@ -21,21 +21,34 @@
 @property (nonatomic, assign) cui_cursor cursor;
 @property (nonatomic, assign) BOOL fullscreenTransition;
 @property (nonatomic, assign) BOOL fullscreenTarget;
+@property (nonatomic, assign) int lastSystemDark;
 @end
 
 static void *cui__mac_libgl;
+
+static float cui__mac_scale(NSWindow *w, float *backing_out) {
+    float backing = w ? (float)w.backingScaleFactor : 1.0f;
+    if (backing <= 0.0f) backing = 1.0f;
+    if (backing_out) *backing_out = backing;
+    float s = backing;
+    const char *env = getenv("CUI_SCALE");
+    if (env) { float e = (float)atof(env); if (e > 0.25f && e < 8) s = e; }
+    return s;
+}
 
 double cui__plat_now(void) { return [[NSProcessInfo processInfo] systemUptime]; }
 const char *cui__plat_name(void) { return "cocoa"; }
 
 int cui__plat_system_dark(void) {
-    if (@available(macOS 10.14, *)) {
-        NSAppearance *a = [NSApp effectiveAppearance];
-        if (!a) a = [NSAppearance currentAppearance];
-        NSAppearanceName n = [a bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
-        return [n isEqualToString:NSAppearanceNameDarkAqua] ? 1 : 0;
+    @autoreleasepool {
+        if (@available(macOS 10.14, *)) {
+            NSAppearance *a = [NSApp effectiveAppearance];
+            if (!a) a = [NSAppearance currentAppearance];
+            NSAppearanceName n = [a bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
+            return [n isEqualToString:NSAppearanceNameDarkAqua] ? 1 : 0;
+        }
+        return -1;
     }
-    return -1;
 }
 
 static int cui__mac_mods(NSEventModifierFlags f) {
@@ -108,7 +121,9 @@ static cui_key cui__mac_key(NSEvent *e) {
 - (void)mouseAt:(NSEvent *)e {
     if (!self.app) return;
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
-    cui_input_mouse_move(self.app->ui, (float)p.x, (float)p.y);
+    float backing = 1.0f, s = cui__mac_scale(self.window, &backing);
+    float k = backing / s;
+    cui_input_mouse_move(self.app->ui, (float)p.x * k, (float)p.y * k);
 }
 - (void)mouseMoved:(NSEvent *)e { [self mouseAt:e]; }
 
@@ -116,7 +131,9 @@ static cui_key cui__mac_key(NSEvent *e) {
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)info {
     if (!self.app) return NSDragOperationNone;
     NSPoint p = [self convertPoint:[info draggingLocation] fromView:nil];
-    cui_input_file_hover(self.app->ui, true, (float)p.x, (float)p.y);
+    float backing = 1.0f, s = cui__mac_scale(self.window, &backing);
+    float k = backing / s;
+    cui_input_file_hover(self.app->ui, true, (float)p.x * k, (float)p.y * k);
     return NSDragOperationCopy;
 }
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)info { return [self draggingUpdated:info]; }
@@ -124,6 +141,8 @@ static cui_key cui__mac_key(NSEvent *e) {
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)info {
     if (!self.app) return NO;
     NSPoint p = [self convertPoint:[info draggingLocation] fromView:nil];
+    float backing = 1.0f, s = cui__mac_scale(self.window, &backing);
+    float k = backing / s;
     NSArray<NSURL *> *urls = [[info draggingPasteboard] readObjectsForClasses:@[ [NSURL class] ]
                                                                       options:@{ NSPasteboardURLReadingFileURLsOnlyKey : @YES }];
     const char *paths[64];
@@ -132,7 +151,7 @@ static cui_key cui__mac_key(NSEvent *e) {
         if (n >= 64) break;
         if (u.fileSystemRepresentation) paths[n++] = u.fileSystemRepresentation;
     }
-    cui_input_file_drop(self.app->ui, paths, n, (float)p.x, (float)p.y);
+    cui_input_file_drop(self.app->ui, paths, n, (float)p.x * k, (float)p.y * k);
     return n > 0;
 }
 - (void)mouseDragged:(NSEvent *)e { [self mouseAt:e]; }
@@ -161,22 +180,27 @@ static void cui__mac_apply_cursor(cui_cursor c);
 }
 
 - (void)keyDown:(NSEvent *)e {
+    if (!self.app) return;
     cui_key k = cui__mac_key(e);
     int mods = cui__mac_mods(e.modifierFlags);
     if (k) cui_input_key(self.app->ui, k, true, mods);
     if (!(mods & (CUI_MOD_SUPER | CUI_MOD_CTRL))) [self interpretKeyEvents:@[ e ]];
 }
 - (void)keyUp:(NSEvent *)e {
+    if (!self.app) return;
     cui_key k = cui__mac_key(e);
     if (k) cui_input_key(self.app->ui, k, false, cui__mac_mods(e.modifierFlags));
 }
 - (void)flagsChanged:(NSEvent *)e {
+    if (!self.app) return;
     /* modifiers alone: forward state with no key */
     cui_input_key(self.app->ui, CUI_KEY_NONE, false, cui__mac_mods(e.modifierFlags));
 }
 - (BOOL)performKeyEquivalent:(NSEvent *)e {
-    /* let Cmd shortcuts reach the UI (copy, paste, select all...) except the app menu ones */
-    if ((e.modifierFlags & NSEventModifierFlagCommand) && e.type == NSEventTypeKeyDown) {
+    /* let Cmd shortcuts reach the UI (copy, paste, select all...) except the app menu ones,
+     * and never steal them from focused native subviews such as WKWebView */
+    if (self.app && self.window.firstResponder == self &&
+        (e.modifierFlags & NSEventModifierFlagCommand) && e.type == NSEventTypeKeyDown) {
         NSString *c = e.charactersIgnoringModifiers.lowercaseString;
         if ([c isEqualToString:@"q"] || [c isEqualToString:@"w"] || [c isEqualToString:@"m"] || [c isEqualToString:@"h"]) return [super performKeyEquivalent:e];
         [self keyDown:e];
@@ -188,6 +212,7 @@ static void cui__mac_apply_cursor(cui_cursor c);
 /* NSTextInputClient */
 - (void)insertText:(id)string replacementRange:(NSRange)r {
     (void)r;
+    if (!self.app) return;
     NSString *s = [string isKindOfClass:[NSAttributedString class]] ? [(NSAttributedString *)string string] : (NSString *)string;
     const char *utf8 = s.UTF8String;
     if (utf8) cui_input_text(self.app->ui, utf8);
@@ -209,7 +234,12 @@ static void cui__mac_apply_cursor(cui_cursor c);
 @end
 
 @implementation CUIPlat
-- (BOOL)windowShouldClose:(NSWindow *)w { (void)w; self.app->running = false; return NO; }
+- (BOOL)windowShouldClose:(NSWindow *)w { (void)w; if (self.app) self.app->running = false; return NO; }
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    (void)sender;
+    if (self.app) self.app->running = false;
+    return NSTerminateCancel;
+}
 - (void)windowDidResize:(NSNotification *)n {
     (void)n;
     if (self.gl) [self.gl update];
@@ -289,17 +319,21 @@ static void cui__mac_set_cursor(void *user, cui_cursor c) {
 
 static void cui__mac_set_clip(void *user, const char *utf8) {
     (void)user;
-    NSPasteboard *pb = [NSPasteboard generalPasteboard];
-    [pb clearContents];
-    [pb setString:cui__mac_utf8(utf8) forType:NSPasteboardTypeString];
+    @autoreleasepool {
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        [pb clearContents];
+        [pb setString:cui__mac_utf8(utf8) forType:NSPasteboardTypeString];
+    }
 }
 
 static const char *cui__mac_get_clip(void *user) {
     cui_app *app = user;
-    NSString *s = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
-    if (!s) return NULL;
-    cui__app_set_clipboard_cache(app, s.UTF8String);
-    return app->clipboard;
+    @autoreleasepool {
+        NSString *s = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+        if (!s) return NULL;
+        cui__app_set_clipboard_cache(app, s.UTF8String);
+        return app->clipboard;
+    }
 }
 
 static void cui__mac_menu(void) {
@@ -331,6 +365,8 @@ bool cui__plat_init(cui_app *app) {
         CUIPlat *p = [[CUIPlat alloc] init];
         p.app = app;
         p.cursor = CUI_CURSOR_ARROW;
+        p.lastSystemDark = cui__plat_system_dark();
+        if (![NSApp delegate]) [NSApp setDelegate:p];
         NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
         if (!app->desc.fixed_size) style |= NSWindowStyleMaskResizable;
         NSRect frame = NSMakeRect(0, 0, app->desc.width, app->desc.height);
@@ -379,6 +415,8 @@ void cui__plat_shutdown(cui_app *app) {
         CUIPlat *p = (__bridge_transfer CUIPlat *)app->plat;
         app->plat = NULL;
         if (p.gl) { [NSOpenGLContext clearCurrentContext]; [p.gl clearDrawable]; p.gl = nil; }
+        if ([NSApp delegate] == p) [NSApp setDelegate:nil];
+        p.app = NULL;
         p.view.app = NULL;
         p.window.delegate = nil;
         p.window.contentView = nil;
@@ -443,18 +481,19 @@ void cui__plat_present(cui_app *app, const void *bgra, int w, int h, int stride)
 void cui__plat_metrics(cui_app *app, float *w, float *h, float *scale, int *fb_w, int *fb_h) {
     CUIPlat *p = cui__p(app);
     NSRect b = p.view.bounds;
-    float s = (float)p.window.backingScaleFactor;
-    const char *env = getenv("CUI_SCALE");
-    if (env) { float e = (float)atof(env); if (e > 0.25f && e < 8) s = e; }
-    *w = (float)b.size.width;
-    *h = (float)b.size.height;
+    float backing = 1.0f;
+    float s = cui__mac_scale(p.window, &backing);
+    int fw = (int)(b.size.width * backing + 0.5);
+    int fh = (int)(b.size.height * backing + 0.5);
+    *fb_w = fw;
+    *fb_h = fh;
     *scale = s;
-    *fb_w = (int)(b.size.width * s + 0.5);
-    *fb_h = (int)(b.size.height * s + 0.5);
+    *w = (float)fw / s;
+    *h = (float)fh / s;
 }
 
 void cui__plat_set_title(cui_app *app, const char *title) {
-    cui__p(app).window.title = cui__mac_utf8(title);
+    @autoreleasepool { cui__p(app).window.title = cui__mac_utf8(title); }
 }
 
 void cui__plat_set_size(cui_app *app, int w, int h) {
@@ -496,8 +535,14 @@ void cui__plat_wait(cui_app *app, double timeout) {
         }
         [NSApp updateWindows];
         if (app->desc.follow_system_theme) {
+            CUIPlat *p = cui__p(app);
             int dark = cui__plat_system_dark();
-            if (dark >= 0) cui_set_theme(app->ui, dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
+            if (dark >= 0 && dark != p.lastSystemDark) {
+                p.lastSystemDark = dark;
+                cui_set_theme(app->ui, dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
+                if (@available(macOS 10.14, *))
+                    p.window.appearance = [NSAppearance appearanceNamed:dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua];
+            }
         }
     }
 }
@@ -508,10 +553,12 @@ bool cui__plat_present_part(cui_app *app, const void *bgra, int w, int h, int st
 }
 
 double cui__plat_refresh_hz(cui_app *app) {
-    NSScreen *s = cui__p(app).window.screen;
-    if (s && [s respondsToSelector:NSSelectorFromString(@"maximumFramesPerSecond")])   /* macOS 12 and later */
-        return [[s valueForKey:@"maximumFramesPerSecond"] doubleValue];
-    return 0;
+    @autoreleasepool {
+        NSScreen *s = cui__p(app).window.screen;
+        if (s && [s respondsToSelector:NSSelectorFromString(@"maximumFramesPerSecond")])   /* macOS 12 and later */
+            return [[s valueForKey:@"maximumFramesPerSecond"] doubleValue];
+        return 0;
+    }
 }
 
 void cui__plat_gl_release(cui_app *app) {

@@ -773,7 +773,7 @@ static cui__edit_result cui__edit_logic(cui_ctx *ui, cui_id id, cui_edit_state *
     if ((!multiline || c.prim) && cui_key_pressed(ui, CUI_KEY_ENTER)) res.submitted = true;
     if (cui_key_pressed(ui, CUI_KEY_ESCAPE)) {
         if (e->cursor != e->anchor) e->anchor = e->cursor;
-        else { ui->focus = 0; res.blurred = true; }
+        else { ui->focus = 0; e->had_focus = false; res.blurred = true; }
     }
     if (c.edited) res.changed = true;
     if (c.edited || c.moved) ui->caret_time = ui->time;
@@ -1059,7 +1059,7 @@ bool cui_number_ex(cui_ctx *ui, const char *id_str, double *value, double min, d
     if (f & CUI_CHANGED) {
         char *end = NULL;
         double v = strtod(st->text, &end);
-        if (end != st->text) { *value = v; }
+        if (end != st->text && isfinite(v)) { *value = v; }
     }
     if (ui->focus == id) {
         if (cui_key_pressed(ui, CUI_KEY_UP)) *value += step * ((ui->mods & CUI_MOD_SHIFT) ? 10 : 1);
@@ -1095,6 +1095,7 @@ bool cui_number_ex(cui_ctx *ui, const char *id_str, double *value, double min, d
         }
     }
     if (col >= 0) cui__close(ui);
+    if (!isfinite(*value)) *value = isfinite(old) ? old : min;
     if (*value < min) *value = min;
     if (*value > max) *value = max;
     if (*value != old || commit) {

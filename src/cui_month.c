@@ -22,7 +22,7 @@ enum { CUI__MC_BAR = 0, CUI__MC_TIMED, CUI__MC_MORE };
 typedef struct { int16_t row, c0, c1, line; uint8_t kind; bool cont_l, cont_r; int ev, more, day; } cui__mc_item;
 
 typedef struct {
-    cui_date sel;
+    cui_date sel, own;
     int hover_ev, hover_day, more_day;   /* day indices are days since 1970 (negative before 1970) */
     int focus_day;
     bool has_sel, has_more, init;
@@ -338,8 +338,7 @@ cui_month_result cui_month_calendar_ex(cui_ctx *ui, const char *id_str, cui_date
     cui__mc_state *st = cui_state(ui, id, sizeof *st);
     cui_date today = o->today.year ? o->today : cui_date_today();
     int today_n = cui_date_to_days(today);
-    static cui_date own;
-    cui_date *mon = month ? month : &own;
+    cui_date *mon = month ? month : &st->own;
     if (!mon->year) { mon->year = today.year; mon->month = today.month; }
     mon->month = CUI_CLAMP(mon->month, 1, 12);
     if (!st->init) {

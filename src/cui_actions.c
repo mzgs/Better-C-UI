@@ -27,7 +27,8 @@ static void cui__paint_split_divider(cui_ctx *ui, cui_node *n, void *data) {
     int second = n->first >= 0 ? ui->nodes[n->first].next : -1;
     if (second < 0) return;
     cui_rect r = ui->nodes[second].rect;
-    cui_draw_rect(ui, (cui_rect){ r.x - 0.5f, n->rect.y + n->rect.h * 0.22f, 1, n->rect.h * 0.56f }, CUI_CORNERS(0), p->c);
+    float x = n->rtl ? r.x + r.w - 0.5f : r.x - 0.5f;
+    cui_draw_rect(ui, (cui_rect){ x, n->rect.y + n->rect.h * 0.22f, 1, n->rect.h * 0.56f }, CUI_CORNERS(0), p->c);
 }
 
 int cui_split_button_ex(cui_ctx *ui, const char *label, const char *const *items, int count, const cui_split_button_opts *o) {
@@ -59,9 +60,10 @@ int cui_split_button_ex(cui_ctx *ui, const char *label, const char *const *items
     cui_button_opts bo;
     memset(&bo, 0, sizeof bo);
     bo.variant = v; bo.size = o->size; bo.icon = o->icon; bo.disabled = o->disabled;
+    bool rtl = ui->direction == CUI_DIRECTION_RTL;
     bool main = cui_button_ex(ui, label, &bo);
     cui_node *mn = &ui->nodes[ui->last_node];
-    mn->radius.tr = mn->radius.br = 0;
+    if (rtl) { mn->radius.tl = mn->radius.bl = 0; } else { mn->radius.tr = mn->radius.br = 0; }
     mn->scale = 1;
     mn->border = 0;
     mn->pad[1] = cui__btn_pad(o->size) - 2;
@@ -71,7 +73,7 @@ int cui_split_button_ex(cui_ctx *ui, const char *label, const char *const *items
     co.selected = open;
     bool chev = cui_icon_button_ex(ui, CUI_ICON_CHEVRON_DOWN, &co);
     cui_node *cn = &ui->nodes[ui->last_node];
-    cn->radius.tl = cn->radius.bl = 0;
+    if (rtl) { cn->radius.tr = cn->radius.br = 0; } else { cn->radius.tl = cn->radius.bl = 0; }
     cn->scale = 1;
     cn->border = 0;
     cn->w = CUI_PX(h - 4);
@@ -397,8 +399,10 @@ int cui_reactions(cui_ctx *ui, const char *id_str, cui_reaction *items, int coun
         cui__mark_interactive(ui, pill, CUI_IF_FOCUSABLE);
         if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
         cui__open(ui, pill);
-        cui__icon_node(ui, it->icon, 14, cui_mix(CUI_C(ui, TEXT_SECONDARY), accent, st->on));
-        ui->nodes[ui->node_count - 1].scale = st->pop.x;
+        if (it->icon) {
+            cui__icon_node(ui, it->icon, 14, cui_mix(CUI_C(ui, TEXT_SECONDARY), accent, st->on));
+            ui->nodes[ui->node_count - 1].scale = st->pop.x;
+        }
         /* rolling count */
         float fs = cui__fs(ui, ui->theme.text_sm);
         char a[16], b[16];
@@ -487,10 +491,11 @@ int cui_speed_dial_ex(cui_ctx *ui, const char *id_str, const cui_speed_action *a
         rn->pad[1] = (size - 42) * 0.5f;
         bool pushed_disabled = !st->open;
         if (pushed_disabled) cui_push_disabled(ui, true);
+        float step = count > 1 ? CUI_MIN(0.07f, 0.65f / (float)(count - 1)) : 0.0f;
         for (int j = 0; j < count; j++) {
             int k = below ? j : count - 1 - j;          /* k counts outward from the button */
             int dist = below ? j : count - 1 - j;
-            float delay = 0.07f * (float)dist;
+            float delay = step * (float)dist;
             float tk = cui__clampf((t - delay) / CUI_MAX(0.2f, 1.0f - delay), 0, 1.2f);
             cui_id aid = cui__hash(&k, sizeof k, id ^ 0xA0u);
             cui_interact ar = cui__interact(ui, aid, CUI_IF_FOCUSABLE);
@@ -782,6 +787,7 @@ void cui_swipe_item_begin(cui_ctx *ui, const char *id_str, const cui_swipe_actio
     int under = cui__node_new(ui, 0);
     cui_node *un = &ui->nodes[under];
     un->dir = CUI_ROW; un->w = CUI_FILL; un->h = CUI_FILL; un->justify = CUI_JUSTIFY_BETWEEN;
+    un->direction = CUI_DIRECTION_LTR;   /* physical left/right reveal must match fn->tx */
     cui__open(ui, under);
     int res = -1;
     cui__swipe_actions(ui, id, left, left_count, true, x > 0 ? x : 0, &res, st);
@@ -958,7 +964,7 @@ bool cui_scrub_ex(cui_ctx *ui, const char *label, float *value, float min, float
                 *value = cui__clampf(v, min, max);
             }
         }
-        if (r.clicked && !st->moved) {
+        if (r.clicked && (!st->moved || r.keyboard_activate)) {
             st->editing = true;
             snprintf(st->text, sizeof st->text, fmt, (double)*value);
             ui->focus = fid;
@@ -1092,15 +1098,22 @@ bool cui_money_input_ex(cui_ctx *ui, const char *id_str, double *value, const cu
     io.suffix = o->code;
     io.placeholder = dec ? "0.00" : "0";
     int f = cui__text_field(ui, id, st->text, sizeof st->text, &io, false, 0, NULL);
+    if (!focused && ui->focus == id && !(f & CUI_CHANGED)) {
+        /* clicked into the field this frame: switch from thousands-formatted display to plain digits */
+        snprintf(st->text, sizeof st->text, "%.*f", dec, *value);
+        if (*value == 0) st->text[0] = 0;
+        ui->tf_select_all = id;
+    }
     if ((f & CUI_CHANGED) && ui->focus == id) {
-        /* keep digits and one decimal point */
+        /* keep digits and one decimal point; only treat ',' as decimal when no '.' is present */
         char clean[64];
         size_t n = 0;
         bool dot = false;
+        bool has_dot = strchr(st->text, '.') != NULL;
         int after = 0;
         for (const char *p = st->text; *p && n + 1 < sizeof clean; p++) {
             if (*p >= '0' && *p <= '9') { if (dot && after >= dec) continue; clean[n++] = *p; if (dot) after++; }
-            else if ((*p == '.' || *p == ',') && !dot && dec > 0) { dot = true; clean[n++] = '.'; }
+            else if ((*p == '.' || (*p == ',' && !has_dot)) && !dot && dec > 0) { dot = true; clean[n++] = '.'; }
         }
         clean[n] = 0;
         if (strcmp(clean, st->text) != 0) snprintf(st->text, sizeof st->text, "%s", clean);

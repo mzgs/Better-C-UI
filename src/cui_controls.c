@@ -263,12 +263,13 @@ bool cui_slider_ex(cui_ctx *ui, const char *label, float *value, float min, floa
     cui_pop_disabled(ui);
     cui__slider_state *st = cui_state(ui, id, sizeof *st);
     float old = *value;
-    float t = (*value - min) / (max - min);
+    float t = isfinite(*value) ? cui__clampf((*value - min) / (max - min), 0, 1) : 0;
     if (!st->init) { st->thumb.x = t; st->init = true; }
     cui_rect pr = cui__prev_rect(ui, track_id);
     float pad = 9;
     float x0 = pr.x + pad, x1 = pr.x + pr.w - pad;
-    if (r.active && ui->mdown[0] && x1 > x0) {
+    bool edited = false;
+    if (r.active && ui->mdown[0] && !disabled && x1 > x0) {
         /* right to left, the minimum is at the right end */
         float mx = st->rtl ? x0 + x1 - ui->mx : ui->mx;
         float mt = (mx - x0) / (x1 - x0);
@@ -280,24 +281,30 @@ bool cui_slider_ex(cui_ctx *ui, const char *label, float *value, float min, floa
         else if (mx > x1) over = cui__rubber(mx - x1);
         st->over.x = over; st->over.v = 0;
         t = cui__clampf(mt, 0, 1);
+        edited = true;
     } else {
         st->dragging = false;
     }
     /* keyboard */
-    if (r.focused) {
+    if (r.focused && !disabled) {
         float step = o->step > 0 ? o->step / (max - min) : 0.01f;
         cui_key less = st->rtl ? CUI_KEY_RIGHT : CUI_KEY_LEFT, more = st->rtl ? CUI_KEY_LEFT : CUI_KEY_RIGHT;
-        if (cui_key_pressed(ui, less) || cui_key_pressed(ui, CUI_KEY_DOWN)) t -= step * ((ui->mods & CUI_MOD_SHIFT) ? 10 : 1);
-        if (cui_key_pressed(ui, more) || cui_key_pressed(ui, CUI_KEY_UP)) t += step * ((ui->mods & CUI_MOD_SHIFT) ? 10 : 1);
-        if (cui_key_pressed(ui, CUI_KEY_HOME)) t = 0;
-        if (cui_key_pressed(ui, CUI_KEY_END)) t = 1;
-        t = cui__clampf(t, 0, 1);
+        float kt = t;
+        if (cui_key_pressed(ui, less) || cui_key_pressed(ui, CUI_KEY_DOWN)) kt -= step * ((ui->mods & CUI_MOD_SHIFT) ? 10 : 1);
+        if (cui_key_pressed(ui, more) || cui_key_pressed(ui, CUI_KEY_UP)) kt += step * ((ui->mods & CUI_MOD_SHIFT) ? 10 : 1);
+        if (cui_key_pressed(ui, CUI_KEY_HOME)) kt = 0;
+        if (cui_key_pressed(ui, CUI_KEY_END)) kt = 1;
+        kt = cui__clampf(kt, 0, 1);
+        if (kt != t) { t = kt; edited = true; }
     }
-    float v = min + t * (max - min);
-    if (o->step > 0) v = min + roundf((v - min) / o->step) * o->step;
-    v = cui__clampf(v, min, max);
-    *value = v;
-    t = (v - min) / (max - min);
+    float v = *value;
+    if (edited) {
+        v = min + t * (max - min);
+        if (o->step > 0) v = min + roundf((v - min) / o->step) * o->step;
+        v = cui__clampf(v, min, max);
+        *value = v;
+        t = (v - min) / (max - min);
+    }
     if (!st->dragging) cui__spring(ui, &st->over, 0, CUI__T_PANEL, 0.0f);
     if (st->dragging || r.focus_visible) { st->thumb.x = t; st->thumb.v = 0; }
     else cui__spring(ui, &st->thumb, t, CUI__T_STATE, 0.0f);
@@ -328,27 +335,48 @@ bool cui_slider_ex(cui_ctx *ui, const char *label, float *value, float min, floa
     return *value != old;
 }
 
-typedef struct { int grabbed; cui_spring a, b; float hover; bool init; bool rtl; } cui__range_state;
+typedef struct { int grabbed; cui_spring a, b; float hover, focus; bool init; bool rtl; } cui__range_state;
 
 bool cui_range_slider(cui_ctx *ui, const char *label, float *lo, float *hi, float min, float max) {
     if (max <= min) max = min + 1;
     cui_id id = cui_make_id(ui, label ? label : "range");
     cui_id track_id = id ^ 0x52u;
+    bool disabled = cui_is_disabled(ui);
     cui_interact r = cui__interact(ui, track_id, CUI_IF_FOCUSABLE | CUI_IF_DRAG);
     cui__range_state *st = cui_state(ui, id, sizeof *st);
     float olo = *lo, ohi = *hi;
-    float ta = (*lo - min) / (max - min), tb = (*hi - min) / (max - min);
+    float ta = isfinite(*lo) ? cui__clampf((*lo - min) / (max - min), 0, 1) : 0;
+    float tb = isfinite(*hi) ? cui__clampf((*hi - min) / (max - min), 0, 1) : 1;
     if (!st->init) { st->a.x = ta; st->b.x = tb; st->init = true; }
     cui_rect pr = cui__prev_rect(ui, track_id);
     float x0 = pr.x + 9, x1 = pr.x + pr.w - 9;
-    if (r.active && ui->mdown[0] && x1 > x0) {
+    bool edited = false;
+    if (r.active && ui->mdown[0] && !disabled && x1 > x0) {
         float mx = st->rtl ? x0 + x1 - ui->mx : ui->mx;
         float mt = cui__clampf((mx - x0) / (x1 - x0), 0, 1);
         if (ui->mpressed[0]) st->grabbed = fabsf(mt - ta) < fabsf(mt - tb) ? 0 : 1;
         if (st->grabbed == 0) ta = CUI_MIN(mt, tb); else tb = CUI_MAX(mt, ta);
+        edited = true;
     }
-    *lo = min + ta * (max - min);
-    *hi = min + tb * (max - min);
+    if (r.focused && !disabled) {
+        if (cui_key_pressed(ui, CUI_KEY_SPACE) || cui_key_pressed(ui, CUI_KEY_ENTER)) st->grabbed ^= 1;
+        float step = 0.01f * ((ui->mods & CUI_MOD_SHIFT) ? 10.0f : 1.0f);
+        cui_key less = st->rtl ? CUI_KEY_RIGHT : CUI_KEY_LEFT, more = st->rtl ? CUI_KEY_LEFT : CUI_KEY_RIGHT;
+        float delta = 0;
+        if (cui_key_pressed(ui, less) || cui_key_pressed(ui, CUI_KEY_DOWN)) delta = -step;
+        if (cui_key_pressed(ui, more) || cui_key_pressed(ui, CUI_KEY_UP)) delta = step;
+        if (delta != 0) {
+            if (st->grabbed == 0) ta = cui__clampf(ta + delta, 0, tb);
+            else tb = cui__clampf(tb + delta, ta, 1);
+            edited = true;
+        }
+        if (cui_key_pressed(ui, CUI_KEY_HOME)) { if (st->grabbed == 0) ta = 0; else tb = ta; edited = true; }
+        if (cui_key_pressed(ui, CUI_KEY_END)) { if (st->grabbed == 0) ta = tb; else tb = 1; edited = true; }
+    }
+    if (edited) {
+        *lo = min + ta * (max - min);
+        *hi = min + tb * (max - min);
+    }
     if (r.active || r.focus_visible) {
         st->a = (cui_spring){ ta, 0 };
         st->b = (cui_spring){ tb, 0 };
@@ -357,6 +385,7 @@ bool cui_range_slider(cui_ctx *ui, const char *label, float *lo, float *hi, floa
         cui__spring(ui, &st->b, tb, CUI__T_STATE, 0);
     }
     cui__tween(ui, &st->hover, (r.hovered || r.active) ? 1.0f : 0.0f, CUI__T_HOVER);
+    cui__tween(ui, &st->focus, r.focus_visible ? 1.0f : 0.0f, CUI__T_FOCUS);
     int col = cui__node_new(ui, id);
     ui->nodes[col].gap = 6;
     ui->nodes[col].w = CUI_FILL;
@@ -367,7 +396,7 @@ bool cui_range_slider(cui_ctx *ui, const char *label, float *lo, float *hi, floa
     ui->nodes[tr].self_align = CUI_ALIGN_STRETCH;
     cui__mark_interactive(ui, tr, CUI_IF_FOCUSABLE);
     cui__slider_paint *p = cui__frame_alloc(ui, sizeof *p);
-    p->t = st->b.x; p->lo_t = st->a.x; p->range = true; p->hover = st->hover;
+    p->t = st->b.x; p->lo_t = st->a.x; p->range = true; p->hover = st->hover; p->focus = st->focus;
     p->rtl_out = &st->rtl;
     ui->nodes[tr].paint = cui__paint_slider;
     ui->nodes[tr].paint_data = p;
@@ -689,9 +718,9 @@ bool cui_tabs_ex(cui_ctx *ui, const char *id, const char *const *items, int coun
     if (*index >= 0 && *index < count && last[0] != *index + 1 && ss->content_w > ss->view_w + 0.5f) {
         cui_rect vr = cui__prev_rect(ui, sid), tr = cui__prev_rect(ui, cui__hash(index, sizeof *index, cui_make_id(ui, id)));
         if (vr.w > 0 && tr.w > 0) {
-            float margin = 24;
-            if (tr.x < vr.x) ss->tx -= vr.x - tr.x + margin;
-            else if (tr.x + tr.w > vr.x + vr.w) ss->tx += tr.x + tr.w - (vr.x + vr.w) + margin;
+            float margin = 24, dir = ss->rtl ? -1.0f : 1.0f;
+            if (tr.x < vr.x) ss->tx -= dir * (vr.x - tr.x + margin);
+            else if (tr.x + tr.w > vr.x + vr.w) ss->tx += dir * (tr.x + tr.w - (vr.x + vr.w) + margin);
         }
     }
     if (*index >= 0) last[0] = *index + 1;
@@ -857,6 +886,7 @@ int cui_breadcrumb(cui_ctx *ui, const char *const *items, int count) {
         if (last) {
             cui__label_text(ui, items[k], CUI_FONT_MEDIUM, cui__fs(ui, ui->theme.text_body), CUI_C(ui, FOREGROUND));
         } else {
+            cui_push_id_int(ui, k);
             cui_id id = cui_make_id(ui, items[k]);
             cui_interact r = cui__interact(ui, id, CUI_IF_FOCUSABLE);
             float hv_v = cui__hover_fade(ui, id, r.hovered, CUI__T_HOVER), *hv = &hv_v;
@@ -868,6 +898,7 @@ int cui_breadcrumb(cui_ctx *ui, const char *const *items, int count) {
             if (r.hovered) cui__set_cursor(ui, CUI_CURSOR_HAND);
             if (r.clicked) clicked = k;
             cui__icon_node(ui, CUI_ICON_CHEVRON_RIGHT, 14, CUI_C(ui, TEXT_MUTED));
+            cui_pop_id(ui);
         }
     }
     cui__close(ui);

@@ -1138,7 +1138,7 @@ void cui__paint_scrollbars(cui_ctx *ui, cui_node *n, cui_rect clip) {
     if (st->fade.a > 0 && max_y > 0.5f) {
         /* each edge fades in as content moves past it */
         float fh = CUI_MIN(36.0f, r.h * 0.2f);
-        float top = cui__clampf(st->y / fh, 0, 1), bot = cui__clampf((max_y - st->y) / fh, 0, 1);
+        float top = fh > 0 ? cui__clampf(st->y / fh, 0, 1) : 0, bot = fh > 0 ? cui__clampf((max_y - st->y) / fh, 0, 1) : 0;
         cui_color clear = st->fade; clear.a = 0;
         cui_corners rc = n->radius;
         if (top > 0) cui_draw_rect_gradient(ui, (cui_rect){ r.x, r.y, r.w, fh }, (cui_corners){ rc.tl, rc.tr, 0, 0 }, cui_alpha(st->fade, top), clear);
@@ -1274,7 +1274,8 @@ void cui_split_begin(cui_ctx *ui, const char *id_str, float *ratio, const cui_sp
     float total = o->vertical ? pr.h : pr.w;
     if (r.active && ui->mdown[0] && total > 0) {
         float pos = o->vertical ? ui->my - pr.y : st->rtl ? pr.x + pr.w - ui->mx : ui->mx - pr.x;
-        pos = cui__clampf(pos, b->min1, total - b->min2);
+        float lo = CUI_MIN(b->min1, total * 0.5f), hi = CUI_MAX(lo, total - b->min2);
+        pos = cui__clampf(pos, lo, hi);
         *ratio = pos / total;
     }
     if (r.hovered || r.active) cui__set_cursor(ui, o->vertical ? CUI_CURSOR_RESIZE_NS : CUI_CURSOR_RESIZE_EW);

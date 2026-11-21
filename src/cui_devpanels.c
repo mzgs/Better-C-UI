@@ -589,6 +589,7 @@ bool cui_url_set_params(char *url, size_t cap, const cui_kv_pair *pairs, int cou
     const char *q = strchr(url, '?'), *hash = strchr(url, '#');
     if (q && hash && q > hash) q = NULL;
     size_t base = q ? (size_t)(q - url) : hash ? (size_t)(hash - url) : ul;
+    if (base >= cap) return false;
     char frag[256] = "";
     if (hash) snprintf(frag, sizeof frag, "%s", hash);
     char *out = malloc(cap);
@@ -596,6 +597,7 @@ bool cui_url_set_params(char *url, size_t cap, const cui_kv_pair *pairs, int cou
     memcpy(out, url, base);
     size_t len = base;
     bool first = true, ok = true;
+    if (!pairs) count = 0;
     for (int i = 0; i < count && ok; i++) {
         if (!pairs[i].enabled || !pairs[i].key[0]) continue;
         if (len + 2 > cap) { ok = false; break; }
@@ -643,7 +645,7 @@ static void cui__ff_cell(cui_ctx *ui, cui__ff_state *s, cui_feature_flag *fl, in
         memset(&bo, 0, sizeof bo);
         bo.size = CUI_SIZE_SM; bo.variant = CUI_BUTTON_GHOST; bo.tooltip = "Share of users";
         if (share < 100) bo.color = cui__tone_color(ui, CUI_TONE_WARNING);
-        if (cui_button_ex(ui, cui__frame_printf(ui, "%d%%", share), &bo)) {
+        if (cui_button_ex(ui, cui__frame_printf(ui, "%d%%###share", share), &bo)) {
             s->pop_flag = i; s->pop_env = e; s->rollout = (float)share;
             cui_popover_open(ui, "share");
         }

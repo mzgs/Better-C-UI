@@ -55,6 +55,7 @@ static inline cui_xform cui__xf(cui_ctx *ui) { return ui->dl.xform_stack[ui->dl.
 static inline bool cui__xf_identity(cui_xform x) { return x.scale == 1 && x.ox == 0 && x.oy == 0 && x.alpha == 1; }
 
 static inline cui_color cui__xa(cui_color c, float a) {
+    if (a <= 0) { c.a = 0; return c; }
     if (a >= 1) return c;
     c.a = (uint8_t)(c.a * a + 0.5f);
     return c;
@@ -189,7 +190,10 @@ void cui_draw_shadow(cui_ctx *ui, cui_rect r, cui_corners rad, float blur, float
     float hw = (r.w * 0.5f + spread) * s, hh = (r.h * 0.5f + spread) * s;
     if (hw <= 0 || hh <= 0) return;
     cui_corners rr = cui__scale_corners(rad, s);
-    rr.tl += spread * s; rr.tr += spread * s; rr.br += spread * s; rr.bl += spread * s;
+    rr.tl = CUI_MAX(0.0f, rr.tl + spread * s);
+    rr.tr = CUI_MAX(0.0f, rr.tr + spread * s);
+    rr.br = CUI_MAX(0.0f, rr.br + spread * s);
+    rr.bl = CUI_MAX(0.0f, rr.bl + spread * s);
     float cx = (r.x + r.w * 0.5f + off.x) * s, cy = (r.y + r.h * 0.5f + off.y) * s;
     cui__sdf_quad(ui, cx, cy, hw, hh, sigma * 3.0f, rr, sigma, CUI_SHADE_SHADOW, color, color, color, color, color, 0, 0, 0, 0, 0);
 }
@@ -362,6 +366,7 @@ void cui_draw_polygon(cui_ctx *ui, const cui_vec2 *pts, int n, cui_color col) {
 }
 
 void cui_draw_arc(cui_ctx *ui, cui_vec2 c, float r, float a0, float a1, float thick, cui_color col) {
+    if (!isfinite(c.x) || !isfinite(c.y) || !isfinite(r) || !isfinite(a0) || !isfinite(a1) || r <= 0) return;
     float span = fabsf(a1 - a0);
     if (span <= 0.0001f) return;
     int seg = (int)CUI_CLAMP(span * r * ui->scale / 3.0f, 8, 256);
@@ -410,6 +415,7 @@ void cui__draw_check(cui_ctx *ui, cui_rect r, float t, float thick, cui_color c)
     cui_vec2 b = { r.x + r.w * 0.42f, r.y + r.h * 0.72f };
     cui_vec2 d = { r.x + r.w * 0.78f, r.y + r.h * 0.32f };
     float l1 = hypotf(b.x - a.x, b.y - a.y), l2 = hypotf(d.x - b.x, d.y - b.y);
+    if (l1 <= 0.0001f || l2 <= 0.0001f) return;
     float len = (l1 + l2) * cui__clampf(t, 0, 1);
     cui_vec2 pts[3] = { a, b, d };
     int n = 3;
@@ -451,7 +457,8 @@ void cui__draw_elevation(cui_ctx *ui, cui_rect r, cui_corners rad, cui_elevation
     for (int i = 1; i >= 0; i--) {
         if (sh[i].alpha <= 0) continue;
         cui_vec2 off = { 0, sh[i].y };
-        cui_draw_shadow(ui, r, rad, sh[i].blur, sh[i].spread, off, cui__rgba(0, 0, 0, (int)(255 * sh[i].alpha * alpha)));
+        int sa = CUI_CLAMP((int)(255 * sh[i].alpha * alpha), 0, 255);
+        cui_draw_shadow(ui, r, rad, sh[i].blur, sh[i].spread, off, cui__rgba(0, 0, 0, sa));
     }
 }
 

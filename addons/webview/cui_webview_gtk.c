@@ -131,6 +131,8 @@ void cui__webview_native_destroy(cui__webview *v) {
     WebKitUserContentManager *manager = webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(g->web));
     g_signal_handlers_disconnect_by_data(manager, v);
     gtk_widget_destroy(g->plug);
+    XFlush(g->display);
+    while (g_main_context_iteration(NULL, FALSE)) {}
     free(g);
     v->native = NULL;
 }

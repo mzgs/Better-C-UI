@@ -68,6 +68,7 @@ bool cui__plat_file_dialog(cui_app *app, const cui_file_dialog_opts *o, char *ou
     } else {
         /* filter: "Images\0*.png;*.jpg\0All files\0*.*\0\0" */
         WCHAR filter[512];
+        filter[0] = filter[1] = 0;
         int n = 0;
         bool fit = true;
         if (o->filter && *o->filter) {
@@ -82,14 +83,17 @@ bool cui__plat_file_dialog(cui_app *app, const cui_file_dialog_opts *o, char *ou
             fit = cui__w_append(filter, 511, &n, o->filter_name ? o->filter_name : "Files") && cui__w_append(filter, 511, &n, spec);
         }
         if (!fit) n = 0;
-        if (!cui__w_append(filter, 511, &n, "All files") || !cui__w_append(filter, 511, &n, "*.*")) n = 0;
+        if (!cui__w_append(filter, 511, &n, "All files") || !cui__w_append(filter, 511, &n, "*.*")) {
+            n = 0;
+            filter[0] = filter[1] = 0;
+        }
         filter[n] = 0;   /* list ends with an empty string */
         if (o->default_name) cui__to_wide(o->default_name, path, MAX_PATH * 4);
         OPENFILENAMEW ofn;
         memset(&ofn, 0, sizeof ofn);
         ofn.lStructSize = sizeof ofn;
         ofn.hwndOwner = owner;
-        ofn.lpstrFilter = filter;
+        ofn.lpstrFilter = n > 0 ? filter : NULL;
         ofn.lpstrFile = path;
         ofn.nMaxFile = MAX_PATH * 4;
         ofn.lpstrTitle = title;
@@ -154,7 +158,14 @@ static bool cui__spawn_detached(const char *prog, const char *arg) {
     if (pid < 0) return false;
     if (pid == 0) {
         pid_t g = fork();
-        if (g == 0) { execlp(prog, prog, arg, (char *)NULL); _exit(127); }
+        if (g == 0) {
+#if defined(__APPLE__)
+            execlp(prog, prog, "--", arg, (char *)NULL);
+#else
+            execlp(prog, prog, arg, (char *)NULL);
+#endif
+            _exit(127);
+        }
         _exit(g < 0 ? 1 : 0);
     }
     int status = 0;

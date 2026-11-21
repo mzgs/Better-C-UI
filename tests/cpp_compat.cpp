@@ -1,7 +1,9 @@
 // Compiles the public headers as C++ and uses the *_ex functions with
 // designated initializers (C++20).
 #include <cui/cui.h>
+#ifdef CUI_WITH_APP
 #include <cui/cui_app.h>
+#endif
 #include <cui/cui_render.h>
 
 void cpp_ui(cui_ctx *ui) {
@@ -15,7 +17,9 @@ void cpp_ui(cui_ctx *ui) {
     cui_text_ex(ui, "From C++", &t);
     cui_color c = CUI_RGB(0x7747ff);
     cui_size s = CUI_PX(10);
-    (void)c; (void)s;
+    int r = 6;
+    cui_corners cr = CUI_CORNERS(r);
+    (void)c; (void)s; (void)cr;
     cui_box_end(ui);
 }
 
@@ -35,11 +39,13 @@ static void frame(cui_ctx *ui, void *) {
     cui_box_end(ui);
 }
 
+#ifdef CUI_WITH_APP
 int cpp_app() {   // not called here: it opens a window
     cui_app_desc desc{};
     desc.title = "My app";
     return cui_app_run(&desc, frame, nullptr);
 }
+#endif
 
 int main() {
     cui_sw_renderer *sw = cui_sw_create();

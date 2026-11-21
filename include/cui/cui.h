@@ -155,7 +155,7 @@ typedef enum cui_texture_format { CUI_TEXTURE_R8 = 1, CUI_TEXTURE_RGBA8 = 4 } cu
 typedef uintptr_t cui_texture;
 
 /* How CUI talks to a renderer. The built-in renderers fill this in for you
- * (cui_render_gl_iface / cui_render_sw_iface). Implement it to use CUI with
+ * (cui_gl_iface / cui_sw_iface). Implement it to use CUI with
  * any graphics API. */
 typedef struct cui_renderer_iface {
     void *user;
@@ -1508,11 +1508,13 @@ typedef struct cui_file_picker_opts {
  * not fit, returns false, clears out, and keeps the dialog open. */
 CUI_API bool cui_file_picker_ex(cui_ctx *ui, const char *id, bool *open, char *out, size_t out_cap, const cui_file_picker_opts *opts);
 
+#ifndef __cplusplus
 #define cui_tree_table_begin(ui, id, cols, ncols, nodes, n, ...) cui_tree_table_begin_ex((ui), (id), (cols), (ncols), (nodes), (n), CUI__OPTS(cui_tree_table_opts, __VA_ARGS__))
 #define cui_path_bar(ui, id, segs, n, ...) cui_path_bar_ex((ui), (id), (segs), (n), CUI__OPTS(cui_path_bar_opts, __VA_ARGS__))
 #define cui_file_browser(ui, id, path, cap, ...) cui_file_browser_ex((ui), (id), (path), (cap), CUI__OPTS(cui_file_browser_opts, __VA_ARGS__))
 #define cui_terminal(ui, id, t, ...) cui_terminal_ex((ui), (id), (t), CUI__OPTS(cui_terminal_opts, __VA_ARGS__))
 #define cui_file_picker(ui, id, open, out, cap, ...) cui_file_picker_ex((ui), (id), (open), (out), (cap), CUI__OPTS(cui_file_picker_opts, __VA_ARGS__))
+#endif
 
 /* ------------------------------------------------------------------------ */
 /* Code                                                                     */
@@ -1762,7 +1764,9 @@ typedef struct cui_diff_result {
     bool approximate;           /* the search hit its limit: correct, maybe not the shortest */
 } cui_diff_result;
 CUI_API cui_diff_result cui_diff_view_ex(cui_ctx *ui, const char *id, const char *old_text, const char *new_text, const cui_diff_opts *opts);
+#ifndef __cplusplus
 #define cui_diff_view(ui, id, old_text, new_text, ...) cui_diff_view_ex((ui), (id), (old_text), (new_text), CUI__OPTS(cui_diff_opts, __VA_ARGS__))
+#endif
 
 /* The rows the view shows after folding, e.g. to put a comment button beside
  * a line. Copies rows [first, first + cap) and returns how many there are (0
@@ -3312,7 +3316,9 @@ typedef struct cui_emoji_picker_opts {
     bool no_tone;                     /* hides the skin tone button */
 } cui_emoji_picker_opts;
 CUI_API const char *cui_emoji_picker_ex(cui_ctx *ui, const char *id, const cui_emoji_picker_opts *opts);
+#ifndef __cplusplus
 #define cui_emoji_picker(ui, id, ...) cui_emoji_picker_ex((ui), (id), CUI__OPTS(cui_emoji_picker_opts, __VA_ARGS__))
+#endif
 
 /* ---- Hex viewer ---- */
 
@@ -4364,7 +4370,7 @@ CUI_API void cui_dot_display_ex(cui_ctx *ui, const char *text, const cui_dot_dis
 /* ------------------------------------------------------------------------ */
 
 typedef struct cui_corners { float tl, tr, br, bl; } cui_corners;
-#define CUI_CORNERS(r) (CUI__LIT(cui_corners){ (r), (r), (r), (r) })
+#define CUI_CORNERS(r) (CUI__LIT(cui_corners){ (float)(r), (float)(r), (float)(r), (float)(r) })
 
 CUI_API void cui_draw_rect(cui_ctx *ui, cui_rect r, cui_corners radius, cui_color fill);
 CUI_API void cui_draw_rect_border(cui_ctx *ui, cui_rect r, cui_corners radius, cui_color fill, cui_color border, float border_width);

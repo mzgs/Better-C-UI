@@ -55,7 +55,7 @@ int cui__shape_map(const cui_shape_font *f,uint32_t cp) {
             unsigned m=lo+(hi-lo)/2; off r=p+16+12*m;
             if (cp<u32(f,r)) hi=m;
             else if (cp>u32(f,r+4)) lo=m+1;
-            else return (int)(u32(f,r+8)+cp-u32(f,r));
+            else { uint32_t gid=u32(f,r+8)+(cp-u32(f,r)); return gid<65536u?(int)gid:0; }
         }
     } else if (cp<=65535) {
         unsigned n=u16(f,p+6)/2;
@@ -100,7 +100,7 @@ static int klass(const cui_shape_font *f,off p,int glyph) {
 }
 typedef struct {
     cui_shape_font *f; cui_shape_glyph *g;
-    int n,cap,rtl,position,failed,operations;
+    int n,cap,rtl,position,failed,operations,active_form;
     off layout,list;
 } shape;
 static int glyph_class(shape *s,int i) {
@@ -252,7 +252,7 @@ static int subtable(shape *s,off p,unsigned type,int i,unsigned flags,off lookup
                 int ok=1;
                 for (int j=1;j<n;j++) {
                     at=next(s,at,1,flags,lookup);
-                    if (at>=s->n || s->g[at].id!=(int)u16(f,q+2+2*j) || s->g[at].form!=s->g[i].form) { ok=0; break; }
+                    if (at>=s->n || s->g[at].id!=(int)u16(f,q+2+2*j) || (s->active_form>=0 && s->g[at].form!=s->g[i].form)) { ok=0; break; }
                     positions[j]=at;
                 }
                 if (!ok) continue;
@@ -289,7 +289,7 @@ static int subtable(shape *s,off p,unsigned type,int i,unsigned flags,off lookup
             if (c1<(int)u16(f,p+12) && c2<(int)u16(f,p+14)) q=p+16+(c1*u16(f,p+14)+c2)*(value_size(v1)+value_size(v2));
         }
         if (!q) return 0;
-        value(s,i,q,v1); value(s,j,q+value_size(v1),v2); return v2?2:1;
+        value(s,i,q,v1); value(s,j,q+value_size(v1),v2); return v2?(j-i+1):1;
     }
     if ((type==4 || type==5 || type==6) && fmt==1) {
         int j=i-1;
@@ -348,6 +348,7 @@ static void feature(shape *s,off lang,off tag,int form) {
     cui_shape_font *f=s->f;
     off features=rel(f,s->layout,u16(f,s->layout+6));
     if (!lang || !features) return;
+    s->active_form=form;
     for (unsigned k=0;k<u16(f,lang+4);k++) {
         unsigned index=u16(f,lang+6+2*k);
         if (index>=u16(f,features)) continue;
@@ -440,7 +441,7 @@ static int joining(uint32_t cp) {
 int cui__shape(cui_shape_font *f,cui_shape_glyph *g,int count,int capacity,uint32_t script,int rtl,int tabular) {
     if (count<0 || count>capacity || !f->cmap || !f->metrics || !f->hmtx) return -1;
     count=normalize(f,g,count,script==TAG('a','r','a','b'));
-    shape s={f,g,count,capacity,rtl,0,0,0,0,0};
+    shape s={f,g,count,capacity,rtl,0,0,0,-1,0,0};
     int prev=-1,prev_type=0;
     for (int i=0;i<count;i++) {
         g[i].id=cui__shape_map(f,g[i].codepoint); g[i].x=g[i].y=0;
@@ -469,6 +470,8 @@ int cui__shape(cui_shape_font *f,cui_shape_glyph *g,int count,int capacity,uint3
         int glyph=g[i].id;
         g[i].advance=u16(f,f->hmtx+4*(glyph<f->metrics?glyph:f->metrics-1));
         if (glyph_class(&s,i)==3) g[i].advance=0;
+        if ((g[i].codepoint>=0x200b && g[i].codepoint<=0x200f) || (g[i].codepoint>=0x202a && g[i].codepoint<=0x202e) || (g[i].codepoint>=0x2066 && g[i].codepoint<=0x2069))
+            g[i].advance=0;
     }
     s.position=1; s.layout=f->gpos; s.list=rel(f,s.layout,u16(f,s.layout+8)); lang=language(f,s.layout,script);
     static const off pos[]={TAG('c','u','r','s'),TAG('k','e','r','n'),TAG('m','a','r','k'),TAG('m','k','m','k'),TAG('d','i','s','t')};

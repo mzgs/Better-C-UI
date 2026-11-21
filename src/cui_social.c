@@ -155,22 +155,31 @@ void cui_typing_indicator(cui_ctx *ui, const char *name) {
 /* ------------------------------------------------------------------------ */
 
 /* where each depth's last avatar ended, written as rows paint, so a reply's rail starts under its parent's avatar */
-typedef struct { float bottom[8]; } cui__thread_rail;
+typedef struct { uint64_t frame; float bottom[8]; bool has[8]; } cui__thread_rail;
 typedef struct { cui_color c; int depth; float indent, av, parent_indent, parent_av; cui__thread_rail *rail; } cui__thread_paint;
 static void cui__paint_thread(cui_ctx *ui, cui_node *n, void *data) {
     cui__thread_paint *p = data;
     cui_rect r = n->rect;
+    if (p->rail->frame != ui->frame) {
+        memset(p->rail, 0, sizeof *p->rail);
+        p->rail->frame = ui->frame;
+    }
     float ay = r.y + 6, mid = ay + p->av * 0.5f;
     if (p->depth > 0 && p->depth < 8) {
         /* down from the parent's avatar, then a soft elbow into this reply's avatar */
         float x = r.x + p->parent_indent + p->parent_av * 0.5f - 0.75f;
-        float top = CUI_MIN(p->rail->bottom[p->depth - 1] + 6, mid - 8);
+        float top = p->rail->has[p->depth - 1] ? CUI_MIN(p->rail->bottom[p->depth - 1] + 6, mid - 8) : mid - 8;
         float end = r.x + p->indent - 6;
-        cui_draw_rect(ui, (cui_rect){ x, top, 1.5f, mid - 8 - top }, CUI_CORNERS(0.75f), p->c);
+        if (mid - 8 > top)
+            cui_draw_rect(ui, (cui_rect){ x, top, 1.5f, mid - 8 - top }, CUI_CORNERS(0.75f), p->c);
         cui_draw_arc(ui, (cui_vec2){ x + 8.75f, mid - 8 }, 8, CUI_PI * 0.5f, CUI_PI, 1.5f, p->c);
         if (end > x + 8.75f) cui_draw_rect(ui, (cui_rect){ x + 8.75f, mid - 0.75f, end - x - 8.75f, 1.5f }, CUI_CORNERS(0.75f), p->c);
     }
-    if (p->depth < 8) p->rail->bottom[p->depth] = ay + p->av;
+    if (p->depth < 8) {
+        p->rail->bottom[p->depth] = ay + p->av;
+        p->rail->has[p->depth] = true;
+        for (int d = p->depth + 1; d < 8; d++) p->rail->has[d] = false;
+    }
 }
 
 int cui_comment_ex(cui_ctx *ui, const char *id_str, const char *author, const char *text, const cui_comment_opts *o) {
@@ -180,6 +189,7 @@ int cui_comment_ex(cui_ctx *ui, const char *id_str, const char *author, const ch
     int result = 0;
     float indent = 44.0f * (float)CUI_MAX(0, o->depth);
     float av = o->depth > 0 ? 28 : 34;
+    cui_id rail_id = cui_make_id(ui, "#cui_thread_rail");
     cui_push_id(ui, id_str);
     int row = cui__node_new(ui, 0);
     cui_node *rn = &ui->nodes[row];
@@ -190,7 +200,7 @@ int cui_comment_ex(cui_ctx *ui, const char *id_str, const char *author, const ch
     tp->depth = CUI_MAX(0, o->depth);
     tp->indent = indent; tp->av = av;
     tp->parent_indent = CUI_MAX(0.0f, indent - 44); tp->parent_av = o->depth > 1 ? 28 : 34;
-    tp->rail = cui_state(ui, (cui_id)0x7EAD5EEDu, sizeof(cui__thread_rail));
+    tp->rail = cui_state(ui, rail_id, sizeof(cui__thread_rail));
     rn->paint = cui__paint_thread;
     rn->paint_data = tp;
     cui__open(ui, row);

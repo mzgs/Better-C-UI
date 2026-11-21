@@ -84,7 +84,7 @@ bool cui_confirm_popover_ex(cui_ctx *ui, const char *id, const cui_confirm_popov
     /* move focus into the question so Enter answers it instead of re-pressing the trigger */
     if (just_opened) ui->focus = ui->last_id;
     cui__close(ui);
-    if (!ui->edit && cui_key_pressed(ui, CUI_KEY_ENTER) && p && p->open) { confirmed = true; ui->kpressed[CUI_KEY_ENTER] = 0; }
+    if (!just_opened && !ui->edit && cui_key_pressed(ui, CUI_KEY_ENTER) && p && p->open) { confirmed = true; ui->kpressed[CUI_KEY_ENTER] = 0; }
     cui_popover_end(ui);
     if (confirmed) cui__popup_set(ui, pid, false);
     return confirmed;

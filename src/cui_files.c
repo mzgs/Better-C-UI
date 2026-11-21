@@ -9,6 +9,12 @@
 #include <time.h>
 
 #if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #elif !defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(CUI_NO_FILESYSTEM)
 #include <dirent.h>
@@ -51,6 +57,7 @@ int cui_fs_list(void *user, const char *path, cui_file_entry *out, int cap, char
         if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
         if (!hidden && ((fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) || fd.cFileName[0] == L'.')) continue;
         if (count >= cap) break;
+        if (used >= names_cap) { count = CUI_FILE_LIST_NAMES_FULL; break; }
         int len = WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, names + used, (int)(names_cap - used), NULL, NULL);
         if (len <= 0) { count = GetLastError() == ERROR_INSUFFICIENT_BUFFER ? CUI_FILE_LIST_NAMES_FULL : -1; break; }
         cui_file_entry *e = &out[count++];

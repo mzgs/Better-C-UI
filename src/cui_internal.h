@@ -320,6 +320,7 @@ typedef struct cui_node {
     /* floating */
     int z;
     cui_id anchor;            /* 0 = viewport */
+    cui_id layer_id;          /* logical layer id even when rn->id is overwritten for a scrim */
     uint8_t placement;
     float offset;             /* distance from anchor */
     float fx, fy;             /* explicit position when anchor == 0 and fpos set */
@@ -427,6 +428,7 @@ void cui__mark_interactive(cui_ctx *ui, int node, int flags);
 void cui__set_cursor(cui_ctx *ui, cui_cursor c);
 void cui__wakeup_after(cui_ctx *ui, float seconds);
 bool cui__is_layer_open(cui_ctx *ui, cui_id layer);
+bool cui__layer_covered(cui_ctx *ui);
 
 /* ---- popups ---- */
 typedef struct cui_popup {
@@ -532,7 +534,7 @@ struct cui_ctx {
     cui_id *focus_layers; int focus_layers_cap;          /* layer of each focus entry */
     cui_id *prev_focus_layers; int prev_focus_layers_cap;
     cui_id modal_layer, prev_modal_layer;               /* topmost open modal */
-    int modal_z;
+    int modal_z, prev_modal_z;
     bool edit_prev;                                     /* a text field had focus last frame */
     cui_id hover_id_for_tooltip;
     double hover_start;
@@ -550,7 +552,8 @@ struct cui_ctx {
     float scroll_dx, scroll_dy;
     bool kdown[CUI_KEY_COUNT];
     uint8_t kpressed[CUI_KEY_COUNT];
-    int mods;
+    int mods, live_mods;
+    bool mods_latched;
     char text_in[256]; int text_in_len;
     bool window_focused;
     bool input_this_frame;

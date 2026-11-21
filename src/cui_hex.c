@@ -617,7 +617,7 @@ static cui_hex_result cui__hex_view_ex_body(cui_ctx *ui, const char *id_str, con
 
     /* geometry */
     f.fsize = cui__fs(ui, o->size > 0 ? o->size : 12);
-    f.row_h = roundf(f.fsize * 1.7f);
+    f.row_h = CUI_MAX(1.0f, roundf(f.fsize * 1.7f));
     f.cw = cui__text_width(ui, CUI_FONT_MONO, f.fsize, "0000000000000000", 16, true) / 16.0f;
     f.bpr_req = o->bytes_per_row == 8 || o->bytes_per_row == 32 ? o->bytes_per_row : 16;
     /* offset digits: enough for the last address, at least 4, an even count */

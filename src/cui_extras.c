@@ -180,7 +180,7 @@ bool cui_tag_input_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, co
     int starts[64], lens[64];
     int n = cui__tag_split(buf, starts, lens, 64);
     bool full = o->max_tags > 0 && n >= o->max_tags;
-    if (ui->focus == fid && cui_key_pressed(ui, CUI_KEY_BACKSPACE) && st->typing[0] == 0 && n > 0) {
+    if (!cui_is_disabled(ui) && !cui__layer_covered(ui) && ui->focus == fid && cui_key_pressed(ui, CUI_KEY_BACKSPACE) && st->typing[0] == 0 && n > 0) {
         cui__tag_rebuild(buf, cap, buf, starts, lens, n, n - 1);
         n = cui__tag_split(buf, starts, lens, 64);
         changed = true;
@@ -264,9 +264,8 @@ bool cui_tag_input_ex(cui_ctx *ui, const char *id_str, char *buf, size_t cap, co
         memmove(st->typing, p, strlen(p) + 1);
     }
     if ((f & CUI_SUBMITTED) && st->typing[0] && !full) {
-        cui__tag_add(buf, cap, st->typing);
+        if (cui__tag_add(buf, cap, st->typing)) changed = true;
         st->typing[0] = 0;
-        changed = true;
     }
     ui->last_id = id;
     return changed;
@@ -485,8 +484,9 @@ bool cui_hold_button_ex(cui_ctx *ui, const char *label, const cui_hold_opts *o) 
     float duration = o->duration > 0 ? o->duration : 1.2f;
     cui_id id = cui_make_id(ui, label);
     cui__hold_state *st = cui_state(ui, id ^ 0x401Du, sizeof *st);
-    bool held = ui->active == id && ui->mdown[0] && ui->hot == id;
-    if (ui->focus == id && ui->focus_visible && (cui_key_down(ui, CUI_KEY_SPACE) || cui_key_down(ui, CUI_KEY_ENTER))) held = true;
+    bool can_hold = !cui_is_disabled(ui) && !cui__layer_covered(ui);
+    bool held = can_hold && ui->active == id && ui->mdown[0] && ui->hot == id;
+    if (can_hold && ui->focus == id && ui->focus_visible && (cui_key_down(ui, CUI_KEY_SPACE) || cui_key_down(ui, CUI_KEY_ENTER))) held = true;
     bool fire = false;
     if (held && !st->fired) {
         st->progress += (st->held ? ui->dt : 0) / duration;

@@ -557,26 +557,35 @@ static void cui__paint_code(cui_ctx *ui, cui_node *n, void *data) {
                             cui__tokenize(&p->lang, p->json, p->code + i, e - i, &block, toks, 256);
         float x = x0;
         int pos = 0;
+        float tw = cui__text_width(ui, CUI_FONT_MONO, p->size, "    ", 4, true);
         for (int k = 0; k < nt; k++) {
             const char *s = p->code + i + toks[k].start;
             int len = toks[k].len;
             pos = toks[k].start + len;
-            /* tabs become four spaces */
-            if (len > 0 && s[0] == '\t') {
-                float tw = cui__text_width(ui, CUI_FONT_MONO, p->size, "    ", 4, true);
-                for (int tab = 0; tab < len; tab++) {
-                    cui__selection_line(ui, p->selection, p->selection_offset + i + toks[k].start + tab,
-                        CUI_FONT_MONO, p->size, s + tab, 1, (cui_rect){ x, y - 1, tw, p->lh }, true, 0);
+            int off = 0;
+            while (off < len) {
+                /* tabs become four spaces, even inside whole-line tokens (plain, diff, block comments) */
+                if (s[off] == '\t') {
+                    cui__selection_line(ui, p->selection, p->selection_offset + i + toks[k].start + off,
+                        CUI_FONT_MONO, p->size, s + off, 1, (cui_rect){ x, y - 1, tw, p->lh }, true, 0);
                     x += tw;
+                    off++;
+                    continue;
                 }
-                continue;
+                int seg = off;
+                bool blank = true;
+                while (off < len && s[off] != '\t') {
+                    if (s[off] != ' ') blank = false;
+                    off++;
+                }
+                int slen = off - seg;
+                float sw = cui__text_width(ui, CUI_FONT_MONO, p->size, s + seg, slen, true);
+                cui__selection_line(ui, p->selection, p->selection_offset + i + toks[k].start + seg,
+                    CUI_FONT_MONO, p->size, s + seg, slen, (cui_rect){ x, y - 1, sw, p->lh }, true, 0);
+                if (!blank)
+                    cui__draw_text_line(ui, CUI_FONT_MONO, p->size, x, ty, p->colors[toks[k].kind], s + seg, slen, true);
+                x += sw;
             }
-            cui__selection_line(ui, p->selection, p->selection_offset + i + toks[k].start,
-                CUI_FONT_MONO, p->size, s, len,
-                (cui_rect){ x, y - 1, cui__text_width(ui, CUI_FONT_MONO, p->size, s, len, true), p->lh }, true, 0);
-            if (toks[k].kind != CUI__TK_TEXT || s[0] != ' ')
-                cui__draw_text_line(ui, CUI_FONT_MONO, p->size, x, ty, p->colors[toks[k].kind], s, len, true);
-            x += cui__text_width(ui, CUI_FONT_MONO, p->size, s, len, true);
         }
         if (pos < e - i) {
             const char *s = p->code + i + pos;

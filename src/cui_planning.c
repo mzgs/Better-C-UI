@@ -423,7 +423,8 @@ static int cui__week_calendar_ex_body(cui_ctx *ui, const char *id_str, cui_date 
                     int day = (int)floorf((ui->mx - gr.x - gutter) / dw);
                     e->day = CUI_CLAMP(day, 0, 6);
                     float start = roundf(((gy - st->grab) / hh + h0) * 4) / 4;
-                    start = cui__clampf(start, h0, h1 - dur);
+                    float hi_start = CUI_MAX(h0, h1 - dur);
+                    start = cui__clampf(start, h0, hi_start);
                     e->start = start; e->end = start + dur;
                 } else {
                     float end = roundf((gy / hh + h0) * 4) / 4;
@@ -542,7 +543,7 @@ static int cui__week_calendar_ex_body(cui_ctx *ui, const char *id_str, cui_date 
             int dday = cui_key_pressed(ui, CUI_KEY_RIGHT) ? 1 : cui_key_pressed(ui, CUI_KEY_LEFT) ? -1 : 0;
             if (dt != 0) {
                 if (ui->mods & CUI_MOD_SHIFT) e->end = cui__clampf(e->end + dt, e->start + 0.25f, h1);
-                else { e->start = cui__clampf(e->start + dt, h0, h1 - dur); e->end = e->start + dur; }
+                else { float hi_start = CUI_MAX(h0, h1 - dur); e->start = cui__clampf(e->start + dt, h0, hi_start); e->end = e->start + dur; }
                 ui->kpressed[CUI_KEY_DOWN] = ui->kpressed[CUI_KEY_UP] = 0;
             }
             if (dday) { e->day = CUI_CLAMP(e->day + dday, 0, 6); ui->kpressed[CUI_KEY_RIGHT] = ui->kpressed[CUI_KEY_LEFT] = 0; }
@@ -712,6 +713,7 @@ static int cui__gantt_ex_body(cui_ctx *ui, const char *id_str, cui_gantt_task *t
     memset(&d, 0, sizeof d);
     if (!o) o = &d;
     if (!tasks || count < 0) count = 0;
+    if (days < 1) days = 1;
     float dw = o->day_width > 0 ? o->day_width : 30;
     float rh = o->row_height > 0 ? o->row_height : 40;
     float head_h = 52;
@@ -727,7 +729,7 @@ static int cui__gantt_ex_body(cui_ctx *ui, const char *id_str, cui_gantt_task *t
             if (st->moved && !o->read_only) {
                 int dd = (int)lroundf((ui->mx - st->press_x) / dw);
                 int len = st->orig_end - st->orig_start;
-                if (st->mode == 1) { t->start = CUI_CLAMP(st->orig_start + dd, 0, days - len); t->end = t->start + len; }
+                if (st->mode == 1) { t->start = CUI_CLAMP(st->orig_start + dd, 0, CUI_MAX(0, days - len)); t->end = t->start + len; }
                 else if (st->mode == 2) t->start = CUI_CLAMP(st->orig_start + dd, 0, st->orig_end - 1);
                 else t->end = CUI_CLAMP(st->orig_end + dd, st->orig_start + 1, days);
             }
@@ -737,6 +739,8 @@ static int cui__gantt_ex_body(cui_ctx *ui, const char *id_str, cui_gantt_task *t
             if (!st->moved) clicked = st->drag - 1;
             st->drag = 0;
         }
+    } else if (st->drag > count) {
+        st->drag = 0;
     }
     (void)br;
     /* a phone: a slimmer task list without owners, so the timeline keeps most of the width */
@@ -873,7 +877,7 @@ static int cui__gantt_ex_body(cui_ctx *ui, const char *id_str, cui_gantt_task *t
             if (dd) {
                 int len = t->end - t->start;
                 if (ui->mods & CUI_MOD_SHIFT) { if (!t->milestone) t->end = CUI_CLAMP(t->end + dd, t->start + 1, days); }
-                else { t->start = CUI_CLAMP(t->start + dd, 0, days - len); t->end = t->start + len; }
+                else { t->start = CUI_CLAMP(t->start + dd, 0, CUI_MAX(0, days - len)); t->end = t->start + len; }
                 ui->kpressed[CUI_KEY_RIGHT] = ui->kpressed[CUI_KEY_LEFT] = 0;
             }
             if (r.keyboard_activate) clicked = k;

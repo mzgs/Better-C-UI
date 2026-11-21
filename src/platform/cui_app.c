@@ -57,7 +57,12 @@ cui_app *cui_app_create(const cui_app_desc *desc) {
         free(app);
         return NULL;
     }
+    bool gl_only = !strcmp(cui__plat_name(), "glfw");
     bool want_gl = d->renderer != CUI_RENDERER_SOFTWARE && !cui__env_is("CUI_RENDERER", "software");
+    if (gl_only && !want_gl) {
+        fprintf(stderr, "cui: glfw backend requires OpenGL; using OpenGL renderer\n");
+        want_gl = true;
+    }
     if (want_gl && cui__plat_gl_create(app, !d->no_vsync)) {
         app->gl = cui_gl_create(cui__plat_gl_proc);
         /* OpenGL drawn on the CPU (a virtual machine, a remote session) costs several times
@@ -73,6 +78,12 @@ cui_app *cui_app_create(const cui_app_desc *desc) {
     if (app->gl) {
         cui_renderer_iface iface = cui_gl_iface(app->gl);
         cui_set_renderer(app->ui, &iface);
+    } else if (gl_only) {
+        fprintf(stderr, "cui: OpenGL 3.3 unavailable (glfw backend has no software presenter)\n");
+        cui__plat_shutdown(app);
+        cui_destroy(app->ui);
+        free(app);
+        return NULL;
     } else {
         if (d->renderer == CUI_RENDERER_OPENGL) fprintf(stderr, "cui: OpenGL unavailable, using the software renderer\n");
         cui__app_make_software(app);
@@ -183,10 +194,12 @@ void cui__app_render(cui_app *app) {
         cui_gl_render(app->gl, dd, true);
         cui__plat_gl_swap(app);
     } else {
+        if (w > INT_MAX / 4 || (size_t)w > SIZE_MAX / 4 / (size_t)h) return;
         if (w != app->sw_w || h != app->sw_h) {
             free(app->sw_pixels);
             app->sw_pixels = malloc((size_t)w * (size_t)h * 4);
-            app->sw_w = w; app->sw_h = h;
+            app->sw_w = app->sw_pixels ? w : 0;
+            app->sw_h = app->sw_pixels ? h : 0;
         }
         if (!app->sw_pixels) return;
         cui_sw_render(app->sw, dd, app->sw_pixels, w, h, w * 4, CUI_SW_BGRA);

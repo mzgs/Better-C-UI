@@ -134,7 +134,9 @@ cui_uptime_result cui_uptime_ex(cui_ctx *ui, const char *id_str, const cui_uptim
             } else day = back == 0 ? "Latest day" : cui__frame_printf(ui, back == 1 ? "1 day earlier" : "%d days earlier", back);
             const char *tip = v < 0 ? cui__frame_printf(ui, "%s\nNo data", day) : cui__frame_printf(ui, "%s\n%.2f%% up", day, v * 100.0);
             cui_id tid = bid ^ (uint32_t)(p->hover * 2654435761u);
+            cui__open(ui, bars);
             cui__absolute(ui, tid, p->hover * (p->bw + p->gap), 0, p->bw, CUI__UP_BAR_H);
+            cui__close(ui);
             cui__tooltip_passive(ui, tid, tip);
         }
         /* the period under the last service */
@@ -198,12 +200,15 @@ static void cui__paint_thist(cui_ctx *ui, cui_node *nd, void *data) {
     float fx = cui__fs(ui, ui->theme.text_xs), fh = cui__font_line_height(ui, CUI_FONT_BODY, fx);
     cui_color grid = cui_alpha(CUI_C(ui, BORDER_SUBTLE), ui->mode == CUI_THEME_DARK ? 0.8f : 1.0f);
     /* count lines */
-    for (double v = 0; v <= p->vmax + 1e-9 && p->ystep > 0; v += p->ystep) {
-        float y = floorf(plot.y + plot.h - (float)(v / p->vmax) * plot.h);
-        cui_draw_rect(ui, (cui_rect){ plot.x, y, plot.w, 1 }, CUI_CORNERS(0), v == 0 ? CUI_C(ui, BORDER) : grid);
-        const char *lbl = v >= 10000 ? cui__frame_printf(ui, "%.0fk", v / 1000) : v >= 1000 ? cui__frame_printf(ui, "%.1fk", v / 1000) : cui__frame_printf(ui, "%.0f", v);
-        float lw = cui__text_width(ui, CUI_FONT_BODY, fx, lbl, -1, true);
-        cui__draw_text_line(ui, CUI_FONT_BODY, fx, plot.x - 6 - lw, y - fh * 0.5f, CUI_C(ui, TEXT_MUTED), lbl, -1, true);
+    if (isfinite(p->vmax) && p->vmax > 0 && isfinite(p->ystep) && p->ystep > 0) {
+        int yticks = 0;
+        for (double v = 0; v <= p->vmax + 1e-9 && yticks < 256; v += p->ystep, yticks++) {
+            float y = floorf(plot.y + plot.h - (float)(v / p->vmax) * plot.h);
+            cui_draw_rect(ui, (cui_rect){ plot.x, y, plot.w, 1 }, CUI_CORNERS(0), v == 0 ? CUI_C(ui, BORDER) : grid);
+            const char *lbl = v >= 10000 ? cui__frame_printf(ui, "%.0fk", v / 1000) : v >= 1000 ? cui__frame_printf(ui, "%.1fk", v / 1000) : cui__frame_printf(ui, "%.0f", v);
+            float lw = cui__text_width(ui, CUI_FONT_BODY, fx, lbl, -1, true);
+            cui__draw_text_line(ui, CUI_FONT_BODY, fx, plot.x - 6 - lw, y - fh * 0.5f, CUI_C(ui, TEXT_MUTED), lbl, -1, true);
+        }
     }
     /* bars, stacked */
     float slot = plot.w / (float)CUI_MAX(1, p->n), gap = slot >= 6 ? 1.0f : 0.0f;
@@ -252,7 +257,7 @@ static void cui__paint_thist(cui_ctx *ui, cui_node *nd, void *data) {
 }
 
 static double cui__th_nice(double raw) {
-    if (!(raw > 0)) return 1;
+    if (!isfinite(raw) || !(raw > 0)) return 1;
     double p = pow(10.0, floor(log10(raw))), m = raw / p;
     return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
 }
@@ -279,7 +284,7 @@ cui_time_histogram_result cui_time_histogram_ex(cui_ctx *ui, const char *id_str,
     double b0 = *sel_start, b1 = *sel_end;
     double tm = known && buckets > 0 ? t0 + CUI_CLAMP((ui->mx - plot.x) / plot.w, 0.0f, 1.0f) * (t1 - t0) : t0;
     /* drag selects a range of whole buckets; a click clears it */
-    if (known && buckets > 0) {
+    if (known && buckets > 0 && !cui_is_disabled(ui)) {
         if (bi.hovered && ui->mpressed[0] && ui->mx >= plot.x - 2) { st->mode = 1; st->press_x = ui->mx; st->press_t = tm; }
         if (st->mode == 1 && ui->mdown[0] && fabsf(ui->mx - st->press_x) > 3) st->mode = 2;
         if (st->mode == 2) {
@@ -303,8 +308,9 @@ cui_time_histogram_result cui_time_histogram_ex(cui_ctx *ui, const char *id_str,
     double vmax = 0;
     for (int b = 0; b < buckets; b++) {
         double sum = 0;
-        for (int s = 0; s < series_count; s++) if (series[s].counts && series[s].counts[b] > 0) sum += series[s].counts[b];
-        vmax = CUI_MAX(vmax, sum);
+        for (int s = 0; s < series_count; s++)
+            if (series[s].counts && isfinite(series[s].counts[b]) && series[s].counts[b] > 0) sum += series[s].counts[b];
+        if (isfinite(sum)) vmax = CUI_MAX(vmax, sum);
     }
     for (int s = 0; s < series_count; s++) {
         float *copy = NULL;
@@ -707,7 +713,7 @@ cui_coverage_result cui_coverage_ex(cui_ctx *ui, const char *id_str, const cui_c
 
 typedef struct {
     bool init;
-    const void *lines; int count; const char *lang;   /* what the comment flags are for */
+    const void *lines; int count; char lang[32];   /* what the comment flags are for */
     uint8_t *in_block; int cap;     /* per line: inside a block comment at its start */
     int hovered;
 } cui__blm_state;
@@ -778,8 +784,9 @@ cui_blame_result cui_blame_ex(cui_ctx *ui, const char *id_str, const char *const
     cui__state_set_dtor(ui, id ^ 0xB1A3u, cui__blm_dtor);
     if (!s->init) { s->init = true; s->hovered = -1; }
     /* which lines start inside a block comment, once per change of the lines */
-    if (o->lang && (s->lines != (const void *)lines || s->count != line_count || s->lang != o->lang)) {
-        s->lines = lines; s->count = line_count; s->lang = o->lang;
+    const char *lang = o->lang ? cui__frame_strdup(ui, o->lang, -1) : NULL;
+    if (lang && (s->lines != (const void *)lines || s->count != line_count || strcmp(s->lang, lang) != 0)) {
+        s->lines = lines; s->count = line_count; snprintf(s->lang, sizeof s->lang, "%s", lang);
         if (s->cap < line_count) {
             cui__free(ui, s->in_block);
             s->in_block = cui__alloc(ui, (size_t)CUI_MAX(1, line_count));
@@ -838,7 +845,7 @@ cui_blame_result cui_blame_ex(cui_ctx *ui, const char *id_str, const char *const
         const char *t = lines[i] ? lines[i] : "";
         p->len = (int)CUI_MIN(strlen(t), (size_t)2000);
         p->text = cui__frame_strdup(ui, t, p->len);
-        p->lang = o->lang; p->in_block = o->lang && s->in_block && i < s->cap ? s->in_block[i] != 0 : false;
+        p->lang = lang; p->in_block = lang && s->in_block && i < s->cap ? s->in_block[i] != 0 : false;
         p->size = size; p->gutter = gutter; p->num_w = num_w; p->number = first_no + i;
         p->run_start = run_start || i == first;
         p->marked = c >= 0 && c == s->hovered;
